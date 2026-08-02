@@ -52,6 +52,20 @@ def _tgl_jam_wib(ts):
         return None, None
 
 
+def _fmt_harga(value):
+    """Normalize any price shape (int, '30000', 'IDR 30000', 'IDR30.000') to 'Rp 30.000'."""
+    if value is None:
+        return None
+    digits = "".join(ch for ch in str(value) if ch.isdigit())
+    if not digits:
+        return None
+    try:
+        n = int(digits)
+    except ValueError:
+        return None
+    return "Rp {:,.0f}".format(n).replace(",", ".")
+
+
 def _fmt_xl_ts(ts):
     """XL transaction timestamps are WIB wall-clock stored as if UTC (+7h ahead of the
     real instant). Subtract 7h first so the rendered WIB matches XL's formated_date."""
@@ -947,7 +961,7 @@ def _build_history_rows(active_xl, user):
             "ts": f"{tgl} | {jam}",
             "sort": te,
             "paket": q.get("option_name") or "—",
-            "harga": ("Rp {:,}".format(q["amount"]) if q.get("amount") else "—"),
+            "harga": _fmt_harga(q.get("amount")) or "—",
             "status": "Expired" if expired else "Pending",
             "status_color": "red" if expired else "amber",
             "expires_ts": q.get("expires_ts") or 0,
@@ -984,7 +998,7 @@ def _build_history_rows(active_xl, user):
                 "ts": f"{tgl} | {jam}",
                 "sort": te,
                 "paket": trx.get("title") or "—",
-                "harga": trx.get("price") or "—",
+                "harga": _fmt_harga(trx.get("price") or trx.get("raw_price")) or "—",
                 "status": trx.get("status") or "—",
                 "status_color": color,
                 "expires_ts": 0,
@@ -1895,12 +1909,14 @@ def _reconcile_qris_record(q, tokens, db):
 
     FINISHED/SUCCESS -> mark done & drop (paid; the XL history row covers it).
     EXPIRED/timeout   -> mark expired & show as expired.
-    Still pending     -> show as pending with live remaining time.
+    Still pending     -> show as pending with live remaining time, fresh QR from API.
     API failure       -> keep showing as pending (no data loss).
     """
+    import base64 as _b64
     st = (q.status or "PENDING").upper()
     remaining = 0
     resolved = False
+    fresh = {}
     if st == "PENDING" and tokens:
         try:
             _api_delay()
@@ -1910,6 +1926,7 @@ def _reconcile_qris_record(q, tokens, db):
                 d = res.get("data") or {}
                 st = (d.get("status") or "PENDING").upper()
                 remaining = int(d.get("remaining_time") or 0)
+                fresh = d
                 resolved = True
                 if st != (q.status or "PENDING").upper():
                     q.status = st
@@ -1926,16 +1943,33 @@ def _reconcile_qris_record(q, tokens, db):
     else:
         expired = False
 
+    img = None
+    ts_epoch = 0
+    created_at = _fmt_wib(q.created_at) if q.created_at else ""
+    if fresh:
+        qr_raw = fresh.get("qr_code")
+        if qr_raw:
+            img = _qris_png_data_uri(_b64.urlsafe_b64encode(qr_raw.encode()).decode())
+        fts = fresh.get("timestamp")
+        if fts:
+            ts_epoch = int(fts) - 7 * 3600
+        if fresh.get("formated_date"):
+            created_at = fresh["formated_date"]
+    if not img:
+        img = _qris_png_data_uri(q.qris_b64)
+    if not ts_epoch:
+        ts_epoch = int(q.created_at.replace(tzinfo=timezone.utc).timestamp()) if q.created_at else 0
+
     return {
         "transaction_id": q.transaction_id,
         "option_name": q.option_name,
         "amount": q.amount,
         "status": st,
-        "created_at": _fmt_wib(q.created_at) if q.created_at else "",
-        "ts_epoch": int(q.created_at.replace(tzinfo=timezone.utc).timestamp()) if q.created_at else 0,
+        "created_at": created_at,
+        "ts_epoch": ts_epoch,
         "expires_ts": int(time.time()) + remaining if remaining > 0 else 0,
         "expired": expired,
-        "img": _qris_png_data_uri(q.qris_b64),
+        "img": img,
     }
 
 

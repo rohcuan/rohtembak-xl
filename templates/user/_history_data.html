@@ -8,6 +8,7 @@
         <thead>
             <tr>
                 <th>Tanggal</th>
+                <th>Jam</th>
                 <th>Paket</th>
                 <th>Harga</th>
                 <th>Status</th>
@@ -17,7 +18,8 @@
         <tbody>
             {% for r in rows %}
             <tr>
-                <td data-label="Tanggal" style="white-space:nowrap;">{{ r.ts }}</td>
+                <td data-label="Tanggal" style="white-space:nowrap;">{{ r.tgl }}</td>
+                <td data-label="Jam" style="white-space:nowrap;">{{ r.jam }}</td>
                 <td data-label="Paket">{{ r.paket }}</td>
                 <td data-label="Harga">{{ r.harga }}</td>
                 <td data-label="Status">

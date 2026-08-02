@@ -43,6 +43,15 @@ def _fmt_epoch_wib(ts):
         return None
 
 
+def _tgl_jam_wib(ts):
+    """Split a true epoch into separate (tanggal, jam) WIB strings for the history table."""
+    try:
+        dt = datetime.fromtimestamp(int(ts), tz=WIB)
+        return dt.strftime("%d %B %Y"), dt.strftime("%H:%M WIB")
+    except (ValueError, OSError):
+        return None, None
+
+
 def _fmt_xl_ts(ts):
     """XL transaction timestamps are WIB wall-clock stored as if UTC (+7h ahead of the
     real instant). Subtract 7h first so the rendered WIB matches XL's formated_date."""
@@ -925,8 +934,17 @@ def _build_history_rows(active_xl, user):
     for q in qris_txs:
         expired = bool(q.get("expired"))
         te = int(q.get("ts_epoch") or 0)
+        tgl, jam = _tgl_jam_wib(te) if te > 0 else (None, None)
+        raw = q.get("created_at") or ""
+        if tgl is None:
+            if " | " in raw:
+                tgl, jam = raw.split(" | ", 1)
+            else:
+                tgl, jam = (raw or "—"), "—"
         rows.append({
-            "ts": _fmt_epoch_wib(te) or (q.get("created_at") or "—"),
+            "tgl": tgl,
+            "jam": jam,
+            "ts": f"{tgl} | {jam}",
             "sort": te,
             "paket": q.get("option_name") or "—",
             "harga": ("Rp {:,}".format(q["amount"]) if q.get("amount") else "—"),
@@ -953,8 +971,17 @@ def _build_history_rows(active_xl, user):
             else:
                 encoded = _parse_xl_dt(trx.get("formated_date") or "")
                 te = encoded - 7 * 3600 if encoded else 0
+            tgl, jam = _tgl_jam_wib(te) if te > 0 else (None, None)
+            raw = trx.get("formated_date") or ""
+            if tgl is None:
+                if " | " in raw:
+                    tgl, jam = raw.split(" | ", 1)
+                else:
+                    tgl, jam = (raw or "—"), "—"
             rows.append({
-                "ts": _fmt_epoch_wib(te) or (trx.get("formated_date") or "—"),
+                "tgl": tgl,
+                "jam": jam,
+                "ts": f"{tgl} | {jam}",
                 "sort": te,
                 "paket": trx.get("title") or "—",
                 "harga": trx.get("price") or "—",

@@ -47,7 +47,7 @@ def _fmt_wib(ts):
         return None
     if ts.tzinfo is None:
         ts = ts.replace(tzinfo=timezone.utc)
-    return ts.astimezone(WIB).strftime("%Y-%m-%d %H:%M")
+    return ts.astimezone(WIB).strftime("%Y-%m-%d %H:%M WIB")
 
 
 def _parse_xl_dt(s):
@@ -1195,7 +1195,7 @@ def _stream_beli_paket_events(active_xl, want):
     yield _sse_event("done", {
         "error": error,
         "fetched_at": fetched_at,
-        "last_refresh": datetime.now().strftime("%d %b %Y, %H:%M"),
+        "last_refresh": datetime.now(WIB).strftime("%d %b %Y, %H:%M WIB"),
     })
 
 
@@ -1865,7 +1865,7 @@ def _reconcile_qris_record(q, tokens, db):
         "option_name": q.option_name,
         "amount": q.amount,
         "status": st,
-        "created_at": q.created_at.strftime("%d %b %Y %H:%M") if q.created_at else "",
+        "created_at": _fmt_wib(q.created_at) if q.created_at else "",
         "expires_ts": int(time.time()) + remaining if remaining > 0 else 0,
         "expired": expired,
         "img": _qris_png_data_uri(q.qris_b64),

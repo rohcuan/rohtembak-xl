@@ -3,6 +3,13 @@
 {% block head %}
 <style>
 .header-section .btn-primary { width: auto; }
+.fees-form { display: flex; gap: 8px; align-items: center; }
+.fees-form input[type="number"] { width: 120px; }
+@media (max-width: 700px) {
+  .fees-form { width: 100%; flex-wrap: wrap; }
+  .fees-form input[type="number"] { flex: 1 1 100%; width: 100%; }
+  .fees-form .btn { flex: 1 1 100%; width: 100%; }
+}
 @media (max-width: 700px) {
   .header-section { flex-direction: column; align-items: stretch; gap: 8px; }
   .header-section .page-subtitle { margin-bottom: 8px; }
@@ -154,7 +161,6 @@ document.addEventListener('click', function(e) {
             <tr>
                 <th>Family</th>
                 <th>Saldo Token (IDR)</th>
-                <th></th>
             </tr>
         </thead>
         <tbody>
@@ -162,13 +168,12 @@ document.addEventListener('click', function(e) {
             <tr>
                 <td data-label="Family"><strong>{{ key }}</strong></td>
                 <td data-label="Saldo Token">
-                    <form method="POST" action="/admin/fees/set" style="display:flex;gap:8px;align-items:center;">
+                    <form method="POST" action="/admin/fees/set" class="fees-form">
                         <input type="hidden" name="family_key" value="{{ key }}">
-                        <input type="number" name="fee" value="{{ value }}" min="0" step="100" class="form-control" style="width:120px;display:inline-block;" required>
+                        <input type="number" name="fee" value="{{ value }}" min="0" step="100" class="form-control" required>
                         <button type="submit" class="btn btn-sm btn-primary">Simpan</button>
                     </form>
                 </td>
-                <td></td>
             </tr>
             {% endfor %}
         </tbody>

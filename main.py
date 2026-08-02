@@ -809,7 +809,11 @@ def xl_otp_submit(
         refresh_expires_at = None
 
     _api_delay()
-    profile = xl_login_info(API_KEY, {"access_token": access_token, "id_token": id_token})
+    profile = None
+    try:
+        profile = xl_login_info(API_KEY, {"access_token": access_token, "id_token": id_token})
+    except Exception as e:
+        print(f"[otp_submit] login_info gagal (akun tetap disimpan): {e}")
     subscription_type = "PREPAID"
     if profile and "subscription_type" in profile:
         subscription_type = profile["subscription_type"]

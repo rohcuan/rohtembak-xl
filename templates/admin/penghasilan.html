@@ -1,16 +1,54 @@
 {% extends "base.html" %}
 {% block title %}Penghasilan - RohTembak (XL){% endblock %}
+{% block head %}
+<style>
+.income-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 700px) { .income-grid { grid-template-columns: 1fr; } }
+.income-label {
+    font-size: 12px; text-transform: uppercase; letter-spacing: .5px;
+    color: #888; margin-bottom: 8px;
+}
+.income-value { font-size: 2rem; font-weight: 700; color: #059669; margin-bottom: 16px; }
+.toggle-group { display: flex; gap: 6px; flex-wrap: wrap; }
+.toggle-btn {
+    padding: 6px 14px; font-size: 13px; border-radius: 999px;
+    border: 1px solid #ddd; color: #666; text-decoration: none;
+    transition: all .15s;
+}
+.toggle-btn:hover { border-color: #4361ee; color: #4361ee; }
+.toggle-btn.active { background: #4361ee; border-color: #4361ee; color: #fff; font-weight: 600; }
+</style>
+{% endblock %}
 {% block content %}
 
 <div class="header-section">
     <div>
         <div class="page-title">Penghasilan</div>
-        <div class="page-subtitle">Statistik penghasilan — segera hadir</div>
+        <div class="page-subtitle">Rekap pemasukan & pemakaian saldo token</div>
     </div>
 </div>
 
-<div class="card">
-    <div class="empty-state">Fitur ini masih dalam pengembangan.</div>
+<div class="income-grid">
+    <div class="card">
+        <div class="income-label">Total Topup Saldo Token</div>
+        <div class="income-value">Rp {{ "{:,}".format(topup_total or 0) }}</div>
+        <div class="toggle-group">
+            {% for key, label in INCOME_RANGES %}
+            <a href="/admin/penghasilan?topup_range={{ key }}&used_range={{ used_range }}"
+               class="toggle-btn {{ 'active' if topup_range == key }}">{{ label }}</a>
+            {% endfor %}
+        </div>
+    </div>
+    <div class="card">
+        <div class="income-label">Total Saldo Token Dipakai User</div>
+        <div class="income-value">Rp {{ "{:,}".format(used_total or 0) }}</div>
+        <div class="toggle-group">
+            {% for key, label in INCOME_RANGES %}
+            <a href="/admin/penghasilan?used_range={{ key }}&topup_range={{ topup_range }}"
+               class="toggle-btn {{ 'active' if used_range == key }}">{{ label }}</a>
+            {% endfor %}
+        </div>
+    </div>
 </div>
 
 {% endblock %}

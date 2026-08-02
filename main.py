@@ -488,11 +488,51 @@ def admin_set_balance(
 
 # ─── Admin Backup ───────────────────────────────────────────────────────────
 
+def _income_range_start(period: str):
+    now_wib = datetime.now(WIB)
+    if period == "today":
+        start = now_wib.replace(hour=0, minute=0, second=0, microsecond=0)
+    elif period == "week":
+        start = (now_wib - timedelta(days=now_wib.weekday())).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+    elif period == "month":
+        start = now_wib.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    else:
+        start = now_wib - timedelta(days=3650)
+    return start.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def _income_total(db, trx_type: str, period: str) -> int:
+    start = _income_range_start(period)
+    rows = db.query(BalanceTransaction).filter(
+        BalanceTransaction.type == trx_type,
+        BalanceTransaction.created_at >= start,
+    ).all()
+    total = sum(r.amount for r in rows)
+    if trx_type == "purchase":
+        total = -total
+    return total
+
+
 @app.get("/admin/penghasilan", response_class=HTMLResponse)
 def admin_penghasilan(request: Request, user: User = Depends(get_current_user)):
     if user.role != "admin":
         return RedirectResponse(url="/user/dashboard", status_code=303)
-    return render("admin/penghasilan.html", context={"request": request, "user": user})
+    db = next(get_db())
+    topup_range = request.query_params.get("topup_range", "today")
+    used_range = request.query_params.get("used_range", "today")
+    topup_total = _income_total(db, "topup", topup_range)
+    used_total = _income_total(db, "purchase", used_range)
+    db.close()
+    return render("admin/penghasilan.html", context={
+        "request": request, "user": user,
+        "topup_range": topup_range,
+        "used_range": used_range,
+        "topup_total": topup_total,
+        "used_total": used_total,
+        "INCOME_RANGES": [("today", "Hari ini"), ("week", "Minggu ini"), ("month", "Bulan ini")],
+    })
 
 
 @app.get("/admin/backup", response_class=JSONResponse)

@@ -37,7 +37,7 @@ def _fmt_xl_ts(ts):
     if not ts:
         return None
     try:
-        return datetime.fromtimestamp(int(ts), tz=timezone.utc).strftime("%d %b %Y %H:%M")
+        return datetime.fromtimestamp(int(ts), tz=WIB).strftime("%d %b %Y %H:%M WIB")
     except (ValueError, OSError):
         return None
 
@@ -1109,7 +1109,7 @@ def _get_xl_info(active_xl):
         if not balance_data:
             return None
         expiry_ts = balance_data.get("expired_at")
-        expiry_date = datetime.fromtimestamp(expiry_ts).strftime("%d %b %Y") if expiry_ts else None
+        expiry_date = datetime.fromtimestamp(expiry_ts, tz=WIB).strftime("%d %b %Y") if expiry_ts else None
         return {
             "main_credit": balance_data.get("remaining"),
             "expiry_date": expiry_date,
@@ -1161,7 +1161,7 @@ def _stream_beli_paket_events(active_xl, want):
                     balance_data = xl_get_balance(API_KEY, tokens.get("id_token", ""))
                     if balance_data:
                         expiry_ts = balance_data.get("expired_at")
-                        expiry_date = datetime.fromtimestamp(expiry_ts).strftime("%d %b %Y") if expiry_ts else None
+                        expiry_date = datetime.fromtimestamp(expiry_ts, tz=WIB).strftime("%d %b %Y") if expiry_ts else None
                         xl_info = {
                             "main_credit": balance_data.get("remaining"),
                             "expiry_date": expiry_date,
@@ -1342,7 +1342,7 @@ def _stream_detail_events(family, option_number, active_xl, want):
                     balance_data = xl_get_balance(API_KEY, tokens.get("id_token", ""))
                     if balance_data:
                         expiry_ts = balance_data.get("expired_at")
-                        expiry_date = datetime.fromtimestamp(expiry_ts).strftime("%d %b %Y") if expiry_ts else None
+                        expiry_date = datetime.fromtimestamp(expiry_ts, tz=WIB).strftime("%d %b %Y") if expiry_ts else None
                         xl_info = {
                             "main_credit": balance_data.get("remaining"),
                             "expiry_date": expiry_date,

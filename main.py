@@ -488,6 +488,17 @@ def admin_set_balance(
 
 # ─── Admin Backup ───────────────────────────────────────────────────────────
 
+@app.post("/admin/penghasilan/hapus")
+def admin_penghasilan_hapus(request: Request, user: User = Depends(get_current_user)):
+    if user.role != "admin":
+        return RedirectResponse(url="/user/dashboard", status_code=303)
+    db = next(get_db())
+    db.query(BalanceTransaction).delete()
+    db.commit()
+    db.close()
+    return RedirectResponse(url="/admin/penghasilan", status_code=303)
+
+
 def _income_range_start(period: str):
     now_wib = datetime.now(WIB)
     if period == "today":

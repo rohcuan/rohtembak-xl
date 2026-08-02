@@ -20,6 +20,8 @@
 .toggle-btn.active { background: #4361ee; border-color: #4361ee; color: #fff; font-weight: 600; }
 .income-divider { border: none; border-top: 1px solid #eee; margin: 16px 0; }
 @media (max-width: 600px) {
+    .income-header { flex-direction: column; gap: 12px; align-items: stretch; }
+    .income-clear-btn { width: 100%; }
     .income-value { font-size: 1.7rem; }
     .toggle-group { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; width: 100%; }
     .toggle-btn { width: 100%; padding: 10px 4px; }
@@ -43,11 +45,15 @@
 {% endblock %}
 {% block content %}
 
-<div class="header-section">
+<div class="header-section income-header">
     <div>
         <div class="page-title">Penghasilan</div>
         <div class="page-subtitle">Rekap pemasukan & pemakaian saldo token</div>
     </div>
+    <form method="post" action="/admin/penghasilan/hapus"
+          onsubmit="return confirm('Hapus seluruh data tabel transaksi? Tindakan ini tidak dapat dibatalkan.');">
+        <button type="submit" class="btn btn-outline btn-sm income-clear-btn">Hapus Data Tabel</button>
+    </form>
 </div>
 
 <div class="card">

@@ -298,7 +298,8 @@ def login_page(request: Request):
             if role == "admin":
                 return RedirectResponse(url="/admin/dashboard", status_code=303)
             return RedirectResponse(url="/user/dashboard", status_code=303)
-    return render("login.html", context={"request": request})
+    role = request.query_params.get("role", "user")
+    return render("login.html", context={"request": request, "role": role})
 
 
 @app.post("/login")

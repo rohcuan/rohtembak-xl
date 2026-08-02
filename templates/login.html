@@ -16,15 +16,10 @@
     {% endif %}
 
     <form method="POST" action="/login">
-        <div class="switch-container">
-            <span id="label-user" class="active">User</span>
-            <label class="switch">
-                <input type="checkbox" name="role_toggle" id="role-toggle" onchange="toggleRole()">
-                <span class="slider"></span>
-            </label>
-            <span id="label-admin">Admin</span>
-        </div>
-        <input type="hidden" name="role" id="role-input" value="user">
+        <input type="hidden" name="role" value="{{ role or 'user' }}">
+        {% if role == 'admin' %}
+        <div style="text-align:center;font-size:12px;color:#4361ee;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:16px;">Mode Admin</div>
+        {% endif %}
 
         <div class="form-group">
             <label>Username</label>
@@ -40,14 +35,13 @@
     <p style="text-align:center;margin-top:16px;font-size:13px;color:#999;">
         Belum punya akun? <a href="/register">Daftar</a>
     </p>
+    <p style="text-align:center;margin-top:6px;font-size:13px;">
+        {% if role == 'admin' %}
+        <a href="/login">Masuk sebagai User</a>
+        {% else %}
+        <a href="/login?role=admin">Masuk sebagai Admin</a>
+        {% endif %}
+    </p>
 </div>
-<script>
-function toggleRole() {
-    const checked = document.getElementById('role-toggle').checked;
-    document.getElementById('role-input').value = checked ? 'admin' : 'user';
-    document.getElementById('label-user').className = checked ? '' : 'active';
-    document.getElementById('label-admin').className = checked ? 'active' : '';
-}
-</script>
 </body>
 </html>

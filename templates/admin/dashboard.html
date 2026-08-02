@@ -114,11 +114,11 @@ document.addEventListener('click', function(e) {
         <div class="page-subtitle">Kelola saldo token pengguna</div>
     </div>
     <div style="display:flex;gap:8px;">
-        <button class="btn btn-sm btn-primary" onclick="openAddUser()">Add User</button>
-        <button class="btn btn-sm btn-success" onclick="openTopup()">Topup</button>
-        <button class="btn btn-sm btn-pink" onclick="openSet()">Set Saldo</button>
-        <button class="btn btn-sm btn-warning" onclick="openDecrease()">Kurangi Saldo</button>
-        <button class="btn btn-sm btn-danger" onclick="openDelete()">Delete User</button>
+        <button class="btn btn-sm btn-outline" onclick="openAddUser()">Add User</button>
+        <button class="btn btn-sm btn-outline" onclick="openTopup()">Topup</button>
+        <button class="btn btn-sm btn-outline" onclick="openSet()">Set Saldo</button>
+        <button class="btn btn-sm btn-outline" onclick="openDecrease()">Kurangi Saldo</button>
+        <button class="btn btn-sm btn-outline" onclick="openDelete()">Delete User</button>
     </div>
 </div>
 
@@ -171,7 +171,7 @@ document.addEventListener('click', function(e) {
                     <form method="POST" action="/admin/fees/set" class="fees-form">
                         <input type="hidden" name="family_key" value="{{ key }}">
                         <input type="number" name="fee" value="{{ value }}" min="0" step="100" class="form-control" required>
-                        <button type="submit" class="btn btn-sm btn-primary">Simpan</button>
+                        <button type="submit" class="btn btn-sm btn-outline">Simpan</button>
                     </form>
                 </td>
             </tr>
@@ -202,7 +202,7 @@ document.addEventListener('click', function(e) {
             </div>
             <div class="modal-actions">
                 <button type="button" class="btn btn-outline" onclick="closeAddUser()">Batal</button>
-                <button type="submit" class="btn btn-primary">Simpan</button>
+                <button type="submit" class="btn btn-outline">Simpan</button>
             </div>
         </form>
     </div>
@@ -220,7 +220,7 @@ document.addEventListener('click', function(e) {
             <p style="font-size:13px;color:#ef4444;margin:0 0 12px;">User, saldo, nomor XL, dan riwayat topup akan dihapus permanen.</p>
             <div class="modal-actions">
                 <button type="button" class="btn btn-outline" onclick="closeDelete()">Batal</button>
-                <button type="button" class="btn btn-danger" onclick="submitDelete()">Hapus</button>
+                <button type="button" class="btn btn-outline" onclick="submitDelete()">Hapus</button>
             </div>
         </form>
     </div>
@@ -245,7 +245,7 @@ document.addEventListener('click', function(e) {
             </div>
             <div class="modal-actions">
                 <button type="button" class="btn btn-outline" onclick="closeDecrease()">Batal</button>
-                <button type="button" class="btn btn-warning" onclick="submitDecrease()">Kurangi</button>
+                <button type="button" class="btn btn-outline" onclick="submitDecrease()">Kurangi</button>
             </div>
         </form>
     </div>
@@ -270,7 +270,7 @@ document.addEventListener('click', function(e) {
             </div>
             <div class="modal-actions">
                 <button type="button" class="btn btn-outline" onclick="closeSet()">Batal</button>
-                <button type="button" class="btn btn-primary" onclick="submitSet()">Set</button>
+                <button type="button" class="btn btn-outline" onclick="submitSet()">Set</button>
             </div>
         </form>
     </div>
@@ -298,7 +298,7 @@ document.addEventListener('click', function(e) {
             </div>
             <div class="modal-actions">
                 <button type="button" class="btn btn-outline" onclick="closeTopup()">Batal</button>
-                <button type="button" class="btn btn-success" onclick="submitTopup()">Topup</button>
+                <button type="button" class="btn btn-outline" onclick="submitTopup()">Topup</button>
             </div>
         </form>
     </div>

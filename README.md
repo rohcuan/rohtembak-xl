@@ -78,6 +78,17 @@ Yang TIDAK ikut di-commit:
 - Yang tetap dilindungi `gitignore`: `data/*.db` (token refresh/access XL per nomor), `ax.fp`, `venv/`, `__pycache__/`.
 - Login nomor XL dilakukan via menu panel (input nomor + OTP) dan tersimpan hanya di database lokal.
 
+## Update / reinstall (retain data)
+
+Untuk perubahan besar di repo: reinstall bersih (bukan git pull) tapi tetap menyimpan data
+(`.env`, `data/*.db`, `ax.fp`):
+
+```bash
+wget -O reinstall-but-retain-data.sh https://raw.githubusercontent.com/rohcuan/rohtembak-xl/main/reinstall-but-retain-data.sh
+chmod +x reinstall-but-retain-data.sh
+./reinstall-but-retain-data.sh
+```
+
 ## Troubleshooting
 
 ```bash

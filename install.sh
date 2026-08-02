@@ -39,7 +39,19 @@ command -v apt-get >/dev/null 2>&1 || die "apt-get not found. This installer tar
 log "Installing system dependencies..."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
-apt-get install -y python3 python3-venv python3-pip git curl ca-certificates
+# Redundancy is intentional: every package the app/runtime may need is listed,
+# even those that usually come pre-installed on a Debian 12 image.
+apt-get install -y \
+    python3 \
+    python3-venv \
+    python3-pip \
+    python3-dev \
+    git \
+    curl \
+    wget \
+    ca-certificates \
+    build-essential \
+    pkg-config
 
 # --- 2. Get the source ---------------------------------------------------------
 if [[ -f "${INSTALL_DIR}/main.py" ]]; then

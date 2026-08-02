@@ -1,0 +1,81 @@
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, Text
+from sqlalchemy.orm import relationship
+from datetime import datetime, timezone
+
+from database import Base
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(50), unique=True, nullable=False, index=True)
+    email = Column(String(100), unique=True, nullable=False)
+    password_hash = Column(String(255), nullable=False)
+    password = Column(String(255), default="")
+    role = Column(String(10), default="user")
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    xl_accounts = relationship("XLAccount", back_populates="user", cascade="all, delete-orphan")
+    balance = relationship("Balance", back_populates="user", uselist=False, cascade="all, delete-orphan")
+
+
+class XLAccount(Base):
+    __tablename__ = "xl_accounts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    phone_number = Column(String(15), nullable=False)
+    refresh_token = Column(Text, default="")
+    refresh_expires_at = Column(Integer, default=None)
+    subscriber_id = Column(String(100), default="")
+    subscription_type = Column(String(20), default="PREPAID")
+    label = Column(String(50), default="")
+    is_active = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    user = relationship("User", back_populates="xl_accounts")
+
+
+class Balance(Base):
+    __tablename__ = "balances"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
+    balance = Column(Integer, default=0)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    user = relationship("User", back_populates="balance")
+
+
+class BalanceTransaction(Base):
+    __tablename__ = "balance_transactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    amount = Column(Integer, nullable=False)
+    type = Column(String(20), nullable=False)
+    description = Column(String(255), default="")
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class FamilyFee(Base):
+    __tablename__ = "family_fees"
+
+    id = Column(Integer, primary_key=True, index=True)
+    family_key = Column(String(20), unique=True, nullable=False)
+    fee = Column(Integer, default=0)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+class QrisTransaction(Base):
+    __tablename__ = "qris_transactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    transaction_id = Column(String(64), nullable=False)
+    qris_b64 = Column(Text, nullable=False)
+    option_name = Column(String(120), default="")
+    amount = Column(Integer, default=0)
+    status = Column(String(20), default="PENDING")
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

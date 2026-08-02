@@ -1,0 +1,60 @@
+{% if error %}
+<div class="error-msg">{{ error }}</div>
+{% endif %}
+
+{% if has_rows %}
+<div class="card xl-resp-wrap" style="padding:0;">
+    <table class="resp-table">
+        <thead>
+            <tr>
+                <th>Tanggal</th>
+                <th>Paket</th>
+                <th>Harga</th>
+                <th>Status</th>
+                <th>Aksi</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in rows %}
+            <tr>
+                <td data-label="Tanggal" style="white-space:nowrap;">{{ r.ts }}</td>
+                <td data-label="Paket">{{ r.paket }}</td>
+                <td data-label="Harga">{{ r.harga }}</td>
+                <td data-label="Status">
+                    {% if r.status_color == "green" %}
+                    <span style="color:#10b981;font-weight:500;">{{ r.status }}</span>
+                    {% elif r.status_color == "red" %}
+                    <span style="color:#ef4444;font-weight:500;">{{ r.status }}</span>
+                    {% else %}
+                    <span style="color:#f59e0b;font-weight:500;">{{ r.status }}</span>
+                    {% endif %}
+                </td>
+                <td data-label="Aksi" style="text-align:right;">
+                    {% if r.kind == "qris" and not r.expired and r.img %}
+                    <button class="btn btn-sm btn-primary qris-view" onclick="showQr('{{ r.img }}', {{ r.expires_ts or 0 }})">Lihat QR</button>
+                    {% elif r.kind == "qris" and r.expired %}
+                    <span style="color:#ef4444;font-weight:500;">Expired</span>
+                    {% else %}
+                    <span style="color:#d1d5db;">—</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="card">
+    <div class="empty-state">
+        {% if not active_xl %}
+        <strong>Belum ada nomor XL aktif.</strong>
+        Tambahkan nomor XL terlebih dahulu untuk melihat riwayat transaksi.
+        <div style="margin-top:14px;">
+            <a href="/user/xl/otp/request" class="btn btn-sm btn-success">+ Tambah Nomor XL</a>
+        </div>
+        {% else %}
+        Belum ada transaksi atau gagal memuat data.
+        {% endif %}
+    </div>
+</div>
+{% endif %}

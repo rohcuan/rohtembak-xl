@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+{% block title %}Riwayat XL - RohTembak (XL){% endblock %}
+{% block head %}
+<style>
+.qr-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0,0,0,.55); display: none;
+  align-items: center; justify-content: center; padding: 20px;
+}
+.qr-overlay.show { display: flex; }
+.qr-window {
+  background: #fff; border-radius: 14px; padding: 24px;
+  max-width: 360px; width: 100%; text-align: center;
+  box-shadow: 0 20px 50px rgba(0,0,0,.35);
+  position: relative;
+}
+.qr-window .qr-close {
+  position: absolute; top: 10px; right: 14px;
+  background: none; border: none; font-size: 1.4rem;
+  color: #6b7280; cursor: pointer; line-height: 1;
+}
+.qr-window .qr-close:hover { color: #111; }
+.qr-window h3 { margin: 0 0 4px; font-size: 1rem; color: #111; }
+.qr-window p { margin: 0 0 14px; font-size: .8rem; color: #6b7280; }
+.qr-window img.qr-img {
+  width: 240px; height: 240px; border-radius: 8px;
+  border: 1px solid #e5e7eb; background: #fff;
+}
+.qr-window .qr-hint { margin-top: 14px; font-size: .72rem; color: #9ca3af; }
+@media (max-width: 640px) {
+  .xl-resp-wrap {
+    background: transparent;
+    box-shadow: none;
+    border-radius: 0;
+    padding: 0;
+    margin: 0;
+  }
+  table.resp-table { border: 0; }
+  table.resp-table thead { display: none; }
+  table.resp-table, table.resp-table tbody, table.resp-table tr, table.resp-table td { display: block; width: 100%; }
+  table.resp-table tr {
+    margin-bottom: 12px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 6px 0;
+    background: #fff;
+  }
+  table.resp-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 7px 12px;
+    border-bottom: 1px dashed #f0f0f0;
+    text-align: right;
+  }
+  table.resp-table td:last-child { border-bottom: 0; }
+  table.resp-table td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: #6b7280;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    text-align: left;
+    flex-shrink: 0;
+  }
+  table.resp-table tr:hover td { background: #fff; }
+}
+</style>
+<script>
+var qrExpires = 0;
+var qrTimerInt = null;
+function showQr(src, expires) {
+  qrExpires = parseInt(expires, 10) || 0;
+  document.getElementById('qr-img').src = src;
+  document.getElementById('qr-overlay').classList.add('show');
+  tickQrTimer();
+  if (qrTimerInt) clearInterval(qrTimerInt);
+  qrTimerInt = setInterval(tickQrTimer, 1000);
+}
+function tickQrTimer() {
+  var el = document.getElementById('qr-timer');
+  if (!qrExpires) { el.textContent = '—'; return; }
+  var left = qrExpires - Math.floor(Date.now() / 1000);
+  if (left <= 0) {
+    el.textContent = 'Expired';
+    if (qrTimerInt) clearInterval(qrTimerInt);
+    return;
+  }
+  var m = Math.floor(left / 60), s = left % 60;
+  el.textContent = (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+}
+function closeQr() {
+  document.getElementById('qr-overlay').classList.remove('show');
+  if (qrTimerInt) clearInterval(qrTimerInt);
+  qrTimerInt = null;
+}
+</script>
+{% endblock %}
+{% block content %}
+
+{% set banner_title = "Riwayat XL" %}
+{% include "user/_banner.html" %}
+
+{% if active_xl %}
+<div id="history-data">
+    <div class="card">
+        <div class="empty-state">Memuat riwayat transaksi...</div>
+    </div>
+</div>
+{% else %}
+<div class="card">
+    <div class="empty-state">
+        <strong>Belum ada nomor XL aktif.</strong>
+        Tambahkan nomor XL terlebih dahulu untuk melihat riwayat transaksi.
+        <div style="margin-top:14px;">
+            <a href="/user/xl/otp/request" class="btn btn-sm btn-success">+ Tambah Nomor XL</a>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div style="margin-top:16px;">
+    <a href="/user/dashboard" class="btn btn-outline btn-sm">&larr; Kembali</a>
+</div>
+
+<div class="qr-overlay" id="qr-overlay" onclick="if(event.target===this)closeQr()">
+  <div class="qr-window">
+    <button class="qr-close" onclick="closeQr()">&times;</button>
+    <h3>QRIS</h3>
+    <p>Scan QR untuk menyelesaikan pembayaran.</p>
+    <img class="qr-img" id="qr-img" alt="QRIS" src="">
+    <div style="margin-top:12px;font-size:.85rem;color:#374151;">
+      Sisa waktu: <strong id="qr-timer" style="font-family:ui-monospace,monospace;">—</strong>
+    </div>
+    <div class="qr-hint">QRIS berlaku sampai transaksi dibayar / kedaluwarsa</div>
+  </div>
+</div>
+
+<script>
+var HISTORY_XL_ID = "{{ active_xl.phone_number if active_xl else '' }}";
+var HISTORY_CACHE_NAME = 'xl-data';
+var HISTORY_CACHE_TTL = 570;
+var HISTORY_CACHE_REQ = new Request('/xl-data/' + HISTORY_XL_ID + '/history');
+function historyCacheRead() {
+  if (!('caches' in window)) return Promise.resolve(null);
+  return caches.open(HISTORY_CACHE_NAME).then(function(cache) {
+    return cache.match(HISTORY_CACHE_REQ);
+  }).then(function(r) {
+    if (!r) return null;
+    return r.json().then(function(d) {
+      if (d && d.html && (Date.now() / 1000 - d.fetched_at) <= HISTORY_CACHE_TTL) return d.html;
+      return null;
+    });
+  }).catch(function() { return null; });
+}
+function historyCacheWrite(html) {
+  if (!('caches' in window)) return;
+  caches.open(HISTORY_CACHE_NAME).then(function(cache) {
+    return cache.put(HISTORY_CACHE_REQ, new Response(JSON.stringify({ html: html, fetched_at: Date.now() / 1000 }), { headers: { 'Content-Type': 'application/json' } }));
+  }).catch(function(err) { console.error('[history] cache gagal:', err); });
+}
+function historyRender(html) {
+  var root = document.getElementById('history-data');
+  if (root) root.innerHTML = html;
+}
+function historyFetchFresh() {
+  return fetch(location.pathname + '?frag=1&_t=' + Date.now(), { credentials: 'same-origin' })
+    .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(function(res) {
+      if (res && res.ok && res.html) {
+        historyRender(res.html);
+        historyCacheWrite(res.html);
+      }
+      return res;
+    });
+}
+function refreshPageData() {
+  return historyFetchFresh();
+}
+document.addEventListener('DOMContentLoaded', function() {
+  historyCacheRead().then(function(html) {
+    if (html) {
+      historyRender(html);
+    } else {
+      historyFetchFresh();
+    }
+  });
+});
+</script>
+
+{% endblock %}

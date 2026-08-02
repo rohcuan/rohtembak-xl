@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}RohTembak (XL){% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/style.css?v=22">
+    <style>
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.45);
+  display: none; align-items: center; justify-content: center;
+  z-index: 200; padding: 20px;
+}
+.modal-overlay.show { display: flex; }
+.modal {
+  background: #fff; border-radius: 12px; padding: 20px;
+  width: 100%; max-width: 360px; box-shadow: 0 10px 40px rgba(0,0,0,.2);
+}
+.modal h3 { margin: 0 0 12px; font-size: 16px; }
+.modal .modal-body { font-size: 14px; color: #555; line-height: 1.5; margin: 0 0 16px; }
+.modal .modal-actions { display: flex; gap: 8px; margin-top: 4px; }
+.modal .modal-actions .btn { flex: 1; }
+.xl-refresh-warn {
+  background: #fff3cd; border: 1px solid #ffe08a; color: #7a5c00;
+  padding: 10px 16px; font-size: 13.5px; text-align: center;
+}
+.xl-refresh-warn strong { font-weight: 600; }
+.xl-refresh-warn a { color: #7a5c00; font-weight: 600; }
+    </style>
+    {% block head %}{% endblock %}
+</head>
+<body>
+{% if user %}
+<nav class="navbar">
+    <div class="navbar-inner">
+        <a href="{% if user.role == 'admin' %}/admin/dashboard{% else %}/user/dashboard{% endif %}" class="navbar-brand">RohTembak (XL)</a>
+        <div class="navbar-nav">
+            <div class="user-dropdown">
+                <div class="user-trigger" onclick="toggleDropdown()">
+                    <div class="user-info">
+                        <span class="user-name">Menu</span>
+                    </div>
+                    <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                </div>
+                <div class="dropdown-menu" id="userDropdown">
+                    <div class="dropdown-header">
+                        <div class="dropdown-field">
+                            <span class="dropdown-field-label">Role</span>
+                            <span class="dropdown-field-value">{{ 'Admin' if user.role == 'admin' else 'User' }}</span>
+                        </div>
+                        <div class="dropdown-sep"></div>
+                        <div class="dropdown-field">
+                            <span class="dropdown-field-label">email</span>
+                            <span class="dropdown-field-value">{{ user.email }}</span>
+                        </div>
+                        <div class="dropdown-sep"></div>
+                        <div class="dropdown-field">
+                            <span class="dropdown-field-label">username</span>
+                            <span class="dropdown-field-value">{{ user.username }}</span>
+                        </div>
+                    </div>
+                    <div class="dropdown-body">
+                        {% if user.role != 'admin' %}
+                        <div class="dropdown-row">
+                            <span class="dropdown-label">Saldo Token</span>
+                            <span class="dropdown-value">Rp {{ "{:,}".format(balance or 0) }}</span>
+                        </div>
+                        {% else %}
+                        <div class="dropdown-row" style="cursor:pointer;" onclick="location.href='/admin/penghasilan'">
+                            <span class="dropdown-label">Penghasilan</span>
+                        </div>
+                        <div class="has-sub">
+                            <div class="dropdown-row" style="cursor:pointer;" onclick="toggleSubmenu(this)">
+                                <span class="dropdown-label">Backup</span>
+                                <svg class="chevron sub-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                            </div>
+                            <div class="submenu">
+                                <a href="/admin/backup?format=json" class="dropdown-item">JSON</a>
+                                <a href="/admin/backup?format=txt" class="dropdown-item">TXT</a>
+                            </div>
+                        </div>
+                        {% endif %}
+                        {% if active_xl %}
+                        <div class="dropdown-row">
+                            <span class="dropdown-label">Nomor Aktif</span>
+                            <span class="dropdown-value">{{ active_xl.phone_number }}</span>
+                        </div>
+                        {% endif %}
+                    </div>
+                    <div class="dropdown-footer">
+                        {% if user.role != 'admin' %}<a href="/user/detail-saldo-token" class="dropdown-item">Riwayat Saldo Token</a>{% endif %}
+                        <a href="javascript:void(0)" class="dropdown-item" onclick="openClearCacheModal()">Clear Cache</a>
+                        <a href="/logout" class="dropdown-logout">Logout</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</nav>
+{% endif %}
+{% if refresh_warning %}
+<div class="xl-refresh-warn">
+    {% if refresh_warning <= 0 %}
+    <strong>Sesi XL sudah kedaluwarsa.</strong> Sambungkan ulang nomor Anda di <a href="/user/dashboard">Dashboard</a>.
+    {% else %}
+    <strong>Peringatan:</strong> Sesi XL akan kedaluwarsa dalam {{ refresh_warning }} hari. Sambungkan ulang nomor Anda di <a href="/user/dashboard">Dashboard</a>.
+    {% endif %}
+</div>
+{% endif %}
+<div class="container">
+    {% block content %}{% endblock %}
+</div>
+<div class="modal-overlay" id="clearCacheModal" onclick="if(event.target===this)closeClearCacheModal()">
+    <div class="modal">
+        <h3>Clear Cache</h3>
+        <p class="modal-body">Semua cache browser akan dihapus (paket, detail paket, dan data banner), lalu halaman akan dimuat ulang untuk mengambil data terbaru. Lanjutkan?</p>
+        <div class="modal-actions">
+            <button type="button" class="btn btn-outline" onclick="closeClearCacheModal()">Tidak</button>
+            <button type="button" class="btn btn-danger" onclick="confirmClearCache()">Ya, Muat Ulang</button>
+        </div>
+    </div>
+</div>
+<script>
+function toggleDropdown() {
+    document.getElementById('userDropdown').classList.toggle('show');
+}
+function toggleSubmenu(el) {
+    el.parentElement.classList.toggle('open');
+}
+function openClearCacheModal() {
+  var dd = document.getElementById('userDropdown');
+  if (dd) dd.classList.remove('show');
+  var m = document.getElementById('clearCacheModal');
+  if (m) m.classList.add('show');
+}
+function closeClearCacheModal() {
+  var m = document.getElementById('clearCacheModal');
+  if (m) m.classList.remove('show');
+}
+function confirmClearCache() {
+  closeClearCacheModal();
+  clearAppCache();
+}
+function clearAppCache() {
+  function go() {
+    var url = location.pathname + location.search;
+    location.href = url + (url.indexOf('?') === -1 ? '?' : '&') + '_clr=' + Date.now();
+  }
+  if (!('caches' in window)) { go(); return; }
+  caches.keys().then(function(keys) {
+    return Promise.all(keys.map(function(k) { return caches.delete(k); }));
+  }).then(go).catch(go);
+}
+document.addEventListener('click', function(e) {
+    var dd = document.getElementById('userDropdown');
+    if (dd && !e.target.closest('.user-dropdown')) {
+        dd.classList.remove('show');
+        document.querySelectorAll('.has-sub.open').forEach(function(h) { h.classList.remove('open'); });
+    }
+});
+</script>
+</body>
+</html>

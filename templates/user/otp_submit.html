@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Verifikasi OTP{% endblock %}
+{% block content %}
+
+<div class="card" style="max-width:480px;margin:0 auto;">
+    <h2 style="margin-bottom:4px;">Verifikasi OTP</h2>
+    <p style="font-size:14px;color:#666;margin-bottom:4px;">
+        Kode OTP telah dikirim ke <strong>{{ phone_number }}</strong>.
+    </p>
+    <p style="font-size:13px;color:#999;margin-bottom:20px;">
+        Masukkan kode 6 digit yang diterima via SMS.
+    </p>
+
+    {% if error %}
+    <div class="error-msg">{{ error }}</div>
+    {% endif %}
+
+    <form method="POST" action="/user/xl/otp/submit">
+        <input type="hidden" name="phone_number" value="{{ phone_number }}">
+        <input type="hidden" name="label" value="{{ label }}">
+        <input type="hidden" name="subscriber_id" value="{{ sid }}">
+
+        <div class="form-group">
+            <label>Kode OTP</label>
+            <input type="text" name="otp_code" placeholder="123456" pattern="[0-9]{6}" inputmode="numeric" autocomplete="one-time-code" required style="text-align:center;font-size:24px;letter-spacing:8px;font-weight:700;">
+        </div>
+
+        <div style="display:flex;gap:8px;">
+            <a href="/user/xl/otp/request" class="btn btn-outline" style="flex:1;justify-content:center;">Ubah Nomor</a>
+            <button type="submit" class="btn btn-primary" style="flex:2;">Verifikasi</button>
+        </div>
+    </form>
+
+    <div style="margin-top:16px;text-align:center;">
+        <a href="/user/xl/otp/request?phone={{ phone_number }}&label={{ label }}" style="font-size:13px;">Kirim ulang OTP</a>
+    </div>
+</div>
+
+{% endblock %}

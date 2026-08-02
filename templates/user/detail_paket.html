@@ -1,0 +1,266 @@
+{% extends "base.html" %}
+{% block title %}Detail Paket - RohTembak (XL){% endblock %}
+{% block head %}
+<style>
+.section-divider { height: 1px; background: #e0e0e0; margin: 0 -24px; }
+.pay-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
+@media (min-width: 640px) { .pay-grid { grid-template-columns: 1fr 1fr 1fr; } }
+.pay-btn {
+  display: block; width: 100%; padding: 14px; border-radius: 10px;
+  border: 1px solid #e0e0e0; background: #fff; cursor: pointer;
+  text-align: center; font-size: .9rem; font-weight: 600; color: #222;
+  text-decoration: none; box-sizing: border-box;
+  transition: border-color .15s, box-shadow .15s;
+}
+.pay-btn:hover { border-color: #2563eb; box-shadow: 0 1px 6px rgba(37,99,235,.15); }
+.pay-btn .sub { font-size: .75rem; font-weight: 400; color: #888; display: block; margin-top: 2px; }
+
+.collapse-header {
+  display: flex; justify-content: space-between; align-items: center;
+  cursor: pointer; user-select: none; margin-bottom: 0;
+}
+.collapse-header h3 { margin: 0; }
+.collapse-header .chev {
+  display: inline-block; width: 10px; height: 10px;
+  border-right: 2px solid #888; border-bottom: 2px solid #888;
+  transform: rotate(45deg); transition: transform .2s;
+}
+.collapse-header .chev.up { transform: rotate(-135deg); }
+.collapse-body { display: block; padding-top: 12px; }
+.collapse-body.collapsed { display: none; }
+
+.dl { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; font-size: .9rem; }
+.dl .dt { color: #666; }
+.dl .dd { font-weight: 600; color: #111; text-align: right; }
+.benefit-card {
+  background: #f8f9fa; border-radius: 8px; padding: 12px; margin-bottom: 8px;
+}
+.benefit-card .bname { font-weight: 600; font-size: .9rem; color: #222; }
+.benefit-card .bdetail { font-size: .8rem; color: #555; margin-top: 2px; }
+.benefit-card .btotal { font-size: .85rem; font-weight: 600; color: #059669; margin-top: 4px; }
+.tnc-box {
+  background: #fff; border: 1px solid #e0e0e0; border-radius: 8px;
+  padding: 12px; font-size: .8rem; color: #444; max-height: 300px; overflow-y: auto;
+  line-height: 1.5;
+}
+.tnc-box p { margin: 6px 0; }
+
+.detail-loading {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  min-height: 260px; gap: 14px;
+}
+.skel-spinner {
+  width: 32px; height: 32px;
+  border: 3px solid rgba(0,0,0,0.1);
+  border-top-color: #4361ee;
+  border-radius: 50%;
+  opacity: 0;
+  animation-name: cache-spin, cache-fadein;
+  animation-duration: .8s, .3s;
+  animation-timing-function: linear, ease-out;
+  animation-iteration-count: infinite, 1;
+  animation-fill-mode: forwards;
+}
+@keyframes cache-spin { to { transform: rotate(360deg); } }
+@keyframes cache-fadein { from { opacity: 0; } to { opacity: 1; } }
+.detail-loading-text { font-size: .85rem; color: #888; }
+</style>
+<script>
+function toggleCollapse(id) {
+  var body = document.getElementById(id + '-body');
+  var chev = document.getElementById(id + '-chev');
+  body.classList.toggle('collapsed');
+  chev.classList.toggle('up');
+}
+</script>
+{% endblock %}
+{% block content %}
+
+{% if active_xl %}
+{% set banner_title = "Detail Paket" %}
+{% include "user/_banner.html" %}
+{% else %}
+<div class="page-title">Detail Paket</div>
+{% endif %}
+
+<div id="detail-root">
+  {% if family and active_xl %}
+  <div class="card detail-loading">
+    <div class="skel-spinner"></div>
+    <div class="detail-loading-text">Memuat detail paket...</div>
+  </div>
+  {% else %}
+  <div class="card"><div class="empty-state">Gagal memuat detail paket.</div></div>
+  {% endif %}
+</div>
+
+<a href="/user/xl/beli-paket" class="btn btn-outline btn-sm">&larr; Kembali</a>
+
+{% if family and active_xl %}
+<script>
+window.BANNER_SSE = true;
+var DETAIL_FAMILY = "{{ family }}";
+var DETAIL_N = {{ n }};
+var DETAIL_CACHE_NAME = 'beli-paket-detail';
+var DETAIL_CACHE_TTL = 570;
+var DETAIL_CACHE_META_TTL = 570;
+var DETAIL_STREAM_URL = '/user/xl/beli-paket/detail-stream?family=' + encodeURIComponent(DETAIL_FAMILY) + '&n=' + DETAIL_N + '&families=';
+var XL_ID = "{{ active_xl.phone_number if active_xl else '' }}";
+var DETAIL_CACHE_META = new Request('/beli-paket-detail/' + XL_ID + '/meta');
+var DETAIL_CACHE_REQ = new Request('/beli-paket-detail/' + XL_ID + '/' + DETAIL_FAMILY + '-' + DETAIL_N);
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+function fmtRp(v) {
+  v = Number(v);
+  if (isNaN(v)) return '';
+  return 'Rp ' + v.toLocaleString('en-US');
+}
+function fmtQuota(v) {
+  v = Number(v);
+  var GB = 1024 * 1024 * 1024, MB = 1024 * 1024, KB = 1024;
+  if (v >= GB) return (v / GB).toFixed(2) + ' GB';
+  if (v >= MB) return (v / MB).toFixed(2) + ' MB';
+  if (v >= KB) return (v / KB).toFixed(2) + ' KB';
+  return v + ' B';
+}
+function benefitTotal(b) {
+  switch (b.data_type) {
+    case 'DATA': return fmtQuota(b.total);
+    case 'VOICE': return Math.floor(b.total / 60) + ' menit';
+    case 'TEXT': return b.total + ' SMS';
+    default: return b.total + ' ' + (b.data_type || '');
+  }
+}
+function collapseHeader(id, title) {
+  return '<div class="collapse-header" onclick="toggleCollapse(\'' + id + '\')">' +
+    '<h3 style="font-size:.85rem;text-transform:uppercase;letter-spacing:.5px;color:#888;">' + title + '</h3>' +
+    '<span class="chev up" id="' + id + '-chev"></span></div>';
+}
+function benefitCards(benefits) {
+  var h = '';
+  (benefits || []).forEach(function(b) {
+    if (b.total && b.total > 0) {
+      h += '<div class="benefit-card">';
+      h += '<div class="bname">' + esc(b.name) + '</div>';
+      h += '<div class="bdetail">Tipe: ' + esc(b.data_type) +
+        (b.information ? ' &middot; ' + esc(b.information) : '') +
+        (b.is_unlimited ? ' &middot; Unlimited' : '') +
+        (b.item_id ? ' &middot; ID: ' + esc(b.item_id) : '') + '</div>';
+      h += '<div class="btotal">' + benefitTotal(b) + '</div></div>';
+    }
+  });
+  return h;
+}
+function detailHtml(d) {
+  var h = '<div class="card" style="padding:0;overflow:hidden;">';
+
+  h += '<div style="padding:20px 24px;">';
+  h += '<div style="font-size:.75rem;color:#999;margin-bottom:2px;">' + (d.number ? '#' + d.number + ' &middot; ' : '') + esc(d.variant_name) + '</div>';
+  h += '<div style="font-size:1.2rem;font-weight:700;color:#222;">' + esc(d.option_name) + '</div>';
+  h += '<div style="font-size:1.3rem;font-weight:700;color:#059669;margin:4px 0 0;">' + fmtRp(d.price) + '</div>';
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 16px;margin-top:14px;font-size:.85rem;">';
+  h += '<span style="color:#888;">Masa Aktif</span><span style="font-weight:600;text-align:right;">' + esc(d.validity || '-') + '</span>';
+  h += '<span style="color:#888;">Poin</span><span style="font-weight:600;text-align:right;">' + d.point + '</span>';
+  h += '<span style="color:#888;">Plan Type</span><span style="font-weight:600;text-align:right;">' + esc(d.plan_type || '-') + '</span>';
+  h += '</div></div>';
+
+  h += '<div class="section-divider"></div>';
+
+  var body = '';
+  if (d.benefits && d.benefits.length) {
+    body += '<div style="margin-bottom:12px;">' +
+      collapseHeader('kuota', 'Kuota &amp; Benefit') +
+      '<div class="collapse-body collapsed" id="kuota-body">' + benefitCards(d.benefits) + '</div></div>';
+  }
+  if (d.tnc) {
+    body += '<div>' +
+      collapseHeader('tnc', 'Syarat &amp; Ketentuan') +
+      '<div class="collapse-body collapsed" id="tnc-body"><div class="tnc-box">' + d.tnc + '</div></div></div>';
+  }
+  if (body) h += '<div style="padding:16px 24px;">' + body + '</div>';
+
+  h += '<div class="section-divider"></div>';
+
+  h += '<div style="padding:16px 24px;">';
+  h += '<h3 style="font-size:.85rem;text-transform:uppercase;letter-spacing:.5px;color:#888;margin:0 0 10px;">Pilih Pembayaran</h3>';
+  h += '<div class="pay-grid">';
+  h += '<a class="pay-btn" href="/user/xl/beli-paket/' + encodeURIComponent(d.url_id) + '/checkout/balance">Pulsa<span class="sub">Bayar dengan pulsa XL</span></a>';
+  h += '<a class="pay-btn" href="/user/xl/beli-paket/' + encodeURIComponent(d.url_id) + '/checkout/qris">QRIS<span class="sub">Bayar dengan QRIS</span></a>';
+  h += '</div></div>';
+
+  return h + '</div>';
+}
+var DETAIL_RENDERED = false;
+function renderDetail(d) {
+  DETAIL_RENDERED = true;
+  var root = document.getElementById('detail-root');
+  if (root) root.innerHTML = detailHtml(d);
+}
+function renderError(msg) {
+  var root = document.getElementById('detail-root');
+  if (!root) return;
+  root.innerHTML = '<div class="card"><div class="empty-state">' + esc(msg) + '</div>' +
+    '<div style="text-align:center;padding-bottom:16px;"><button type="button" class="btn btn-sm btn-outline" onclick="loadDetail()">Coba Lagi</button></div></div>';
+}
+function isFresh(d, ttl) {
+  if (ttl === undefined) ttl = DETAIL_CACHE_TTL;
+  return !!(d && d.fetched_at && (Date.now() / 1000 - d.fetched_at) <= ttl);
+}
+function cachePut(req, obj) {
+  caches.open(DETAIL_CACHE_NAME).then(function(cache) {
+    return cache.put(req, new Response(JSON.stringify(obj), { headers: { 'Content-Type': 'application/json' } }));
+  }).catch(function(err) {
+    console.error('[detail-paket] cache gagal:', err);
+  });
+}
+function streamDetail(famParam) {
+  var src = new EventSource(DETAIL_STREAM_URL + encodeURIComponent(famParam));
+  src.addEventListener('meta', function(ev) {
+    var d = JSON.parse(ev.data);
+    if (d.xl_info) {
+      bannerSetInfo(d.xl_info);
+      cachePut(DETAIL_CACHE_META, { xl_info: d.xl_info, fetched_at: Date.now() / 1000 });
+    }
+  });
+  src.addEventListener('detail', function(ev) {
+    var d = JSON.parse(ev.data);
+    if (d.ok && d.detail) {
+      renderDetail(d.detail);
+      cachePut(DETAIL_CACHE_REQ, { detail: d.detail, fetched_at: Date.now() / 1000 });
+    } else {
+      renderError('Gagal memuat detail paket.');
+    }
+  });
+  src.addEventListener('done', function() { src.close(); });
+  src.addEventListener('error', function() {
+    if (!DETAIL_RENDERED) renderError('Gagal memuat detail paket.');
+    src.close();
+  });
+}
+function loadDetail() {
+  if (!('caches' in window)) { streamDetail('meta,detail'); return; }
+  var cacheJob = caches.open(DETAIL_CACHE_NAME).then(function(cache) {
+    return Promise.all([
+      cache.match(DETAIL_CACHE_META).then(function(r) { return r ? r.json() : null; }),
+      cache.match(DETAIL_CACHE_REQ).then(function(r) { return r ? r.json() : null; })
+    ]);
+  });
+  cacheJob.then(function(res) {
+    var meta = res[0], d = res[1];
+    var want = [];
+    if (meta && isFresh(meta, DETAIL_CACHE_META_TTL) && meta.xl_info) bannerSetInfo(meta.xl_info);
+    else want.push('meta');
+    if (d && isFresh(d)) renderDetail(d.detail);
+    else want.push('detail');
+    if (want.length) streamDetail(want.join(','));
+  }).catch(function() { streamDetail('meta,detail'); });
+}
+document.addEventListener('DOMContentLoaded', loadDetail);
+</script>
+{% endif %}
+
+{% endblock %}

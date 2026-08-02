@@ -1,0 +1,302 @@
+{% extends "base.html" %}
+{% block title %}Admin - RohTembak (XL){% endblock %}
+{% block head %}
+<style>
+.header-section .btn-primary { width: auto; }
+@media (max-width: 700px) {
+  .header-section { flex-direction: column; align-items: stretch; gap: 8px; }
+  .header-section .page-subtitle { margin-bottom: 8px; }
+  .header-section > div:last-child { margin-bottom: 12px; }
+  .header-section > div:last-child { flex-wrap: wrap; }
+  .header-section > div:last-child .btn { flex: 1 1 30%; }
+  table thead { display: none; }
+  table, tbody, tr, td { display: block; width: 100%; }
+  tr {
+    background: #fff; border: 1px solid #eee; border-radius: 10px;
+    margin-bottom: 12px; padding: 0; overflow: hidden;
+  }
+  td {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 14px; border: none; border-bottom: 1px solid #f0f0f0;
+    font-size: 14px;
+  }
+  td:first-child, tr:hover td:first-child {
+    background: #e5e7eb;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  td:last-child { border-bottom: none; }
+  td::before {
+    content: attr(data-label);
+    font-weight: 600; color: #666; font-size: 12px;
+    text-transform: uppercase; letter-spacing: .5px;
+    margin-right: 12px; flex-shrink: 0;
+  }
+}
+
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.45);
+  display: none; align-items: center; justify-content: center;
+  z-index: 200; padding: 20px;
+}
+.modal-overlay.show { display: flex; }
+.modal {
+  background: #fff; border-radius: 12px; padding: 20px;
+  width: 100%; max-width: 360px; box-shadow: 0 10px 40px rgba(0,0,0,.2);
+}
+.modal h3 { margin: 0 0 14px; font-size: 16px; }
+.modal .modal-actions { display: flex; gap: 8px; margin-top: 4px; }
+.modal .modal-actions .btn { flex: 1; }
+</style>
+<script>
+function openTopup() { document.getElementById('topupModal').classList.add('show'); }
+function closeTopup() { document.getElementById('topupModal').classList.remove('show'); }
+function openAddUser() { document.getElementById('addUserModal').classList.add('show'); }
+function closeAddUser() { document.getElementById('addUserModal').classList.remove('show'); }
+function openDelete() { document.getElementById('deleteModal').classList.add('show'); }
+function closeDelete() { document.getElementById('deleteModal').classList.remove('show'); }
+function openDecrease() { document.getElementById('decreaseModal').classList.add('show'); }
+function closeDecrease() { document.getElementById('decreaseModal').classList.remove('show'); }
+function openSet() { document.getElementById('setModal').classList.add('show'); }
+function closeSet() { document.getElementById('setModal').classList.remove('show'); }
+function pickUser(inputId, hiddenId) {
+  var username = document.getElementById(inputId).value;
+  var opt = document.querySelector('#users-list option[value="' + username + '"]');
+  if (!opt) {
+    alert('Pengguna tidak ditemukan.');
+    return false;
+  }
+  document.getElementById(hiddenId).value = opt.getAttribute('data-id');
+  return true;
+}
+function submitTopup() {
+  if (pickUser('topup-user', 'topup-user-id')) document.getElementById('topupForm').submit();
+}
+function submitDelete() {
+  if (pickUser('del-user', 'del-user-id')) document.getElementById('deleteForm').submit();
+}
+function submitDecrease() {
+  if (pickUser('decrease-user', 'decrease-user-id')) document.getElementById('decreaseForm').submit();
+}
+function submitSet() {
+  if (pickUser('set-user', 'set-user-id')) document.getElementById('setForm').submit();
+}
+function filterUsers() {
+  var q = document.getElementById('user-search').value.toLowerCase();
+  var rows = document.querySelectorAll('#users-table tbody tr');
+  var visible = 0;
+  rows.forEach(function(r) {
+    var match = r.textContent.toLowerCase().indexOf(q) > -1;
+    r.style.display = match ? '' : 'none';
+    if (match) visible++;
+  });
+  document.getElementById('users-empty').style.display = visible ? 'none' : 'block';
+}
+document.addEventListener('click', function(e) {
+  ['topupModal', 'addUserModal', 'deleteModal', 'decreaseModal', 'setModal'].forEach(function(id) {
+    var m = document.getElementById(id);
+    if (m.classList.contains('show') && e.target === m) m.classList.remove('show');
+  });
+});
+</script>
+{% endblock %}
+{% block content %}
+
+<div class="header-section">
+    <div>
+        <div class="page-title">Dashboard Admin</div>
+        <div class="page-subtitle">Kelola saldo token pengguna</div>
+    </div>
+    <div style="display:flex;gap:8px;">
+        <button class="btn btn-sm btn-primary" onclick="openAddUser()">Add User</button>
+        <button class="btn btn-sm btn-success" onclick="openTopup()">Topup</button>
+        <button class="btn btn-sm btn-pink" onclick="openSet()">Set Saldo</button>
+        <button class="btn btn-sm btn-warning" onclick="openDecrease()">Kurangi Saldo</button>
+        <button class="btn btn-sm btn-danger" onclick="openDelete()">Delete User</button>
+    </div>
+</div>
+
+<div class="card" style="padding:14px;">
+    <input type="search" id="user-search" class="form-control" placeholder="Cari pengguna (username / email)..." oninput="filterUsers()" autocomplete="off">
+</div>
+
+<div class="card">
+    <h2 style="font-size:16px;margin-bottom:12px;">Daftar Pengguna</h2>
+    {% if users %}    <table id="users-table">
+        <thead>
+            <tr>
+                <th>Username</th>
+                <th>Email</th>
+                <th>Saldo (IDR)</th>
+                <th>XL Terdaftar</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for u in users %}
+            <tr>
+                <td data-label="Username"><strong>{{ u.username }}</strong></td>
+                <td data-label="Email">{{ u.email }}</td>
+                <td data-label="Saldo" style="font-weight:600;">Rp {{ "{:,}".format(u.balance) }}</td>
+                <td data-label="XL">{{ u.xl_count }} nomor</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <div class="empty-state" id="users-empty" style="display:none;">Pengguna tidak ditemukan.</div>
+    {% else %}
+    <div class="empty-state">Belum ada pengguna terdaftar.</div>
+    {% endif %}
+</div>
+
+<div class="card">
+    <h2 style="font-size:16px;margin-bottom:12px;">Saldo Token yang Terkonsumsi per Family</h2>
+    <table id="fees-table">
+        <thead>
+            <tr>
+                <th>Family</th>
+                <th>Saldo Token (IDR)</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for key, value in fees.items() %}
+            <tr>
+                <td data-label="Family"><strong>{{ key }}</strong></td>
+                <td data-label="Saldo Token">
+                    <form method="POST" action="/admin/fees/set" style="display:flex;gap:8px;align-items:center;">
+                        <input type="hidden" name="family_key" value="{{ key }}">
+                        <input type="number" name="fee" value="{{ value }}" min="0" step="100" class="form-control" style="width:120px;display:inline-block;" required>
+                        <button type="submit" class="btn btn-sm btn-primary">Simpan</button>
+                    </form>
+                </td>
+                <td></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="modal-overlay" id="addUserModal">
+    <div class="modal">
+        <h3>Tambah User</h3>
+        <form method="POST" action="/admin/users/add" id="addUserForm">
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" name="username" placeholder="Pilih username" required autocomplete="off">
+            </div>
+            <div class="form-group">
+                <label>Email</label>
+                <input type="email" name="email" placeholder="contoh@email.com" required>
+            </div>
+            <div class="form-group">
+                <label>Password</label>
+                <input type="text" name="password" placeholder="Buat password" required autocomplete="off">
+            </div>
+            <div class="form-group">
+                <label>Saldo awal (opsional)</label>
+                <input type="number" name="initial_balance" placeholder="0" min="0">
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-outline" onclick="closeAddUser()">Batal</button>
+                <button type="submit" class="btn btn-primary">Simpan</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal-overlay" id="deleteModal">
+    <div class="modal">
+        <h3>Delete User</h3>
+        <form method="POST" action="/admin/users/delete" id="deleteForm">
+            <input type="hidden" name="user_id" id="del-user-id">
+            <div class="form-group">
+                <label>Pengguna</label>
+                <input list="users-list" id="del-user" placeholder="Cari / ketik username" required autocomplete="off">
+            </div>
+            <p style="font-size:13px;color:#ef4444;margin:0 0 12px;">User, saldo, nomor XL, dan riwayat topup akan dihapus permanen.</p>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-outline" onclick="closeDelete()">Batal</button>
+                <button type="button" class="btn btn-danger" onclick="submitDelete()">Hapus</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal-overlay" id="decreaseModal">
+    <div class="modal">
+        <h3>Kurangi Saldo</h3>
+        <form method="POST" action="/admin/balance/decrease" id="decreaseForm">
+            <input type="hidden" name="user_id" id="decrease-user-id">
+            <div class="form-group">
+                <label>Pengguna</label>
+                <input list="users-list" id="decrease-user" placeholder="Cari / ketik username" required autocomplete="off">
+            </div>
+            <div class="form-group">
+                <label>Jumlah (IDR)</label>
+                <input type="number" name="amount" placeholder="Nominal" min="1" required>
+            </div>
+            <div class="form-group">
+                <label>Catatan (opsional)</label>
+                <input type="text" name="description" placeholder="Catatan">
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-outline" onclick="closeDecrease()">Batal</button>
+                <button type="button" class="btn btn-warning" onclick="submitDecrease()">Kurangi</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal-overlay" id="setModal">
+    <div class="modal">
+        <h3>Set Saldo</h3>
+        <form method="POST" action="/admin/balance/set" id="setForm">
+            <input type="hidden" name="user_id" id="set-user-id">
+            <div class="form-group">
+                <label>Pengguna</label>
+                <input list="users-list" id="set-user" placeholder="Cari / ketik username" required autocomplete="off">
+            </div>
+            <div class="form-group">
+                <label>Saldo baru (IDR)</label>
+                <input type="number" name="amount" placeholder="Saldo akhir langsung, mis. 5000" min="0" required>
+            </div>
+            <div class="form-group">
+                <label>Catatan (opsional)</label>
+                <input type="text" name="description" placeholder="Catatan">
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-outline" onclick="closeSet()">Batal</button>
+                <button type="button" class="btn btn-primary" onclick="submitSet()">Set</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal-overlay" id="topupModal">
+    <div class="modal">
+        <h3>Top Up Saldo Token</h3>
+        <form method="POST" action="/admin/balance/add" id="topupForm">
+            <input type="hidden" name="user_id" id="topup-user-id">
+            <div class="form-group">
+                <label>Pengguna</label>
+                <input list="users-list" id="topup-user" placeholder="Cari / ketik username" required autocomplete="off">
+                <datalist id="users-list">
+                    {% for u in users %}<option value="{{ u.username }}" data-id="{{ u.id }}"></option>{% endfor %}
+                </datalist>
+            </div>
+            <div class="form-group">
+                <label>Jumlah (IDR)</label>
+                <input type="number" name="amount" placeholder="Nominal" min="1" required>
+            </div>
+            <div class="form-group">
+                <label>Catatan (opsional)</label>
+                <input type="text" name="description" placeholder="Catatan">
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-outline" onclick="closeTopup()">Batal</button>
+                <button type="button" class="btn btn-success" onclick="submitTopup()">Topup</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}

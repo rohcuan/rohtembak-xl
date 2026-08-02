@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Secrets & environment
+.env
+.env.*
+!.env.example
+*.fp
+ax.fp
+
+# Runtime data / databases
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+xl_webui.db
+
+# Logs
+*.log
+logs/
+nohup.out
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

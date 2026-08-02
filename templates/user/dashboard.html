@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - RohTembak (XL){% endblock %}
+{% block content %}
+
+<div class="banner">
+    {% if active_xl %}
+    <div class="banner-grid">
+        <div class="banner-item banner-info">
+            <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;opacity:.7;">Nomor Aktif</div>
+            <div class="banner-isep"></div>
+            <div style="font-size:20px;font-weight:700;">{{ active_xl.phone_number }}</div>
+            {% if active_xl.label %}
+            <div class="banner-isep"></div>
+            <div style="font-size:12px;opacity:.7;">{{ active_xl.label }}</div>
+            {% endif %}
+        </div>
+        <div class="banner-item">
+            <div class="label">Pulsa</div>
+            <div class="value" data-banner="pulsa">{% if xl_info and xl_info.main_credit %}Rp {{ "{:,}".format(xl_info.main_credit) }}{% else %}—{% endif %}</div>
+        </div>
+        <div class="banner-item">
+            <div class="label">Masa Aktif</div>
+            <div class="value" data-banner="masa-aktif">{% if xl_info and xl_info.expiry_date %}{{ xl_info.expiry_date }}{% else %}—{% endif %}</div>
+        </div>
+        <div class="banner-item">
+            <div class="label">Jenis Kartu</div>
+            <div class="value">{% if active_xl.subscription_type == "PREPAID" %}Prabayar{% elif active_xl.subscription_type == "POSTPAID" %}Pascabayar{% elif active_xl.subscription_type == "HYBRID" %}Hybrid{% else %}{{ active_xl.subscription_type or "—" }}{% endif %}</div>
+        </div>
+    </div>
+    {% endif %}
+    {% if not active_xl %}
+    <div class="no-xl">
+        <p>Tambahkan nomor XL Anda untuk mulai menggunakan dashboard.</p>
+    </div>
+    {% endif %}
+</div>
+
+{% if active_xl %}
+<div class="banner-refresh-row">
+    <button type="button" class="banner-refresh-btn" id="banner-refresh" onclick="refreshAllData()">Refresh Data</button>
+</div>
+{% endif %}
+
+{% if error %}
+<div class="error-msg">{{ error }}</div>
+{% endif %}
+
+<div class="card">
+    <div class="header-section">
+        <h2>Menu</h2>
+    </div>
+    <div class="menu-grid">
+        <a href="/user/xl/beli-paket" class="btn btn-outline" style="justify-content:center;">Beli Paket</a>
+        <a href="/user/xl/info-paket" class="btn btn-outline" style="justify-content:center;">Informasi Paket</a>
+        <a href="/user/xl/history" class="btn btn-outline" style="justify-content:center;">Riwayat Transaksi</a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="header-section">
+        <h2>Nomor XL Saya</h2>
+        <a href="/user/xl/otp/request" class="btn btn-success btn-sm">+ Tambah</a>
+    </div>
+
+    {% if xl_accounts %}
+    <div id="xl-list">
+        {% include "user/_dashboard_xl_list.html" %}
+    </div>
+    {% else %}
+    <div class="empty-state">Belum ada nomor XL terdaftar.</div>
+    {% endif %}
+</div>
+
+<script>
+var DASH_XL_ID = "{{ active_xl.phone_number if active_xl else '' }}";
+function bannerFmtRp(n) {
+  n = Number(n);
+  if (isNaN(n)) return '';
+  return 'Rp ' + n.toLocaleString('id-ID');
+}
+function bannerSetInfo(xi) {
+  var pulsa = document.querySelector('[data-banner="pulsa"]');
+  var masa = document.querySelector('[data-banner="masa-aktif"]');
+  if (pulsa) pulsa.textContent = (xi && xi.main_credit != null) ? bannerFmtRp(xi.main_credit) : '—';
+  if (masa) masa.textContent = (xi && xi.expiry_date) ? xi.expiry_date : '—';
+}
+var BANNER_CACHE_NAME = 'banner';
+var BANNER_CACHE_TTL = 570;
+var BANNER_CACHE_REQ = new Request('/banner-cache/' + DASH_XL_ID + '/info');
+function bannerCachePut(xi) {
+  if (!('caches' in window) || !xi) return;
+  caches.open(BANNER_CACHE_NAME).then(function(cache) {
+    return cache.put(BANNER_CACHE_REQ, new Response(JSON.stringify({ xl_info: xi, fetched_at: Date.now() / 1000 }), { headers: { 'Content-Type': 'application/json' } }));
+  }).catch(function(err) {
+    console.error('[banner] cache gagal:', err);
+  });
+}
+function bannerFetch() {
+  return fetch('/user/xl/banner-info', { credentials: 'same-origin' })
+    .then(function(r) { return r.json(); })
+    .then(function(res) {
+      if (res && res.ok && res.xl_info) {
+        bannerSetInfo(res.xl_info);
+        bannerCachePut(res.xl_info);
+      }
+      return res;
+    });
+}
+function refreshPageData() {
+  return fetch(location.pathname + '?frag=1&_t=' + Date.now(), { credentials: 'same-origin' })
+    .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(function(res) {
+      if (res && res.ok && res.html) {
+        var root = document.getElementById('xl-list');
+        if (root) root.innerHTML = res.html;
+      }
+      return res;
+    });
+}
+function refreshAllData() {
+  var el = document.getElementById('banner-refresh');
+  if (!el) return Promise.resolve();
+  var orig = el.textContent;
+  el.disabled = true;
+  el.textContent = 'Memuat...';
+  return Promise.all([bannerFetch(), refreshPageData()]).then(function() {
+    el.disabled = false;
+    el.textContent = orig;
+  }).catch(function() {
+    el.disabled = false;
+    el.textContent = orig;
+  });
+}
+function bannerLoad() {
+  if (!('caches' in window)) { bannerFetch(); return; }
+  caches.open(BANNER_CACHE_NAME).then(function(cache) {
+    return cache.match(BANNER_CACHE_REQ);
+  }).then(function(r) {
+    if (!r) { bannerFetch(); return; }
+    return r.json().then(function(d) {
+      if (d && d.xl_info && (Date.now() / 1000 - d.fetched_at) <= BANNER_CACHE_TTL) {
+        bannerSetInfo(d.xl_info);
+      } else {
+        bannerFetch();
+      }
+    });
+  }).catch(function(err) {
+    console.error('[banner] cache baca gagal:', err);
+    bannerFetch();
+  });
+}
+document.addEventListener('DOMContentLoaded', bannerLoad);
+</script>
+
+{% endblock %}

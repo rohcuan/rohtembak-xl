@@ -1,0 +1,87 @@
+{% if paket_list %}
+    <div class="paket-grid">
+    {% for quota in paket_list %}
+      {% set total_bytes = namespace(v=0) %}
+      {% set used_bytes = namespace(v=0) %}
+      {% set benefits = quota.benefits or [] %}
+      {% for b in benefits %}
+        {% if b.data_type|upper == "DATA" and b.total|int > 0 %}
+          {% set total_bytes.v = total_bytes.v + b.total|int %}
+          {% set used_bytes.v = used_bytes.v + (b.total|int - b.remaining|int) %}
+        {% endif %}
+      {% endfor %}
+      {% set remain_bytes = total_bytes.v - used_bytes.v %}
+      {% set pct = (remain_bytes / total_bytes.v * 100) if total_bytes.v > 0 else 0 %}
+
+      <div class="paket-card">
+        <h3>{{ quota.group_name or quota.name or "Paket" }}</h3>
+        <div class="sub">Perpanjangan otomatis : {% if quota.product_subscription_type|upper == "REC" %}Ya{% else %}Tidak{% endif %}</div>
+
+        {% if total_bytes.v > 0 %}
+        <div class="stat">
+          <span class="label">Sisa Kuota</span>
+          <span class="value">{{ remain_bytes|quotabyte }} / {{ total_bytes.v|quotabyte }}</span>
+        </div>
+
+        <div class="progress-bar">
+          <div class="fill" style="width:{{ pct|round(1) }}%"></div>
+        </div>
+        {% endif %}
+
+        <div class="stat">
+          <span class="label">Masa Aktif</span>
+          <span class="value">
+            {% if quota.end_date %}
+              {{ quota.end_date|datetimeformat }}
+            {% else %}
+              —
+            {% endif %}
+          </span>
+        </div>
+
+        {% if benefits %}
+        <div class="breakdown">
+          {% for b in benefits %}
+          {% set dt = b.data_type|upper %}
+          <div class="breakdown-item">
+            <span>
+              <span class="badge-type
+                {%- if dt == 'DATA' %} badge-data
+                {%- elif dt == 'VOICE' %} badge-voice
+                {%- elif dt == 'TEXT' or dt == 'SMS' %} badge-text
+                {%- else %} badge-other{% endif %}">{{ dt }}</span>
+              {{ b.name }}
+            </span>
+            <span class="remain">
+              {% if dt == "DATA" %}
+                {{ b.remaining|int|quotabyte }} / {{ b.total|int|quotabyte }}
+              {% elif dt == "VOICE" %}
+                {{ (b.remaining|int / 60)|round(0)|int }}m / {{ (b.total|int / 60)|round(0)|int }}m
+              {% elif dt == "TEXT" or dt == "SMS" %}
+                {{ b.remaining }} / {{ b.total }}
+              {% else %}
+                {{ b.remaining }} / {{ b.total }}
+              {% endif %}
+            </span>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        <div class="detail-toggle" onclick="toggleDetail(this)">
+          <span class="arrow">&#9654;</span> Detail Paket
+        </div>
+        <div class="detail-body">
+          <div class="d-row"><span class="d-label">Group Code</span><span class="d-value code">{{ quota.group_code or "—" }}</span></div>
+          <div class="d-row"><span class="d-label">Family Code</span><span class="d-value code">{{ quota.package_family.package_family_code or "—" if quota.package_family else "—" }}</span></div>
+          <div class="d-row"><span class="d-label">Family Name</span><span class="d-value">{{ quota.package_family.name or "—" if quota.package_family else "—" }}</span></div>
+          <div class="d-row"><span class="d-label">Family Type</span><span class="d-value">{{ quota.package_family.package_family_type or "—" if quota.package_family else "—" }}</span></div>
+          <div class="d-row"><span class="d-label">Product Domain</span><span class="d-value">{{ quota.product_domain or "—" }}</span></div>
+          <div class="d-row"><span class="d-label">Quota Code</span><span class="d-value code">{{ quota.quota_code or "—" }}</span></div>
+        </div>
+      </div>
+    {% endfor %}
+    </div>
+{% else %}
+    <div class="card"><div class="empty-state">Gagal memuat informasi paket.</div></div>
+{% endif %}

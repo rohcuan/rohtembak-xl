@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+{% block title %}Konfirmasi Pembayaran - RohTembak (XL){% endblock %}
+{% block head %}
+<style>
+.checkout-grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+@media (min-width: 720px) { .checkout-grid { grid-template-columns: 1fr 1fr; } }
+
+.saldo-box { background: #f8f9fa; border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px; }
+.saldo-box h3 { margin: 0 0 12px; font-size: .85rem; text-transform: uppercase; letter-spacing: .5px; color: #6b7280; }
+.saldo-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 0; font-size: .9rem;
+}
+.saldo-row .k { color: #6b7280; }
+.saldo-row .v { font-weight: 600; color: #111; }
+.saldo-row.total { border-top: 1px solid #e5e7eb; margin-top: 8px; padding-top: 12px; }
+.saldo-row.total .k { color: #111; font-weight: 600; }
+.saldo-row.total .v { color: #059669; font-size: 1.05rem; }
+.saldo-row .v.neg { color: #dc2626; }
+@media (max-width: 600px) {
+  .saldo-row { flex-direction: column; align-items: flex-start; gap: 2px; }
+  .saldo-row .v { font-size: 1rem; }
+  .saldo-row.total .v { font-size: 1.15rem; }
+}
+.saldo-warn {
+  margin-top: 12px; padding: 10px 12px; border-radius: 8px;
+  background: #fef2f2; color: #991b1b; font-size: .82rem;
+}
+
+.terminal-box {
+  background: #0b1020; color: #a5b4fc; font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  border: 1px solid #1e293b; border-radius: 10px; padding: 14px 16px;
+  min-height: 120px; font-size: .82rem; line-height: 1.65; white-space: pre-wrap; word-break: break-word;
+}
+.terminal-box .t-title {
+  color: #475569; font-size: .72rem; letter-spacing: 1px; text-transform: uppercase;
+  margin-bottom: 10px; display: block;
+}
+.terminal-box .t-prompt { color: #8b5cf6; }
+.terminal-box .t-ok { color: #34d399; font-weight: 600; }
+.terminal-box .t-err { color: #f87171; font-weight: 600; }
+.terminal-box a { color: #60a5fa; }
+
+.summary-meta { font-size: .8rem; color: #6b7280; }
+
+.qr-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0,0,0,.55); display: none;
+  align-items: center; justify-content: center; padding: 20px;
+}
+.qr-overlay.show { display: flex; }
+.qr-window {
+  background: #fff; border-radius: 14px; padding: 24px;
+  max-width: 360px; width: 100%; text-align: center;
+  box-shadow: 0 20px 50px rgba(0,0,0,.35);
+  position: relative;
+}
+.qr-window .qr-close {
+  position: absolute; top: 10px; right: 14px;
+  background: none; border: none; font-size: 1.4rem;
+  color: #6b7280; cursor: pointer; line-height: 1;
+}
+.qr-window .qr-close:hover { color: #111; }
+.qr-window h3 { margin: 0 0 4px; font-size: 1rem; color: #111; }
+.qr-window p { margin: 0 0 14px; font-size: .8rem; color: #6b7280; }
+.qr-window img.qr-img {
+  width: 240px; height: 240px; border-radius: 8px;
+  border: 1px solid #e5e7eb; background: #fff;
+}
+.qr-window .qr-hint {
+  margin-top: 14px; font-size: .72rem; color: #9ca3af;
+}
+</style>
+<script>
+function payNow() {
+  var btn = document.getElementById('pay-btn');
+  var box = document.getElementById('terminal-box');
+  if (btn.disabled) return;
+  btn.disabled = true;
+  box.innerHTML = '<span class="t-title">result</span><span class="t-prompt">$</span> memproses pembayaran...';
+
+  fetch('{{ pay_url }}', {method: 'POST'})
+    .then(function(r) { return r.json(); })
+    .then(function(res) {
+      if (res.ok) {
+        var out = res.terminal_output || '';
+        var body = out ? escapeHtml(out) : (res.message ? escapeHtml(res.message) : '');
+        box.innerHTML = '<span class="t-title">result</span><span class="t-prompt">$</span> <span class="t-ok">SUKSES</span>\n'
+          + body + '\n'
+          + '<span class="t-prompt">$</span> ' + (res.message || '') + '\n'
+          + '<span class="t-prompt">$</span> saldo terpotong : Rp ' + (res.deducted != null ? Number(res.deducted).toLocaleString('id-ID') : '-') + '\n'
+          + '<span class="t-prompt">$</span> sisa saldo      : Rp ' + (res.new_balance != null ? Number(res.new_balance).toLocaleString('id-ID') : '-');
+        var cur = document.getElementById('bal-current');
+        var rem = document.getElementById('bal-remaining');
+        if (res.new_balance != null && cur) cur.textContent = 'Rp ' + Number(res.new_balance).toLocaleString('id-ID');
+        if (res.new_balance != null && rem) rem.textContent = 'Rp ' + Number(res.new_balance).toLocaleString('id-ID');
+        if (res.qris_img) showQr(res.qris_img);
+      } else {
+        var out = res.terminal_output || '';
+        box.innerHTML = '<span class="t-title">result</span><span class="t-prompt">$</span> <span class="t-err">GAGAL</span>\n'
+          + (out ? escapeHtml(out) : '') + '\n'
+          + '<span class="t-err">$</span> ' + (res.message || 'Terjadi kesalahan.');
+        btn.disabled = false;
+      }
+    })
+    .catch(function(e) {
+      box.innerHTML = '<span class="t-title">result</span><span class="t-prompt">$</span> <span class="t-err">ERROR</span>\n' + e.message;
+      btn.disabled = false;
+    });
+}
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\n/g, '\n');
+}
+function showQr(src) {
+  var ov = document.getElementById('qr-overlay');
+  var img = document.getElementById('qr-img');
+  img.src = src;
+  ov.classList.add('show');
+}
+function closeQr() {
+  document.getElementById('qr-overlay').classList.remove('show');
+}
+</script>
+{% endblock %}
+{% block content %}
+
+<div class="page-title">Konfirmasi Pembayaran</div>
+
+{% if detail %}
+<div class="card" style="padding:0;overflow:hidden;">
+  <div style="padding:20px 24px;">
+    <div style="font-size:.75rem;color:#999;margin-bottom:2px;">{% if detail.number %}#{{ detail.number }} &middot;{% endif %} {{ detail.variant_name }}</div>
+    <div style="font-size:1.2rem;font-weight:700;color:#222;">{{ detail.option_name }}</div>
+    <div style="font-size:1.3rem;font-weight:700;color:#059669;margin:4px 0 0;">Rp {{ "{:,}".format(detail.price) }}</div>
+    <div class="summary-meta" style="margin-top:8px;">
+      Metode Pembayaran: <strong>{{ method_label }}</strong> &middot; Masa Aktif: <strong>{{ detail.validity or "-" }}</strong>
+    </div>
+  </div>
+
+  <div style="height:1px;background:#e0e0e0;margin:0 24px;"></div>
+
+  <div style="padding:20px 24px;">
+    <div class="checkout-grid">
+
+      <div class="saldo-box">
+        <h3>Detail Saldo Token yang Akan Terkonsumsi</h3>
+        <div class="saldo-row">
+          <span class="k">Saldo token saat ini</span>
+          <span class="v" id="bal-current">Rp {{ "{:,}".format(balance) }}</span>
+        </div>
+        <div class="saldo-row">
+          <span class="k">Saldo token yang akan terkonsumsi</span>
+          <span class="v">Rp {{ "{:,}".format(fee) }}</span>
+        </div>
+        <div class="saldo-row total">
+          <span class="k">Sisa saldo setelah pembayaran</span>
+          <span class="v{% if insufficient %} neg{% endif %}" id="bal-remaining">Rp {{ "{:,}".format(remaining) }}</span>
+        </div>
+        {% if insufficient %}
+        <div class="saldo-warn">Saldo token tidak mencukupi untuk paket ini.</div>
+        {% endif %}
+      </div>
+
+      <div>
+        <div class="terminal-box" id="terminal-box"><span class="t-title">result</span><span class="t-prompt">$</span> menunggu konfirmasi bayar...</div>
+      </div>
+
+    </div>
+
+    <div style="margin-top:18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      <button class="btn btn-success" id="pay-btn" onclick="payNow()" {% if insufficient %}disabled{% endif %}>Bayar</button>
+      <a class="btn btn-outline btn-sm" href="/user/xl/beli-paket/{{ detail.url_id }}/detail">&larr; Kembali</a>
+    </div>
+    {% if insufficient %}
+    <div style="margin-top:8px;font-size:.78rem;color:#6b7280;">Hubungi admin untuk top-up saldo token.</div>
+    {% endif %}
+  </div>
+</div>
+{% else %}
+<div class="card"><div class="empty-state">Gagal memuat detail paket.</div></div>
+<a href="/user/xl/beli-paket" class="btn btn-outline btn-sm">&larr; Kembali</a>
+{% endif %}
+
+<div class="qr-overlay" id="qr-overlay" onclick="if(event.target===this)closeQr()">
+  <div class="qr-window">
+    <button class="qr-close" onclick="closeQr()">&times;</button>
+    <h3>Scan QRIS</h3>
+    <p>Selesaikan pembayaran dengan memindai kode QR ini.</p>
+    <img class="qr-img" id="qr-img" alt="QRIS" src="">
+    <div class="qr-hint">Scan dengan aplikasi pembayaran Anda</div>
+  </div>
+</div>
+
+{% endblock %}

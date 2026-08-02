@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% block title %}Informasi Paket - RohTembak (XL){% endblock %}
+{% block head %}
+<style>
+.paket-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 16px;
+}
+.paket-card {
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06);
+}
+.paket-card h3 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+  color: #222;
+}
+.paket-card .sub {
+  font-size: .75rem;
+  color: #999;
+  margin-bottom: 12px;
+}
+.paket-card .stat {
+  display: flex;
+  justify-content: space-between;
+  font-size: .85rem;
+  margin: 4px 0;
+}
+.paket-card .stat .label { color: #666; }
+.paket-card .stat .value { font-weight: 600; color: #222; }
+.progress-bar {
+  height: 8px;
+  background: #e9ecef;
+  border-radius: 4px;
+  margin: 8px 0 12px;
+  overflow: hidden;
+}
+.progress-bar .fill {
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #4f46e5, #7c3aed);
+  transition: width .3s;
+}
+.breakdown {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #e0e0e0;
+}
+.breakdown-item {
+  display: flex;
+  justify-content: space-between;
+  font-size: .8rem;
+  padding: 3px 0;
+  color: #555;
+}
+.breakdown-item .remain { color: #222; font-weight: 500; }
+.badge-type {
+  display: inline-block;
+  font-size: .65rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.badge-data { background: #dbeafe; color: #1d4ed8; }
+.badge-voice { background: #fce7f3; color: #be185d; }
+.badge-text { background: #d1fae5; color: #047857; }
+.badge-other { background: #f3f4f6; color: #6b7280; }
+.detail-toggle {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 10px; padding: 6px 0 4px;
+  border-top: 1px solid #eee;
+  font-size: .8rem; color: #6366f1; font-weight: 500;
+  cursor: pointer; user-select: none; transition: color .15s;
+}
+.detail-toggle:hover { color: #4f46e5; }
+.detail-toggle .arrow {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border-radius: 4px;
+  background: #f0f0f0; color: #888;
+  font-size: .6rem; line-height: 1;
+  transition: all .2s;
+}
+.detail-toggle.open .arrow {
+  background: #eef2ff; color: #6366f1; transform: rotate(90deg);
+}
+.detail-body {
+  display: none; margin-top: 6px;
+}
+.detail-body.open { display: block; }
+.detail-body .d-row {
+  padding: 10px 0 8px;
+}
+.detail-body .d-row + .d-row {
+  border-top: 1px solid #eee;
+}
+.detail-body .d-label { font-size: .7rem; color: #aaa; letter-spacing: .3px; display: block; margin-bottom: 4px; }
+.detail-body .d-value { font-size: .85rem; color: #333; font-weight: 400; word-break: break-all; display: block; }
+.detail-body .d-value.code { font-family: 'SF Mono', 'Consolas', monospace; font-size: .78rem; font-weight: 400; color: #555; }
+@media (max-width: 600px) {
+  .paket-grid { grid-template-columns: 1fr; }
+}
+</style>
+{% endblock %}
+{% block content %}
+
+{% set banner_title = "Informasi Paket" %}
+{% include "user/_banner.html" %}
+
+{% if active_xl %}
+<div id="info-data">
+    <div class="card">
+        <div class="empty-state">Memuat informasi paket...</div>
+    </div>
+</div>
+{% else %}
+  <div class="card">
+    <div class="empty-state">
+      <strong>Tidak ada nomor XL aktif.</strong>
+      Tambahkan nomor XL terlebih dahulu untuk melihat informasi paket.
+      <div style="margin-top:14px;">
+        <a href="/user/xl/otp/request" class="btn btn-sm btn-success">+ Tambah Nomor XL</a>
+      </div>
+    </div>
+  </div>
+{% endif %}
+
+<div style="margin-top:16px;">
+  <a href="/user/dashboard" class="btn btn-outline btn-sm">&larr; Kembali</a>
+</div>
+
+<script>
+function toggleDetail(el) {
+  el.classList.toggle('open');
+  var body = el.nextElementSibling;
+  if (body) body.classList.toggle('open');
+}
+</script>
+<script>
+var INFO_XL_ID = "{{ active_xl.phone_number if active_xl else '' }}";
+var INFO_CACHE_NAME = 'xl-data';
+var INFO_CACHE_TTL = 570;
+var INFO_CACHE_REQ = new Request('/xl-data/' + INFO_XL_ID + '/info-paket');
+function infoCacheRead() {
+  if (!('caches' in window)) return Promise.resolve(null);
+  return caches.open(INFO_CACHE_NAME).then(function(cache) {
+    return cache.match(INFO_CACHE_REQ);
+  }).then(function(r) {
+    if (!r) return null;
+    return r.json().then(function(d) {
+      if (d && d.html && (Date.now() / 1000 - d.fetched_at) <= INFO_CACHE_TTL) return d.html;
+      return null;
+    });
+  }).catch(function() { return null; });
+}
+function infoCacheWrite(html) {
+  if (!('caches' in window)) return;
+  caches.open(INFO_CACHE_NAME).then(function(cache) {
+    return cache.put(INFO_CACHE_REQ, new Response(JSON.stringify({ html: html, fetched_at: Date.now() / 1000 }), { headers: { 'Content-Type': 'application/json' } }));
+  }).catch(function(err) { console.error('[info-paket] cache gagal:', err); });
+}
+function infoRender(html) {
+  var root = document.getElementById('info-data');
+  if (root) root.innerHTML = html;
+}
+function infoFetchFresh() {
+  return fetch(location.pathname + '?frag=1&_t=' + Date.now(), { credentials: 'same-origin' })
+    .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(function(res) {
+      if (res && res.ok && res.html) {
+        infoRender(res.html);
+        infoCacheWrite(res.html);
+      }
+      return res;
+    });
+}
+function refreshPageData() {
+  return infoFetchFresh();
+}
+document.addEventListener('DOMContentLoaded', function() {
+  infoCacheRead().then(function(html) {
+    if (html) {
+      infoRender(html);
+    } else {
+      infoFetchFresh();
+    }
+  });
+});
+</script>
+{% endblock %}

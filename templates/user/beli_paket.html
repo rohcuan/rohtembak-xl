@@ -1,0 +1,418 @@
+{% extends "base.html" %}
+{% block title %}Beli Paket - RohTembak (XL){% endblock %}
+{% block head %}
+<style>
+.pkg-banner {
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 16px;
+}
+.pkg-banner .pkg-title {
+  font-size: 15px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .5px;
+  background: rgba(255,255,255,0.12);
+  color: #fff;
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+}
+
+.pkg-section { padding: 14px 0; }
+.pkg-section:first-child { padding-top: 4px; }
+.pkg-section:last-child { border-bottom: none; padding-bottom: 4px; }
+.pkg-section .card-header { padding: 4px 0; }
+
+.package-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+@media (min-width: 640px) {
+  .package-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+.pkg-card {
+  background: rgba(255,255,255,0.12);
+  border-radius: 10px;
+  padding: 14px;
+}
+.pkg-card .pkg-number { font-size: .7rem; color: rgba(255,255,255,0.7); }
+.pkg-card .pkg-name { font-size: 1rem; font-weight: 600; color: #fff; margin: 2px 0 6px; }
+.pkg-card .pkg-price { font-size: 1.15rem; font-weight: 700; color: #a7f3d0; margin-bottom: 10px; }
+.pkg-size { font-size: .85rem; margin-bottom: 6px; }
+
+.pkg-card.muted .pkg-number { color: rgba(255,255,255,0.4); }
+.pkg-card.muted .pkg-name { color: rgba(255,255,255,0.55); }
+.pkg-card.muted .pkg-price { color: rgba(255,255,255,0.45); }
+
+.detail-toggle {
+  display: block; padding: 8px 0; margin-top: 6px; border-top: 1px solid rgba(255,255,255,0.15);
+  font-size: .8rem; color: #dbe3ff; text-decoration: none;
+}
+.detail-toggle:hover { color: #fff; }
+
+.card-header {
+  font-weight: 700; cursor: pointer; user-select: none;
+  display: flex; justify-content: space-between; align-items: center;
+  color: #fff;
+}
+.card-header .chev {
+  display: inline-block; width: 10px; height: 10px;
+  border-right: 2px solid rgba(255,255,255,0.85); border-bottom: 2px solid rgba(255,255,255,0.85);
+  transform: rotate(45deg); transition: transform .2s;
+  margin-right: 4px;
+}
+.card-header .chev.up { transform: rotate(-135deg); }
+
+.body-wrap { display: block; padding-top: 20px; }
+.body-wrap.collapsed { display: none; padding-top: 0; }
+
+.pkg-empty { padding: 14px; font-size: .85rem; color: rgba(255,255,255,0.6); }
+
+.pkg-banner-white {
+  background: #fff;
+  color: #111827;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+.pkg-banner-white .pkg-title { background: rgba(0,0,0,0.05); color: #111827; }
+.pkg-banner-white .card-header { color: #111827; }
+.pkg-banner-white .card-header .chev { border-color: #6b7280; }
+.pkg-banner-white .pkg-card { background: rgba(0,0,0,0.05); }
+.pkg-banner-white .pkg-card .pkg-number { color: #6b7280; }
+.pkg-banner-white .pkg-card .pkg-name { color: #111827; }
+.pkg-banner-white .pkg-card .pkg-price { color: #16a34a; }
+.pkg-banner-white .pkg-card.muted .pkg-number { color: #9ca3af; }
+.pkg-banner-white .pkg-card.muted .pkg-name { color: #9ca3af; }
+.pkg-banner-white .pkg-card.muted .pkg-price { color: #9ca3af; }
+.pkg-banner-white .pkg-size { color: #6b7280; }
+.pkg-banner-white .detail-toggle { border-top-color: rgba(0,0,0,0.1); color: #4361ee; }
+.pkg-banner-white .detail-toggle:hover { color: #3451d1; }
+.pkg-banner-white .pkg-empty { color: #6b7280; }
+.pkg-cache-hint { font-size: 12px; font-weight: 400; color: #6b7280; }
+.pkg-refresh {
+  font-size: .8rem; color: #6b7280;
+  background: rgba(0,0,0,0.05);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+}
+.skel-spinner {
+  width: 28px; height: 28px;
+  border: 3px solid rgba(0,0,0,0.1);
+  border-top-color: #4361ee;
+  border-radius: 50%;
+  opacity: 0;
+  animation-name: cache-spin, cache-fadein;
+  animation-duration: .8s, .3s;
+  animation-timing-function: linear, ease-out;
+  animation-iteration-count: infinite, 1;
+  animation-fill-mode: forwards;
+}
+@keyframes cache-spin { to { transform: rotate(360deg); } }
+@keyframes cache-fadein { from { opacity: 0; } to { opacity: 1; } }
+.pkg-card.skel {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 120px;
+}
+.package-grid .pkg-card.skel:nth-child(2) .skel-spinner { animation-delay: 0s, .15s; }
+.package-grid .pkg-card.skel:nth-child(3) .skel-spinner { animation-delay: 0s, .3s; }
+.package-grid .pkg-card.skel:nth-child(4) .skel-spinner { animation-delay: 0s, .45s; }
+.package-grid .pkg-card.skel:nth-child(5) .skel-spinner { animation-delay: 0s, .6s; }
+.package-grid .pkg-card.skel:nth-child(6) .skel-spinner { animation-delay: 0s, .75s; }
+.package-grid .pkg-card.skel:nth-child(7) .skel-spinner { animation-delay: 0s, .9s; }
+.package-grid .pkg-card.skel:nth-child(8) .skel-spinner { animation-delay: 0s, 1.05s; }
+.package-grid .pkg-card.skel:nth-child(9) .skel-spinner { animation-delay: 0s, 1.2s; }
+.pkg-section {
+  border: 1px solid rgba(0,0,0,0.1);
+  border-radius: 10px;
+  background: #fff;
+  margin-bottom: 14px;
+  overflow: hidden;
+}
+.pkg-section .card-header { padding: 12px 14px; background: rgba(0,0,0,0.03); }
+.pkg-section .body-wrap { padding: 14px; }
+
+</style>
+<script>
+window.BANNER_SSE = true;
+var DATA_STREAM_URL = '/user/xl/beli-paket/stream';
+var CACHE_NAME = 'beli-paket';
+var CACHE_TTL = 570;
+var CACHE_META_TTL = 570;
+var XL_ID = "{{ active_xl.phone_number if active_xl else '' }}";
+var CACHE_META = new Request('/beli-paket-cache/' + XL_ID + '/meta');
+var CACHE_KEYS = {
+  xcp: new Request('/beli-paket-cache/' + XL_ID + '/xcp'),
+  addon10: new Request('/beli-paket-cache/' + XL_ID + '/addon10'),
+  addon15: new Request('/beli-paket-cache/' + XL_ID + '/addon15'),
+  xtraconf: new Request('/beli-paket-cache/' + XL_ID + '/xtraconf')
+};
+
+function fmtRp(n) {
+  n = Number(n);
+  if (isNaN(n)) return '';
+  return 'Rp ' + n.toLocaleString('id-ID');
+}
+
+function xcpCardHtml(p, i) {
+  return '<div class="pkg-card">' +
+    '<div class="pkg-number">Alternatif ' + (i + 1) + ' &middot; Option #' + p.number + '</div>' +
+    '<div class="pkg-name">Xtra Combo Plus 30k</div>' +
+    '<div class="pkg-price">Rp 30.000</div>' +
+    '<a href="/user/xl/beli-paket/xcp-' + p.number + '/detail" class="detail-toggle">Detail Paket &rarr;</a>' +
+    '</div>';
+}
+
+function cardHtml(a, urlPrefix) {
+  var muted = a.price === 0 ? ' muted' : '';
+  var html = '<div class="pkg-card' + muted + '">' +
+    '<div class="pkg-number">#' + a.number + ' &middot; ' + a.variant_name + '</div>' +
+    '<div class="pkg-name">' + a.label + '</div>';
+  if (a.size) html += '<div class="pkg-size">' + a.size + '</div>';
+  html += '<div class="pkg-price">' + fmtRp(a.price) + '</div>' +
+    '<a href="/user/xl/beli-paket/' + urlPrefix + '-' + a.number + '/detail" class="detail-toggle">Detail Paket &rarr;</a>' +
+    '</div>';
+  return html;
+}
+
+var EMPTY_MSG = { xcp: 'Tidak ada paket tersedia.', addon10: 'Tidak ada addon tersedia.', addon15: 'Tidak ada addon tersedia.', xtraconf: 'Tidak ada paket tersedia.' };
+var URL_PREFIX = { addon10: 'addon10-xcp', addon15: 'addon15-xcp', xtraconf: 'xtraconf' };
+var BOX_KEYS = ['xcp', 'addon10', 'addon15', 'xtraconf'];
+var BOX_FROM_KEY = { packages: 'xcp', addons: 'addon10', addons_15: 'addon15', xtra_conf: 'xtraconf' };
+var DATA_FROM_BOX = { xcp: 'packages', addon10: 'addons', addon15: 'addons_15', xtraconf: 'xtra_conf' };
+var ALL_FAM_PARAM = 'meta,xcp,addon10,addon15,xtraconf';
+var streamedBoxes = {};
+
+function boxHtml(key, items) {
+  if (!items || !items.length) return '<div class="pkg-empty">' + (EMPTY_MSG[key] || '') + '</div>';
+  var html = '<div class="package-grid">';
+  if (key === 'xcp') {
+    items.forEach(function(p, i) { html += xcpCardHtml(p, i); });
+  } else {
+    items.forEach(function(a) { html += cardHtml(a, URL_PREFIX[key]); });
+  }
+  return html + '</div>';
+}
+
+function renderBanner(d) {
+  var xi = d.xl_info;
+  if (!xi) return;
+  var pulsa = document.querySelector('[data-banner="pulsa"]');
+  var masa = document.querySelector('[data-banner="masa-aktif"]');
+  if (pulsa) pulsa.textContent = (xi.main_credit != null) ? fmtRp(xi.main_credit) : '—';
+  if (masa) masa.textContent = xi.expiry_date || '—';
+}
+
+function setHint(d) {
+  var upd = document.getElementById('pkg-updated');
+  if (upd) upd.textContent = d.last_refresh ? '\u00b7 Diperbarui ' + d.last_refresh : '';
+}
+
+function renderBox(key, items, d, progressive) {
+  var box = document.querySelector('.pkg-data[data-box="' + key + '"]');
+  if (box) {
+    if (progressive && items && items.length) {
+      renderProgressive(box, key, items);
+    } else {
+      box.innerHTML = boxHtml(key, items);
+    }
+  }
+  if (d) renderBanner(d);
+}
+
+function renderProgressive(box, key, items) {
+  box.querySelectorAll('.pkg-card.skel').forEach(function(s) { s.remove(); });
+  var grid = box.querySelector('.package-grid');
+  if (!grid) return;
+  items.forEach(function(it, i) {
+    grid.insertAdjacentHTML('beforeend', (key === 'xcp') ? xcpCardHtml(it, i) : cardHtml(it, URL_PREFIX[key]));
+  });
+}
+
+function setHeader(d) {
+  renderBanner(d);
+  setHint(d);
+  var e = document.getElementById('pkg-error');
+  if (e) e.hidden = !d.error;
+}
+
+function finishBoxes(d) {
+  BOX_KEYS.forEach(function(key) {
+    if (streamedBoxes[key]) return;
+    var box = document.querySelector('.pkg-data[data-box="' + key + '"]');
+    if (box && box.querySelector('.pkg-card.skel')) {
+      box.innerHTML = boxHtml(key, d[DATA_FROM_BOX[key]] || []);
+    }
+  });
+  setHeader(d);
+}
+
+function fmtDateTime(date) {
+  var parts = {};
+  new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Jakarta',
+    day: 'numeric', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: false, hourCycle: 'h23'
+  }).formatToParts(date).forEach(function(p) { parts[p.type] = p.value; });
+  return parts.day + ' ' + parts.month + ' ' + parts.year + ', ' + parts.hour + ':' + parts.minute;
+}
+
+function cachePut(req, obj) {
+  caches.open(CACHE_NAME).then(function(cache) {
+    return cache.put(req, new Response(JSON.stringify(obj), { headers: { 'Content-Type': 'application/json' } }));
+  }).catch(function(err) {
+    console.error('[beli-paket] cache gagal:', err);
+  });
+}
+
+function streamData(famParam) {
+  var payload = { packages: [], addons: [], addons_15: [], xtra_conf: [], xl_info: null, error: false, last_refresh: '' };
+  streamedBoxes = {};
+  var src = new EventSource(DATA_STREAM_URL + '?families=' + encodeURIComponent(famParam));
+  src.addEventListener('meta', function(ev) {
+    payload.xl_info = JSON.parse(ev.data).xl_info;
+    if (payload.xl_info) {
+      renderBanner(payload);
+      cachePut(CACHE_META, { xl_info: payload.xl_info, fetched_at: Date.now() / 1000, last_refresh: fmtDateTime(new Date()) });
+    }
+  });
+  src.addEventListener('family', function(ev) {
+    var d = JSON.parse(ev.data);
+    payload[d.key] = d.items;
+    if (!d.ok) return;
+    var boxKey = BOX_FROM_KEY[d.key] || d.key;
+    streamedBoxes[boxKey] = true;
+    renderBox(boxKey, d.items, payload, true);
+    cachePut(CACHE_KEYS[boxKey], { items: d.items, fetched_at: Date.now() / 1000 });
+  });
+  src.addEventListener('done', function(ev) {
+    var d = JSON.parse(ev.data);
+    payload.error = d.error;
+    payload.last_refresh = fmtDateTime(new Date());
+    finishBoxes(payload);
+    src.close();
+  });
+  src.addEventListener('error', function() {
+    var e = document.getElementById('pkg-error');
+    if (e) e.hidden = false;
+    src.close();
+  });
+}
+
+function isFresh(d, ttl) {
+  if (ttl === undefined) ttl = CACHE_TTL;
+  return !!(d && d.fetched_at && (Date.now() / 1000 - d.fetched_at) <= ttl);
+}
+
+function loadData() {
+  if (!('caches' in window)) {
+    streamData(ALL_FAM_PARAM);
+    return;
+  }
+  caches.open(CACHE_NAME).then(function(cache) {
+    var jobs = [cache.match(CACHE_META).then(function(r) {
+      return r ? r.json().then(function(d) { return { k: 'meta', d: isFresh(d, CACHE_META_TTL) ? d : null }; }) : { k: 'meta', d: null };
+    })];
+    BOX_KEYS.forEach(function(key) {
+      jobs.push(cache.match(CACHE_KEYS[key]).then(function(r) {
+        return r ? r.json().then(function(d) { return { k: key, d: isFresh(d) ? d : null }; }) : { k: key, d: null };
+      }));
+    });
+    return Promise.all(jobs);
+  }).catch(function(err) {
+    console.error('[beli-paket] cache baca gagal:', err);
+    return null;
+  }).then(function(res) {
+    if (!res) { streamData(ALL_FAM_PARAM); return; }
+    var want = [];
+    res.forEach(function(r) {
+      if (r.k === 'meta') {
+        if (r.d) { renderBanner(r.d); setHint(r.d); }
+        else want.push('meta');
+      } else {
+        if (r.d) renderBox(r.k, r.d.items, r.d, false);
+        else want.push(r.k);
+      }
+    });
+    if (!want.length) return;
+    streamData(want.join(','));
+  });
+}
+
+function toggleBox(id) {
+  var body = document.getElementById(id + '-body');
+  var chev = document.getElementById(id + '-chev');
+  body.classList.toggle('collapsed');
+  chev.classList.toggle('up');
+}
+function applyBoxState() {
+  var collapsed = window.innerWidth < 900;
+  document.querySelectorAll('.body-wrap').forEach(function(b) {
+    b.classList.toggle('collapsed', collapsed);
+  });
+  document.querySelectorAll('.card-header .chev').forEach(function(c) {
+    c.classList.toggle('up', !collapsed);
+  });
+}
+document.addEventListener('DOMContentLoaded', function() {
+  applyBoxState();
+  loadData();
+  window.addEventListener('resize', applyBoxState);
+});
+</script>
+{% endblock %}
+{% block content %}
+
+{% if active_xl %}
+{% set banner_title = "Beli Paket" %}
+{% include "user/_banner.html" %}
+<div class="pkg-banner pkg-banner-white">
+  <div class="pkg-title">Daftar paket yang tersedia <span class="pkg-cache-hint" id="pkg-updated"></span></div>
+
+  <div class="pkg-refresh" id="pkg-error" hidden>
+    <span class="pkg-refresh-msg">Sebagian info paket gagal dimuat. Muat ulang halaman untuk mencoba lagi.</span>
+  </div>
+
+  {% set sections = [
+    ('xcp', 'Xtra Combo Plus', 3),
+    ('addon10', 'Addon Xtra Combo Plus 10GB', 6),
+    ('addon15', 'Addon Xtra Combo Plus 15GB', 9),
+    ('xtraconf', 'Xtra Conference', 3)
+  ] %}
+  {% for sid, stitle, scount in sections %}
+    <div class="pkg-section">
+      <div class="card-header" onclick="toggleBox('{{ sid }}')"><span>{{ stitle }}</span><span class="chev" id="{{ sid }}-chev"></span></div>
+      <div class="body-wrap" id="{{ sid }}-body">
+        <div class="pkg-data" data-box="{{ sid }}">
+          <div class="package-grid">
+            {% for _ in range(scount) %}
+            <div class="pkg-card skel"><div class="skel-spinner"></div></div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+  {% endfor %}
+</div>
+
+{% else %}
+<div class="page-title">Beli Paket</div>
+<div class="page-subtitle" style="margin-bottom:16px;">Nomor: <strong>{{ active_xl.phone_number if active_xl else "" }}</strong></div>
+<div class="card">
+    <div class="empty-state">
+        {% if not active_xl %}
+        <strong>Belum ada nomor XL aktif.</strong>
+        Tambahkan nomor XL terlebih dahulu untuk bisa membeli paket.
+        <div style="margin-top:14px;">
+            <a href="/user/xl/otp/request" class="btn btn-sm btn-success">+ Tambah Nomor XL</a>
+        </div>
+        {% else %}
+        Gagal memuat daftar paket. Muat ulang halaman untuk mencoba lagi.
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+<a href="/user/dashboard" class="btn btn-outline btn-sm" style="margin-top:28px;">&larr; Kembali</a>
+
+{% endblock %}

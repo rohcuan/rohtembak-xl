@@ -239,6 +239,7 @@ function streamDetail(famParam) {
   src.addEventListener('error', function() {
     if (!DETAIL_RENDERED) renderError('Gagal memuat detail paket.');
     src.close();
+    if (typeof checkSessionExpired === 'function') checkSessionExpired();
   });
 }
 function loadDetail() {

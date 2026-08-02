@@ -344,6 +344,11 @@ def logout():
     return resp
 
 
+@app.get("/api/session")
+def api_session(user: User = Depends(get_current_user)):
+    return JSONResponse({"ok": True})
+
+
 # ─── Admin Dashboard ────────────────────────────────────────────────────────
 
 @app.get("/admin/dashboard", response_class=HTMLResponse)

@@ -120,6 +120,15 @@
         </div>
     </div>
 </div>
+<div class="modal-overlay" id="sessionExpiredModal">
+    <div class="modal">
+        <h3>Sesi Berakhir</h3>
+        <p class="modal-body">Sesi login Anda telah berakhir. Silakan masuk kembali untuk melanjutkan.</p>
+        <div class="modal-actions">
+            <button type="button" class="btn btn-primary" onclick="location.href='/login'">Login ulang</button>
+        </div>
+    </div>
+</div>
 <script>
 function toggleDropdown() {
     document.getElementById('userDropdown').classList.toggle('show');
@@ -151,6 +160,32 @@ function clearAppCache() {
     return Promise.all(keys.map(function(k) { return caches.delete(k); }));
   }).then(go).catch(go);
 }
+var SESSION_EXPIRED_SHOWN = false;
+function showSessionExpired() {
+  if (SESSION_EXPIRED_SHOWN) return;
+  SESSION_EXPIRED_SHOWN = true;
+  var m = document.getElementById('sessionExpiredModal');
+  if (m) m.classList.add('show');
+}
+function checkSessionExpired() {
+  if (SESSION_EXPIRED_SHOWN) return Promise.resolve();
+  return fetch('/api/session', { credentials: 'same-origin', cache: 'no-store' })
+    .then(function(res) {
+      if (res.redirected && res.url && res.url.indexOf('/login') !== -1) showSessionExpired();
+      return res;
+    })
+    .catch(function() {});
+}
+(function() {
+  var origFetch = window.fetch;
+  window.fetch = function() {
+    return origFetch.apply(this, arguments).then(function(res) {
+      if (res.redirected && res.url && res.url.indexOf('/login') !== -1) showSessionExpired();
+      return res;
+    });
+  };
+})();
+setInterval(checkSessionExpired, 30000);
 document.addEventListener('click', function(e) {
     var dd = document.getElementById('userDropdown');
     if (dd && !e.target.closest('.user-dropdown')) {

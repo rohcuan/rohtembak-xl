@@ -296,6 +296,7 @@ function streamData(famParam) {
     var e = document.getElementById('pkg-error');
     if (e) e.hidden = false;
     src.close();
+    if (typeof checkSessionExpired === 'function') checkSessionExpired();
   });
 }
 

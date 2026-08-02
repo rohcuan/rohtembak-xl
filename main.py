@@ -33,7 +33,29 @@ jinja_env = Environment(loader=FileSystemLoader(templates_dir), auto_reload=True
 WIB = timezone(timedelta(hours=7))
 
 
+def _fmt_epoch_wib(ts):
+    """Render a true unix epoch (UTC instant) as a WIB wall-clock in XL history format."""
+    if not ts:
+        return None
+    try:
+        return datetime.fromtimestamp(int(ts), tz=WIB).strftime("%d %B %Y | %H:%M WIB")
+    except (ValueError, OSError):
+        return None
+
+
 def _fmt_xl_ts(ts):
+    """XL transaction timestamps are WIB wall-clock stored as if UTC (+7h ahead of the
+    real instant). Subtract 7h first so the rendered WIB matches XL's formated_date."""
+    if not ts:
+        return None
+    try:
+        return _fmt_epoch_wib(int(ts) - 7 * 3600)
+    except (ValueError, OSError):
+        return None
+
+
+def _fmt_xl_expiry(ts):
+    """Quota/balance expiry epochs are true UTC; render in WIB unchanged."""
     if not ts:
         return None
     try:
@@ -54,6 +76,8 @@ def _parse_xl_dt(s):
     if not s:
         return 0
     s = str(s).strip()
+    if s.endswith(" WIB"):
+        s = s[:-4].rstrip()
     for fmt in ("%d %B %Y | %H:%M", "%d %b %Y | %H:%M", "%d %B %Y %H:%M", "%d %b %Y %H:%M"):
         try:
             return int(datetime.strptime(s, fmt).replace(tzinfo=timezone.utc).timestamp())
@@ -62,7 +86,7 @@ def _parse_xl_dt(s):
     return 0
 
 
-jinja_env.filters["datetimeformat"] = lambda ts: _fmt_xl_ts(ts) or "—"
+jinja_env.filters["datetimeformat"] = lambda ts: _fmt_xl_expiry(ts) or "—"
 jinja_env.filters["quotabyte"] = format_quota_byte
 
 API_DELAY = float(os.getenv("API_DELAY", "2.0"))
@@ -900,9 +924,10 @@ def _build_history_rows(active_xl, user):
     rows = []
     for q in qris_txs:
         expired = bool(q.get("expired"))
+        te = int(q.get("ts_epoch") or 0)
         rows.append({
-            "ts": q.get("created_at") or "—",
-            "sort": _parse_xl_dt(q.get("created_at")),
+            "ts": _fmt_epoch_wib(te) or (q.get("created_at") or "—"),
+            "sort": te,
             "paket": q.get("option_name") or "—",
             "harga": ("Rp {:,}".format(q["amount"]) if q.get("amount") else "—"),
             "status": "Expired" if expired else "Pending",
@@ -922,11 +947,15 @@ def _build_history_rows(active_xl, user):
                 color = "red"
             else:
                 color = "amber"
-            ts = trx.get("timestamp")
-            sort = int(ts) if ts else _parse_xl_dt(trx.get("formated_date") or "")
+            ts_raw = trx.get("timestamp")
+            if ts_raw:
+                te = int(ts_raw) - 7 * 3600
+            else:
+                encoded = _parse_xl_dt(trx.get("formated_date") or "")
+                te = encoded - 7 * 3600 if encoded else 0
             rows.append({
-                "ts": _fmt_xl_ts(ts) or (trx.get("formated_date") or "—"),
-                "sort": sort,
+                "ts": _fmt_epoch_wib(te) or (trx.get("formated_date") or "—"),
+                "sort": te,
                 "paket": trx.get("title") or "—",
                 "harga": trx.get("price") or "—",
                 "status": trx.get("status") or "—",
@@ -1813,14 +1842,19 @@ def _fetch_pending_qris(active_xl, tokens=None, transactions=None):
             qris_b64 = _b64.urlsafe_b64encode(qr_raw.encode()).decode()
             remaining = int(detail.get("remaining_time") or 0)
             expires_ts = int(time.time()) + remaining if remaining > 0 else 0
+            st_detail = (detail.get("status") or "").upper()
+            pending_st = ("READY", "PENDING", "WAITING_FOR_PAYMENT", "WAITING_PAYMENT", "ONGOING", "PROCESS")
+            expired = st_detail == "EXPIRED" or (remaining <= 0 and st_detail not in pending_st)
+            raw_ts = trx.get("timestamp")
             qris_txs.append({
                 "transaction_id": detail.get("payment_id") or code,
                 "option_name": trx.get("title") or trx.get("product_name") or "Paket",
                 "amount": trx.get("raw_price") or 0,
                 "status": trx.get("status"),
                 "created_at": detail.get("formated_date") or trx.get("formated_date") or "",
+                "ts_epoch": (int(raw_ts) - 7 * 3600) if raw_ts else 0,
                 "expires_ts": expires_ts,
-                "expired": remaining <= 0,
+                "expired": expired,
                 "img": _qris_png_data_uri(qris_b64),
                 "qris_b64": qris_b64,
             })
@@ -1860,7 +1894,8 @@ def _reconcile_qris_record(q, tokens, db):
         return None
 
     if resolved or st == "EXPIRED":
-        expired = st == "EXPIRED" or remaining <= 0
+        pending_st = ("PENDING", "READY", "WAITING_FOR_PAYMENT", "WAITING_PAYMENT", "ONGOING", "PROCESS")
+        expired = st == "EXPIRED" or (remaining <= 0 and st not in pending_st)
     else:
         expired = False
 
@@ -1870,6 +1905,7 @@ def _reconcile_qris_record(q, tokens, db):
         "amount": q.amount,
         "status": st,
         "created_at": _fmt_wib(q.created_at) if q.created_at else "",
+        "ts_epoch": int(q.created_at.replace(tzinfo=timezone.utc).timestamp()) if q.created_at else 0,
         "expires_ts": int(time.time()) + remaining if remaining > 0 else 0,
         "expired": expired,
         "img": _qris_png_data_uri(q.qris_b64),

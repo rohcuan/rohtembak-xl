@@ -87,9 +87,12 @@ def cmd_wib():
 
 
 def parse_formated_date(fd):
+    s = str(fd).strip()
+    if s.endswith(" WIB"):
+        s = s[:-4].rstrip()
     for fmt in FORMAT_DATE_XL:
         try:
-            return datetime.strptime(str(fd).strip(), fmt)
+            return datetime.strptime(s, fmt)
         except ValueError:
             continue
     return None
@@ -112,10 +115,12 @@ def cmd_xl():
         print(f"formated_date tidak dikenal formatnya: {fd!r}")
         return 1
 
+    # formated_date tidak memuat detik; bandingkan pada granularitas menit.
+    ts_min = ts - (ts % 60)
     true_epoch = wall.replace(tzinfo=WIB).timestamp()
     fake_epoch = wall.replace(tzinfo=UTC).timestamp()
-    diff_true = ts - true_epoch
-    diff_fake = ts - fake_epoch
+    diff_true = ts_min - true_epoch
+    diff_fake = ts_min - fake_epoch
 
     print(f"formated_date  : {fd!r}  (wall-clock WIB)")
     print(f"timestamp      : {ts}  ({datetime.fromtimestamp(ts, tz=UTC).isoformat()} UTC / "
@@ -123,12 +128,13 @@ def cmd_xl():
     print(f"epoch jika benar instan WIB   : {int(true_epoch)}  (selisih {diff_true:+.0f}s)")
     print(f"epoch jika wall-clock palsu   : {int(fake_epoch)}  (selisih {diff_fake:+.0f}s)")
     print()
-    if abs(diff_true) <= 2:
-        print("VERDICT: timestamp XL = instan absolut. TAMPILKAN dalam WIB (konversi +7 jam) — "
-              "konfigurasi sekarang sudah benar.")
-    elif abs(diff_fake) <= 2:
-        print("VERDICT: timestamp XL sudah wall-clock WIB (fake UTC). JANGAN tambah 7 jam — "
-              "tampilkan apa adanya (UTC). Perlu revert _fmt_xl_ts ke tz=UTC.")
+    if abs(diff_fake) <= 60:
+        print("VERDICT: timestamp XL = wall-clock WIB yang disimpan seolah UTC (+7 jam dari instan "
+              "asli). TAMPILKAN dengan _fmt_xl_ts = fromtimestamp(ts - 7*3600, tz=WIB) agar cocok "
+              "dengan formated_date.")
+    elif abs(diff_true) <= 60:
+        print("VERDICT: timestamp XL = instan absolut UTC. TAMPILKAN dengan konversi WIB biasa "
+              "(+7 jam).")
     else:
         print("VERDICT: tidak bisa dipastikan; selisih tidak cocok dengan kedua model. "
               "Cek kembali data.")

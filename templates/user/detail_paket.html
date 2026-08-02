@@ -203,8 +203,8 @@ function renderDetail(d) {
 function renderError(msg) {
   var root = document.getElementById('detail-root');
   if (!root) return;
-  root.innerHTML = '<div class="card"><div class="empty-state">' + esc(msg) + '</div>' +
-    '<div style="text-align:center;padding-bottom:16px;"><button type="button" class="btn btn-sm btn-outline" onclick="loadDetail()">Coba Lagi</button></div></div>';
+  root.innerHTML = '<div class="card"><div class="empty-state">' + esc(msg) +
+    '<br><span style="font-size:.85rem;color:#888;">Tekan tombol <strong>Refresh Data</strong> untuk mencoba lagi.</span></div></div>';
 }
 function isFresh(d, ttl) {
   if (ttl === undefined) ttl = DETAIL_CACHE_TTL;

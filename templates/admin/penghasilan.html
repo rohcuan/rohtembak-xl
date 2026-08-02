@@ -2,13 +2,8 @@
 {% block title %}Penghasilan - RohTembak (XL){% endblock %}
 {% block head %}
 <style>
-.income-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-@media (max-width: 700px) { .income-grid { grid-template-columns: 1fr; } }
-.income-label {
-    font-size: 12px; text-transform: uppercase; letter-spacing: .5px;
-    color: #888; margin-bottom: 8px;
-}
-.income-value { font-size: 2rem; font-weight: 700; color: #059669; margin-bottom: 16px; }
+.income-value { font-size: 2.2rem; font-weight: 700; color: #059669; margin: 16px 0; }
+.metric-group { display: flex; gap: 6px; flex-wrap: wrap; }
 .toggle-group { display: flex; gap: 6px; flex-wrap: wrap; }
 .toggle-btn {
     padding: 6px 14px; font-size: 13px; border-radius: 999px;
@@ -17,6 +12,23 @@
 }
 .toggle-btn:hover { border-color: #4361ee; color: #4361ee; }
 .toggle-btn.active { background: #4361ee; border-color: #4361ee; color: #fff; font-weight: 600; }
+.income-divider { border: none; border-top: 1px solid #eee; margin: 16px 0; }
+@media (max-width: 700px) {
+    .income-table thead { display: none; }
+    .income-table tbody tr {
+        display: block; padding: 8px 0; border-bottom: 1px solid #f0f0f0;
+    }
+    .income-table tbody tr:last-child { border-bottom: none; }
+    .income-table td {
+        display: flex; justify-content: space-between; gap: 12px;
+        padding: 4px 0; border: none; text-align: right;
+    }
+    .income-table td::before {
+        content: attr(data-label); font-size: 12px; text-transform: uppercase;
+        letter-spacing: .5px; color: #999;
+    }
+    .income-table td.amount-col { font-weight: 600; }
+}
 </style>
 {% endblock %}
 {% block content %}
@@ -28,27 +40,37 @@
     </div>
 </div>
 
-<div class="income-grid">
-    <div class="card">
-        <div class="income-label">Total Topup Saldo Token</div>
-        <div class="income-value">Rp {{ "{:,}".format(topup_total or 0) }}</div>
-        <div class="toggle-group">
-            {% for key, label in INCOME_RANGES %}
-            <a href="/admin/penghasilan?topup_range={{ key }}&used_range={{ used_range }}"
-               class="toggle-btn {{ 'active' if topup_range == key }}">{{ label }}</a>
-            {% endfor %}
-        </div>
+<div class="card">
+    <div class="metric-group">
+        {% for key, label in INCOME_METRICS %}
+        <a href="/admin/penghasilan?metric={{ key }}&range={{ period }}"
+           class="toggle-btn {{ 'active' if metric == key }}">{{ label }}</a>
+        {% endfor %}
     </div>
-    <div class="card">
-        <div class="income-label">Total Saldo Token Dipakai User</div>
-        <div class="income-value">Rp {{ "{:,}".format(used_total or 0) }}</div>
-        <div class="toggle-group">
-            {% for key, label in INCOME_RANGES %}
-            <a href="/admin/penghasilan?used_range={{ key }}&topup_range={{ topup_range }}"
-               class="toggle-btn {{ 'active' if used_range == key }}">{{ label }}</a>
-            {% endfor %}
-        </div>
+    <div class="income-value">Rp {{ "{:,}".format(total or 0) }}</div>
+    <div class="toggle-group">
+        {% for key, label in INCOME_RANGES %}
+        <a href="/admin/penghasilan?metric={{ metric }}&range={{ key }}"
+           class="toggle-btn {{ 'active' if period == key }}">{{ label }}</a>
+        {% endfor %}
     </div>
+    <hr class="income-divider">
+    <table class="income-table">
+        <thead>
+            <tr><th>Waktu</th><th>User</th><th>Jumlah</th></tr>
+        </thead>
+        <tbody>
+            {% for d in details %}
+            <tr>
+                <td data-label="Waktu">{{ d.ts }}</td>
+                <td data-label="User">{{ d.username }}</td>
+                <td data-label="Jumlah" class="amount-col">Rp {{ "{:,}".format(d.amount) }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="3" class="empty-state">Belum ada transaksi pada periode ini.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
 </div>
 
 {% endblock %}

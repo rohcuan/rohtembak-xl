@@ -503,34 +503,38 @@ def _income_range_start(period: str):
     return start.astimezone(timezone.utc).replace(tzinfo=None)
 
 
-def _income_total(db, trx_type: str, period: str) -> int:
-    start = _income_range_start(period)
-    rows = db.query(BalanceTransaction).filter(
-        BalanceTransaction.type == trx_type,
-        BalanceTransaction.created_at >= start,
-    ).all()
-    total = sum(r.amount for r in rows)
-    if trx_type == "purchase":
-        total = -total
-    return total
-
-
 @app.get("/admin/penghasilan", response_class=HTMLResponse)
 def admin_penghasilan(request: Request, user: User = Depends(get_current_user)):
     if user.role != "admin":
         return RedirectResponse(url="/user/dashboard", status_code=303)
     db = next(get_db())
-    topup_range = request.query_params.get("topup_range", "today")
-    used_range = request.query_params.get("used_range", "today")
-    topup_total = _income_total(db, "topup", topup_range)
-    used_total = _income_total(db, "purchase", used_range)
+    metric = request.query_params.get("metric", "topup")
+    if metric not in ("topup", "used"):
+        metric = "topup"
+    period = request.query_params.get("range", "today")
+    trx_type = "topup" if metric == "topup" else "purchase"
+    start = _income_range_start(period)
+    rows = db.query(BalanceTransaction).filter(
+        BalanceTransaction.type == trx_type,
+        BalanceTransaction.created_at >= start,
+    ).order_by(BalanceTransaction.created_at.desc()).all()
+    total = sum(abs(r.amount) for r in rows)
+    details = []
+    for r in rows:
+        u = db.query(User).filter(User.id == r.user_id).first()
+        details.append({
+            "ts": r.created_at.strftime("%Y-%m-%d %H:%M") if r.created_at else "—",
+            "username": u.username if u else f"user #{r.user_id}",
+            "amount": abs(r.amount),
+        })
     db.close()
     return render("admin/penghasilan.html", context={
         "request": request, "user": user,
-        "topup_range": topup_range,
-        "used_range": used_range,
-        "topup_total": topup_total,
-        "used_total": used_total,
+        "metric": metric,
+        "period": period,
+        "total": total,
+        "details": details,
+        "INCOME_METRICS": [("topup", "Total Topup"), ("used", "Total Dipakai")],
         "INCOME_RANGES": [("today", "Hari ini"), ("week", "Minggu ini"), ("month", "Bulan ini")],
     })
 

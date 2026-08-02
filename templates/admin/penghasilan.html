@@ -40,6 +40,10 @@
         letter-spacing: .5px; color: #999;
     }
     .income-table td.amount-col { font-weight: 700; font-size: 15px; color: #059669; }
+    .income-table td.empty-state {
+        display: block; text-align: center; padding: 20px 8px;
+    }
+    .income-table td.empty-state::before { content: none; }
 }
 </style>
 {% endblock %}

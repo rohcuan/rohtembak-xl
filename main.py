@@ -42,6 +42,14 @@ def _fmt_xl_ts(ts):
         return None
 
 
+def _fmt_wib(ts):
+    if not ts:
+        return None
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    return ts.astimezone(WIB).strftime("%Y-%m-%d %H:%M")
+
+
 def _parse_xl_dt(s):
     if not s:
         return 0
@@ -534,7 +542,7 @@ def admin_penghasilan(request: Request, user: User = Depends(get_current_user)):
     for r in rows:
         u = db.query(User).filter(User.id == r.user_id).first()
         details.append({
-            "ts": r.created_at.strftime("%Y-%m-%d %H:%M") if r.created_at else "—",
+            "ts": _fmt_wib(r.created_at) if r.created_at else "—",
             "username": u.username if u else f"user #{r.user_id}",
             "amount": abs(r.amount),
         })
@@ -836,7 +844,13 @@ def user_history(request: Request, user: User = Depends(get_current_user)):
         BalanceTransaction.user_id == user.id
     ).order_by(BalanceTransaction.created_at.desc()).all()
     db.close()
-    ctx.update({"request": request, "transactions": transactions})
+    rows = [{
+        "ts": _fmt_wib(t.created_at),
+        "type": t.type,
+        "amount": t.amount,
+        "description": t.description or "—",
+    } for t in transactions]
+    ctx.update({"request": request, "transactions": rows})
     return render("user/history.html", context=ctx)
 
 

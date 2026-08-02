@@ -100,16 +100,17 @@ function closeQr() {
 {% endblock %}
 {% block content %}
 
+{% if active_xl %}
 {% set banner_title = "Riwayat XL" %}
 {% include "user/_banner.html" %}
 
-{% if active_xl %}
 <div id="history-data">
     <div class="card">
         <div class="empty-state">Memuat riwayat transaksi...</div>
     </div>
 </div>
 {% else %}
+<div class="page-title">Riwayat XL</div>
 <div class="card">
     <div class="empty-state">
         <strong>Belum ada nomor XL aktif.</strong>

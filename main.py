@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from jinja2 import Environment, FileSystemLoader
 
 from database import init_db, get_db
-from models import User, XLAccount, Balance, BalanceTransaction, FamilyFee, QrisTransaction
+from models import User, XLAccount, Balance, BalanceTransaction, FamilyFee
 from auth import (
     verify_password, create_access_token, decode_token,
     get_current_user, seed_users, hash_password
@@ -926,23 +926,6 @@ def _build_history_rows(active_xl, user):
             t for t in xl_transactions["list"]
             if (t.get("code") or "") not in qris_codes
         ]
-    db = next(get_db())
-    db_qris = db.query(QrisTransaction).filter(
-        QrisTransaction.user_id == user.id
-    ).order_by(QrisTransaction.created_at.desc()).all()
-    seen = {q.get("transaction_id") for q in qris_txs}
-    seen_qr = {q.get("qris_b64") for q in qris_txs}
-    for q in db_qris:
-        if q.transaction_id in seen:
-            continue
-        seen.add(q.transaction_id)
-        if q.qris_b64 in seen_qr:
-            continue
-        seen_qr.add(q.qris_b64)
-        rec = _reconcile_qris_record(q, tokens, db)
-        if rec:
-            qris_txs.append(rec)
-    db.close()
 
     rows = []
     for q in qris_txs:
@@ -1579,10 +1562,9 @@ def _process_payment(active_xl, option_number, addon_spec, method):
                         _api_delay()
                         qris_result = show_qris_payment(API_KEY, tokens, items, detail["payment_for"], False, overwrite_amount=detail["price"])
                         if qris_result:
-                            qris_b64, qris_txn_id = qris_result
+                            qris_b64, _ = qris_result
                             pay_success = "QRIS berhasil dibuat. Silakan pindai kode QR untuk menyelesaikan pembayaran."
                             pay_extra["qris_b64"] = qris_b64
-                            pay_extra["qris_transaction_id"] = qris_txn_id
                         else:
                             pay_error = "Gagal membuat QRIS."
                     elif method == "ewallet":
@@ -1884,8 +1866,8 @@ def _fetch_pending_qris(active_xl, tokens=None, transactions=None):
             remaining = int(detail.get("remaining_time") or 0)
             expires_ts = int(time.time()) + remaining if remaining > 0 else 0
             st_detail = (detail.get("status") or "").upper()
-            pending_st = ("READY", "PENDING", "WAITING_FOR_PAYMENT", "WAITING_PAYMENT", "ONGOING", "PROCESS")
-            expired = st_detail == "EXPIRED" or (remaining <= 0 and st_detail not in pending_st)
+            pay_st = (trx.get("payment_status") or "").upper()
+            expired = remaining <= 0 or st_detail == "EXPIRED" or pay_st == "EXPIRED"
             raw_ts = trx.get("timestamp")
             qris_txs.append({
                 "transaction_id": detail.get("payment_id") or code,
@@ -1904,91 +1886,6 @@ def _fetch_pending_qris(active_xl, tokens=None, transactions=None):
     return qris_txs, matched_codes
 
 
-def _reconcile_qris_record(q, tokens, db):
-    """Resolve a stored QRIS record against XL pending-detail.
-
-    FINISHED/SUCCESS -> mark done & drop (paid; the XL history row covers it).
-    EXPIRED/timeout   -> mark expired & show as expired.
-    Still pending     -> show as pending with live remaining time, fresh QR from API.
-    API failure       -> keep showing as pending (no data loss).
-    """
-    import base64 as _b64
-    st = (q.status or "PENDING").upper()
-    remaining = 0
-    resolved = False
-    fresh = {}
-    if st == "PENDING" and tokens:
-        try:
-            _api_delay()
-            payload = {"transaction_id": q.transaction_id, "is_enterprise": False, "lang": "en", "status": ""}
-            res = send_api_request(API_KEY, "payments/api/v8/pending-detail", payload, tokens["id_token"], "POST")
-            if isinstance(res, dict) and res.get("status") == "SUCCESS":
-                d = res.get("data") or {}
-                st = (d.get("status") or "PENDING").upper()
-                remaining = int(d.get("remaining_time") or 0)
-                fresh = d
-                resolved = True
-                if st != (q.status or "PENDING").upper():
-                    q.status = st
-                    db.commit()
-        except Exception as e:
-            print(f"[history] reconcile qris {q.transaction_id}: {e}")
-
-    if st in ("FINISHED", "SUCCESS"):
-        return None
-
-    if resolved or st == "EXPIRED":
-        pending_st = ("PENDING", "READY", "WAITING_FOR_PAYMENT", "WAITING_PAYMENT", "ONGOING", "PROCESS")
-        expired = st == "EXPIRED" or (remaining <= 0 and st not in pending_st)
-    else:
-        expired = False
-
-    img = None
-    ts_epoch = 0
-    created_at = _fmt_wib(q.created_at) if q.created_at else ""
-    if fresh:
-        qr_raw = fresh.get("qr_code")
-        if qr_raw:
-            img = _qris_png_data_uri(_b64.urlsafe_b64encode(qr_raw.encode()).decode())
-        fts = fresh.get("timestamp")
-        if fts:
-            ts_epoch = int(fts) - 7 * 3600
-        if fresh.get("formated_date"):
-            created_at = fresh["formated_date"]
-    if not img:
-        img = _qris_png_data_uri(q.qris_b64)
-    if not ts_epoch:
-        ts_epoch = int(q.created_at.replace(tzinfo=timezone.utc).timestamp()) if q.created_at else 0
-
-    return {
-        "transaction_id": q.transaction_id,
-        "option_name": q.option_name,
-        "amount": q.amount,
-        "status": st,
-        "created_at": created_at,
-        "ts_epoch": ts_epoch,
-        "expires_ts": int(time.time()) + remaining if remaining > 0 else 0,
-        "expired": expired,
-        "img": img,
-    }
-
-
-def _save_qris_transaction(user, transaction_id, qris_b64, detail):
-    db = next(get_db())
-    try:
-        db.add(QrisTransaction(
-            user_id=user.id,
-            transaction_id=transaction_id,
-            qris_b64=qris_b64,
-            option_name=detail.get("option_name", "") if detail else "",
-            amount=detail.get("price") or 0 if detail else 0,
-            status="PENDING",
-        ))
-        db.commit()
-    finally:
-        db.close()
-
-
 def _pay_response(user, detail, pay_error, pay_success, method, family_key, pay_extra=None):
     if pay_success:
         fee = _get_family_fee(family_key)
@@ -1999,11 +1896,8 @@ def _pay_response(user, detail, pay_error, pay_success, method, family_key, pay_
         )
         resp = {"ok": True, "message": pay_success, "deducted": fee, "new_balance": new_balance}
         qris_b64 = (pay_extra or {}).get("qris_b64")
-        qris_txn_id = (pay_extra or {}).get("qris_transaction_id")
         if qris_b64:
             resp["qris_img"] = _qris_png_data_uri(qris_b64)
-            if qris_txn_id:
-                _save_qris_transaction(user, qris_txn_id, qris_b64, detail)
         terminal_output = (pay_extra or {}).get("terminal_output", "")
         if terminal_output:
             resp["terminal_output"] = terminal_output

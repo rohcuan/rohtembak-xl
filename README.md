@@ -26,6 +26,7 @@ Web UI untuk mengelola akun XL / paket XL (beli paket, info paket, riwayat, pemb
 ├── requirements.txt
 ├── install.sh          # one-command installer (Debian 12 + systemd)
 ├── docker-compose.yml  # container Debian 12 dengan systemd
+├── .env                # konfigurasi kredensial XL API (sudah terisi)
 └── .env.example        # template konfigurasi
 ```
 
@@ -60,18 +61,12 @@ cd /opt/rohtembak
 
 ## Konfigurasi
 
-Install script membuat `.env` dari `.env.example`. Semua nilai rahasia **harus diisi**:
+`.env` (kredensial XL API) **sudah termasuk** di repo dan dikloning bersama source — panel langsung siap pakai tanpa isi prompt.
 
-- Interaktif: jalankan `./install.sh` lalu isi prompt.
-- Non-interaktif: set environment variable lalu jalankan, misalnya:
+Yang TIDAK ikut di-commit:
 
-  ```bash
-  API_KEY=... AES_KEY_ASCII=... BASIC_AUTH=... ./install.sh
-  ```
-
-- Bisa juga lewat file: `ROHTEMBAK_ENV_FILE=/path/to/.env ./install.sh`
-
-`ax.fp` (device fingerprint) dibuat otomatis saat pertama kali app berjalan dari `AX_FP_KEY`.
+- `data/*.db` — database runtime berisi **refresh token / access token** akun XL tiap nomor. Instalasi baru = panel kosong, belum ada nomor yang login OTP.
+- `ax.fp` — device fingerprint; dibuat ulang otomatis dari `AX_FP_KEY` saat pertama kali app berjalan.
 
 ## Akun default
 
@@ -79,8 +74,9 @@ Install script membuat `.env` dari `.env.example`. Semua nilai rahasia **harus d
 
 ## Keamanan
 
-- `gitignore` melindungi: `.env`, `data/*.db`, `ax.fp`, `*.fp`, `venv/`, `__pycache__/`.
-- Jangan pernah commit `.env` / `data/` — berisi token refresh XL dan kredensial API.
+- Kredensial API di `.env` sengaja dipublish karena sudah tersebar publik (didapat dari pencarian Google).
+- Yang tetap dilindungi `gitignore`: `data/*.db` (token refresh/access XL per nomor), `ax.fp`, `venv/`, `__pycache__/`.
+- Login nomor XL dilakukan via menu panel (input nomor + OTP) dan tersimpan hanya di database lokal.
 
 ## Troubleshooting
 

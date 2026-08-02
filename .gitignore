@@ -11,10 +11,7 @@ venv/
 env/
 ENV/
 
-# Secrets & environment
-.env
-.env.*
-!.env.example
+# Device fingerprint (regenerated from AX_FP_KEY at first run)
 *.fp
 ax.fp
 

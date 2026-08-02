@@ -58,10 +58,12 @@ fi
 if [[ -d "${INSTALL_DIR}" ]]; then
     log "Backing up runtime data to ${BACKUP_DIR}..."
     for item in "${RETAIN_ITEMS[@]}"; do
-        if [[ -e "${INSTALL_DIR}/${item}" ]]; then
-            cp -a "${INSTALL_DIR}/${item}" "${BACKUP_DIR}/"
-            log "  saved ${item}"
-        fi
+        for src in "${INSTALL_DIR}"/${item}; do
+            if [[ -e "${src}" ]]; then
+                cp -a "${src}" "${BACKUP_DIR}/"
+                log "  saved ${src##*/}"
+            fi
+        done
     done
 else
     warn "${INSTALL_DIR} not found - nothing to back up (fresh install)."
@@ -88,13 +90,15 @@ chmod +x install.sh
 rm -f /tmp/install.sh
 
 # --- 5. Restore runtime data --------------------------------------------------
-log "Restoring runtime data..."
-for item in "${RETAIN_ITEMS[@]}"; do
-    if [[ -e "${BACKUP_DIR}/${item}" ]]; then
-        cp -a "${BACKUP_DIR}/${item}" "${INSTALL_DIR}/"
-        log "  restored ${item}"
-    fi
-done
+    log "Restoring runtime data..."
+    for item in "${RETAIN_ITEMS[@]}"; do
+        for src in "${BACKUP_DIR}"/${item}; do
+            if [[ -e "${src}" ]]; then
+                cp -a "${src}" "${INSTALL_DIR}/"
+                log "  restored ${src##*/}"
+            fi
+        done
+    done
 
 # --- 6. Restart service -------------------------------------------------------
 log "Restarting ${SERVICE_NAME} service..."

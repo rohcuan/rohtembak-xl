@@ -372,13 +372,57 @@ def admin_dashboard(request: Request, user: User = Depends(get_current_user)):
     admin_bal = db.query(Balance).filter(Balance.user_id == user.id).first()
     db.close()
     fees = _get_all_family_fees()
+    first_login = user.username == "admin" and verify_password("admin", user.password_hash)
     return render("admin/dashboard.html", context={
         "request": request,
         "user": user,
         "users": user_data,
         "balance": admin_bal.balance if admin_bal else 0,
         "fees": fees,
+        "first_login": first_login,
     })
+
+
+@app.get("/admin/credentials", response_class=HTMLResponse)
+def admin_credentials_page(request: Request, user: User = Depends(get_current_user)):
+    if user.role != "admin":
+        return RedirectResponse(url="/user/dashboard", status_code=303)
+    return render("admin/credentials.html", context={
+        "request": request,
+        "user": user,
+        "updated": request.query_params.get("updated"),
+        "error": request.query_params.get("error"),
+    })
+
+
+@app.post("/admin/credentials")
+def admin_credentials_update(
+    current_password: str = Form(...),
+    new_username: str = Form(""),
+    new_password: str = Form(""),
+    confirm_password: str = Form(""),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if not verify_password(current_password, user.password_hash):
+        return RedirectResponse(url="/admin/credentials?error=salah_password", status_code=303)
+    new_username = new_username.strip()
+    if new_username:
+        if db.query(User).filter(User.username == new_username, User.id != user.id).first():
+            return RedirectResponse(url="/admin/credentials?error=username_dipakai", status_code=303)
+        user.username = new_username
+    if new_password:
+        if new_password != confirm_password:
+            return RedirectResponse(url="/admin/credentials?error=password_tidak_cocok", status_code=303)
+        if len(new_password) < 4:
+            return RedirectResponse(url="/admin/credentials?error=password_pendek", status_code=303)
+        user.password_hash = hash_password(new_password)
+        user.password = new_password
+    db.add(user)
+    db.commit()
+    return RedirectResponse(url="/admin/credentials?updated=1", status_code=303)
 
 
 @app.post("/admin/fees/set")

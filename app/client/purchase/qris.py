@@ -198,8 +198,8 @@ def get_qris_code(
         print("Failed to fetch QRIS code.")
         print(f"Error: {res}")
         return None
-    
-    return res["data"]["qr_code"]
+
+    return res["data"]
 
 def show_qris_payment(
     api_key: str,
@@ -231,10 +231,12 @@ def show_qris_payment(
         return
     
     print("Fetching QRIS code...")
-    qris_code = get_qris_code(api_key, tokens, transaction_id)
-    if not qris_code:
+    data = get_qris_code(api_key, tokens, transaction_id)
+    if not data or not data.get("qr_code"):
         print("Failed to get QRIS code.")
         return
+    qris_code = data["qr_code"]
+    remaining = int(data.get("remaining_time") or 0)
     print(f"QRIS data:\n{qris_code}")
     
     qr = qrcode.QRCode(
@@ -252,4 +254,4 @@ def show_qris_payment(
     
     print(f"Atau buka link berikut untuk melihat QRIS:\n{qris_url}")
     
-    return qris_b64, transaction_id
+    return qris_b64, transaction_id, remaining

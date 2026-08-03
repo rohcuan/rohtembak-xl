@@ -91,7 +91,7 @@ function payNow() {
         var rem = document.getElementById('bal-remaining');
         if (res.new_balance != null && cur) cur.textContent = 'Rp ' + Number(res.new_balance).toLocaleString('id-ID');
         if (res.new_balance != null && rem) rem.textContent = 'Rp ' + Number(res.new_balance).toLocaleString('id-ID');
-        if (res.qris_img) showQr(res.qris_img);
+        if (res.qris_img) showQr(res.qris_img, res.qris_expires_ts || 0);
       } else {
         var out = res.terminal_output || '';
         box.innerHTML = '<span class="t-title">result</span><span class="t-prompt">$</span> <span class="t-err">GAGAL</span>\n'
@@ -108,14 +108,35 @@ function payNow() {
 function escapeHtml(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\n/g, '\n');
 }
-function showQr(src) {
+function showQr(src, expires) {
+  qrExpires = parseInt(expires, 10) || 0;
   var ov = document.getElementById('qr-overlay');
   var img = document.getElementById('qr-img');
   img.src = src;
   ov.classList.add('show');
+  tickQrTimer();
+  if (qrTimerInt) clearInterval(qrTimerInt);
+  qrTimerInt = setInterval(tickQrTimer, 1000);
+}
+var qrExpires = 0;
+var qrTimerInt = null;
+function tickQrTimer() {
+  var el = document.getElementById('qr-timer');
+  if (!el) return;
+  if (!qrExpires) { el.textContent = '—'; return; }
+  var left = qrExpires - Math.floor(Date.now() / 1000);
+  if (left <= 0) {
+    el.textContent = 'Expired';
+    if (qrTimerInt) clearInterval(qrTimerInt);
+    return;
+  }
+  var m = Math.floor(left / 60), s = left % 60;
+  el.textContent = (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
 }
 function closeQr() {
   document.getElementById('qr-overlay').classList.remove('show');
+  if (qrTimerInt) clearInterval(qrTimerInt);
+  qrTimerInt = null;
 }
 </script>
 {% endblock %}
@@ -181,7 +202,10 @@ function closeQr() {
     <h3>Scan QRIS</h3>
     <p>Selesaikan pembayaran dengan memindai kode QR ini.</p>
     <img class="qr-img" id="qr-img" alt="QRIS" src="">
-    <div class="qr-hint">Scan dengan aplikasi pembayaran Anda</div>
+    <div style="margin-top:12px;font-size:.85rem;color:#374151;">
+      Sisa waktu: <strong id="qr-timer" style="font-family:ui-monospace,monospace;">—</strong>
+    </div>
+    <div class="qr-hint">QRIS berlaku sampai transaksi dibayar / kedaluwarsa</div>
   </div>
 </div>
 

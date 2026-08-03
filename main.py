@@ -1616,9 +1616,10 @@ def _process_payment(active_xl, option_number, addon_spec, method):
                         _api_delay()
                         qris_result = show_qris_payment(API_KEY, tokens, items, detail["payment_for"], False, overwrite_amount=detail["price"])
                         if qris_result:
-                            qris_b64, _ = qris_result
+                            qris_b64, _, qris_remaining = qris_result
                             pay_success = "QRIS berhasil dibuat. Silakan pindai kode QR untuk menyelesaikan pembayaran."
                             pay_extra["qris_b64"] = qris_b64
+                            pay_extra["qris_remaining"] = int(qris_remaining or 0)
                         else:
                             pay_error = "Gagal membuat QRIS."
                     elif method == "ewallet":
@@ -1952,6 +1953,8 @@ def _pay_response(user, detail, pay_error, pay_success, method, family_key, pay_
         qris_b64 = (pay_extra or {}).get("qris_b64")
         if qris_b64:
             resp["qris_img"] = _qris_png_data_uri(qris_b64)
+            remaining = int((pay_extra or {}).get("qris_remaining") or 0)
+            resp["qris_expires_ts"] = int(time.time()) + remaining if remaining > 0 else 0
         terminal_output = (pay_extra or {}).get("terminal_output", "")
         if terminal_output:
             resp["terminal_output"] = terminal_output

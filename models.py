@@ -66,16 +66,3 @@ class FamilyFee(Base):
     family_key = Column(String(20), unique=True, nullable=False)
     fee = Column(Integer, default=0)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
-
-
-class QrisTransaction(Base):
-    __tablename__ = "qris_transactions"
-
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    transaction_id = Column(String(64), nullable=False)
-    qris_b64 = Column(Text, nullable=False)
-    option_name = Column(String(120), default="")
-    amount = Column(Integer, default=0)
-    status = Column(String(20), default="PENDING")
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

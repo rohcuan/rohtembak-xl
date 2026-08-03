@@ -2,9 +2,6 @@
 {% block title %}Konfirmasi Pembayaran - RohTembak (XL){% endblock %}
 {% block head %}
 <style>
-.checkout-grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
-@media (min-width: 720px) { .checkout-grid { grid-template-columns: 1fr 1fr; } }
-
 .saldo-box { background: #f8f9fa; border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px; }
 .saldo-box h3 { margin: 0 0 12px; font-size: .85rem; text-transform: uppercase; letter-spacing: .5px; color: #6b7280; }
 .saldo-row {
@@ -140,9 +137,8 @@ function closeQr() {
   <div style="height:1px;background:#e0e0e0;margin:0 24px;"></div>
 
   <div style="padding:20px 24px;">
-    <div class="checkout-grid">
 
-      <div class="saldo-box">
+      <div class="saldo-box" style="max-width:480px;">
         <h3>Detail Saldo Token yang Akan Terkonsumsi</h3>
         <div class="saldo-row">
           <span class="k">Saldo token saat ini</span>
@@ -161,12 +157,6 @@ function closeQr() {
         {% endif %}
       </div>
 
-      <div>
-        <div class="terminal-box" id="terminal-box"><span class="t-title">result</span><span class="t-prompt">$</span> menunggu konfirmasi bayar...</div>
-      </div>
-
-    </div>
-
     <div style="margin-top:18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
       <button class="btn btn-success" id="pay-btn" onclick="payNow()" {% if insufficient %}disabled{% endif %}>Bayar</button>
       <a class="btn btn-outline btn-sm" href="/user/xl/beli-paket/{{ detail.url_id }}/detail">&larr; Kembali</a>
@@ -174,6 +164,10 @@ function closeQr() {
     {% if insufficient %}
     <div style="margin-top:8px;font-size:.78rem;color:#6b7280;">Hubungi admin untuk top-up saldo token.</div>
     {% endif %}
+
+    <div style="margin-top:18px;">
+      <div class="terminal-box" id="terminal-box"><span class="t-title">result</span><span class="t-prompt">$</span> menunggu konfirmasi bayar...</div>
+    </div>
   </div>
 </div>
 {% else %}

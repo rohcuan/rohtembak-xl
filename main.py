@@ -395,6 +395,18 @@ def admin_credentials_page(request: Request, user: User = Depends(get_current_us
     })
 
 
+@app.post("/admin/credentials/verify")
+def admin_credentials_verify(
+    current_password: str = Form(...),
+    user: User = Depends(get_current_user),
+):
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if verify_password(current_password, user.password_hash):
+        return JSONResponse({"ok": True})
+    return JSONResponse({"ok": False, "error": "Password saat ini salah."})
+
+
 @app.post("/admin/credentials")
 def admin_credentials_update(
     current_password: str = Form(...),

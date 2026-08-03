@@ -1,5 +1,13 @@
 {% extends "base.html" %}
 {% block title %}Verifikasi OTP{% endblock %}
+{% block head %}
+<style>
+@media (max-width: 600px) {
+    .otp-actions { flex-direction: column; }
+    .otp-actions .btn { width: 100%; }
+}
+</style>
+{% endblock %}
 {% block content %}
 
 <div class="card" style="max-width:480px;margin:0 auto;">
@@ -25,7 +33,7 @@
             <input type="text" name="otp_code" placeholder="123456" pattern="[0-9]{6}" inputmode="numeric" autocomplete="one-time-code" required style="text-align:center;font-size:24px;letter-spacing:8px;font-weight:700;">
         </div>
 
-        <div style="display:flex;gap:8px;">
+        <div class="otp-actions" style="display:flex;gap:8px;">
             <a href="/user/xl/otp/request" class="btn btn-outline" style="flex:1;justify-content:center;">Ubah Nomor</a>
             <button type="submit" class="btn btn-primary" style="flex:2;">Verifikasi</button>
         </div>

@@ -171,7 +171,7 @@ function detailHtml(d) {
   var shownPrice = (DETAIL_VIA === 'qris') ? Number(d.price) + QRIS_DECOY_PRICE : Number(d.price);
 
   h += '<div style="padding:20px 24px;">';
-  h += '<div style="font-size:.75rem;color:#999;margin-bottom:2px;">' + (d.number ? '#' + d.number + ' &middot; ' : '') + esc(d.variant_name) + '</div>';
+  h += '<div style="font-size:.75rem;color:#999;margin-bottom:10px;">' + (d.number ? '#' + d.number + ' &middot; ' : '') + esc(d.variant_name) + '</div>';
   h += '<div style="font-size:1.2rem;font-weight:700;color:#222;">' + esc(d.option_name) + viaLabel + '</div>';
   h += '<div style="font-size:1.3rem;font-weight:700;color:#059669;margin:4px 0 0;">' + fmtRp(shownPrice) + '</div>';
   h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 16px;margin-top:14px;font-size:.85rem;">';

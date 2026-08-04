@@ -1597,10 +1597,14 @@ def _append_decoy_item(items, tokens, payment_type="balance"):
 
 
 def _parse_bizz_total(error_msg):
-    try:
-        return int(error_msg.split("=")[1].strip())
-    except (ValueError, IndexError, AttributeError):
-        return None
+    msg = str(error_msg or "")
+    for token in ("=", "valid amount is "):
+        if token in msg:
+            try:
+                return int(msg.split(token)[1].strip())
+            except (ValueError, IndexError):
+                continue
+    return None
 
 
 def _settle_with_decoy(pay_fn, tokens, items, detail, method, use_decoy):

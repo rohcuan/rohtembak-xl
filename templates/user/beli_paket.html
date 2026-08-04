@@ -179,14 +179,14 @@ function confCardHtml(a, method) {
   if (method === 'qris') {
     return '<div class="pkg-card' + muted + '">' +
       '<div class="pkg-number">#' + a.number + ' &middot; ' + a.variant_name + '</div>' +
-      '<div class="pkg-name">' + a.label + ' (via QRIS)</div>' + size +
+      '<div class="pkg-name">' + a.label + '</div>' + size +
       '<div class="pkg-price">' + fmtRp(Number(a.price) + QRIS_DECOY_PRICE) + '</div>' +
       '<a href="/user/xl/beli-paket/xtraconf-' + a.number + '/checkout/qris" class="detail-toggle">Beli via QRIS &rarr;</a>' +
       '</div>';
   }
   return '<div class="pkg-card' + muted + '">' +
     '<div class="pkg-number">#' + a.number + ' &middot; ' + a.variant_name + '</div>' +
-    '<div class="pkg-name">' + a.label + ' (via Pulsa)</div>' + size +
+    '<div class="pkg-name">' + a.label + '</div>' + size +
     '<div class="pkg-price">' + fmtRp(a.price) + '</div>' +
     '<a href="/user/xl/beli-paket/xtraconf-' + a.number + '/checkout/balance" class="detail-toggle">Beli via Pulsa &rarr;</a>' +
     '</div>';

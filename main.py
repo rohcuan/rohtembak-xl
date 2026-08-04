@@ -1421,13 +1421,15 @@ def user_xl_detail_addon15(request: Request, option_number: int, user: User = De
 
 
 @app.get("/user/xl/beli-paket/xtraconf-{option_number}/detail", response_class=HTMLResponse)
-def user_xl_detail_xtraconf(request: Request, option_number: int, user: User = Depends(get_current_user)):
+def user_xl_detail_xtraconf(request: Request, option_number: int, via: str = "", user: User = Depends(get_current_user)):
     if user.role != "user":
         return RedirectResponse(url="/admin/dashboard", status_code=303)
     db = next(get_db())
     ctx = get_user_context(user, db)
     db.close()
-    ctx.update({"request": request, "family": "xtraconf", "n": option_number})
+    if via not in ("pulsa", "qris"):
+        via = ""
+    ctx.update({"request": request, "family": "xtraconf", "n": option_number, "via": via})
     return render("user/detail_paket.html", context=ctx)
 
 

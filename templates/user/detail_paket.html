@@ -14,6 +14,14 @@
 }
 .pay-btn:hover { border-color: #2563eb; box-shadow: 0 1px 6px rgba(37,99,235,.15); }
 .pay-btn .sub { font-size: .75rem; font-weight: 400; color: #888; display: block; margin-top: 2px; }
+.pay-btn.disabled {
+  background: #f3f4f6;
+  color: #9ca3af;
+  cursor: not-allowed;
+  border-color: #e5e7eb;
+}
+.pay-btn.disabled:hover { border-color: #e5e7eb; box-shadow: none; }
+.pay-btn.disabled .sub { color: #c0c4cc; }
 
 .collapse-header {
   display: flex; justify-content: space-between; align-items: center;
@@ -101,6 +109,7 @@ function toggleCollapse(id) {
 window.BANNER_SSE = true;
 var DETAIL_FAMILY = "{{ family }}";
 var DETAIL_N = {{ n }};
+var DETAIL_VIA = "{{ via or '' }}";
 var DETAIL_CACHE_NAME = 'beli-paket-detail';
 var DETAIL_CACHE_TTL = 570;
 var DETAIL_CACHE_META_TTL = 570;
@@ -188,8 +197,17 @@ function detailHtml(d) {
   h += '<div style="padding:16px 24px;">';
   h += '<h3 style="font-size:.85rem;text-transform:uppercase;letter-spacing:.5px;color:#888;margin:0 0 10px;">Pilih Pembayaran</h3>';
   h += '<div class="pay-grid">';
-  h += '<a class="pay-btn" href="/user/xl/beli-paket/' + encodeURIComponent(d.url_id) + '/checkout/balance">Pulsa<span class="sub">Bayar dengan pulsa XL</span></a>';
-  h += '<a class="pay-btn" href="/user/xl/beli-paket/' + encodeURIComponent(d.url_id) + '/checkout/qris">QRIS<span class="sub">Bayar dengan QRIS</span></a>';
+  var pulsaBtn = '<a class="pay-btn" href="/user/xl/beli-paket/' + encodeURIComponent(d.url_id) + '/checkout/balance">Pulsa<span class="sub">Bayar dengan pulsa XL</span></a>';
+  var qrisBtn = '<a class="pay-btn" href="/user/xl/beli-paket/' + encodeURIComponent(d.url_id) + '/checkout/qris">QRIS<span class="sub">Bayar dengan QRIS</span></a>';
+  var pulsaOff = '<div class="pay-btn disabled">Pulsa<span class="sub">Bayar dengan pulsa XL</span></div>';
+  var qrisOff = '<div class="pay-btn disabled">QRIS<span class="sub">Bayar dengan QRIS</span></div>';
+  if (DETAIL_VIA === 'qris') {
+    h += pulsaOff + qrisBtn;
+  } else if (DETAIL_VIA === 'pulsa') {
+    h += pulsaBtn + qrisOff;
+  } else {
+    h += pulsaBtn + qrisBtn;
+  }
   h += '</div></div>';
 
   return h + '</div>';

@@ -32,7 +32,12 @@
   background: rgba(255,255,255,0.12);
   border-radius: 10px;
   padding: 14px;
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  transition: background .15s;
 }
+.pkg-card:hover { background: rgba(255,255,255,0.18); }
 .pkg-card .pkg-number { font-size: .7rem; color: rgba(255,255,255,0.7); }
 .pkg-card .pkg-name { font-size: 1rem; font-weight: 600; color: #fff; margin: 2px 0 6px; }
 .pkg-card .pkg-price { font-size: 1.15rem; font-weight: 700; color: #a7f3d0; margin-bottom: 10px; }
@@ -153,43 +158,34 @@ function fmtRp(n) {
 }
 
 function xcpCardHtml(p, i) {
-  return '<div class="pkg-card">' +
+  return '<a class="pkg-card" href="/user/xl/beli-paket/xcp-' + p.number + '/detail">' +
     '<div class="pkg-number">Alternatif ' + (i + 1) + ' &middot; Option #' + p.number + '</div>' +
     '<div class="pkg-name">Xtra Combo Plus 30k</div>' +
     '<div class="pkg-price">Rp 30.000</div>' +
-    '<a href="/user/xl/beli-paket/xcp-' + p.number + '/detail" class="detail-toggle">Detail Paket &rarr;</a>' +
-    '</div>';
+    '</a>';
 }
 
 function cardHtml(a, urlPrefix) {
   var muted = a.price === 0 ? ' muted' : '';
-  var html = '<div class="pkg-card' + muted + '">' +
+  var html = '<a class="pkg-card' + muted + '" href="/user/xl/beli-paket/' + urlPrefix + '-' + a.number + '/detail">' +
     '<div class="pkg-number">#' + a.number + ' &middot; ' + a.variant_name + '</div>' +
     '<div class="pkg-name">' + a.label + '</div>';
   if (a.size) html += '<div class="pkg-size">' + a.size + '</div>';
   html += '<div class="pkg-price">' + fmtRp(a.price) + '</div>' +
-    '<a href="/user/xl/beli-paket/' + urlPrefix + '-' + a.number + '/detail" class="detail-toggle">Detail Paket &rarr;</a>' +
-    '</div>';
+    '</a>';
   return html;
 }
 
 function confCardHtml(a, method) {
   var muted = a.price === 0 ? ' muted' : '';
   var size = a.size ? '<div class="pkg-size">' + a.size + '</div>' : '';
-  if (method === 'qris') {
-    return '<div class="pkg-card' + muted + '">' +
-      '<div class="pkg-number">#' + a.number + ' &middot; ' + a.variant_name + '</div>' +
-      '<div class="pkg-name">' + a.label + '</div>' + size +
-      '<div class="pkg-price">' + fmtRp(Number(a.price) + QRIS_DECOY_PRICE) + '</div>' +
-      '<a href="/user/xl/beli-paket/xtraconf-' + a.number + '/checkout/qris" class="detail-toggle">Beli via QRIS &rarr;</a>' +
-      '</div>';
-  }
-  return '<div class="pkg-card' + muted + '">' +
+  var price = (method === 'qris') ? fmtRp(Number(a.price) + QRIS_DECOY_PRICE) : fmtRp(a.price);
+  var via = (method === 'qris') ? 'qris' : 'pulsa';
+  return '<a class="pkg-card' + muted + '" href="/user/xl/beli-paket/xtraconf-' + a.number + '/detail?via=' + via + '">' +
     '<div class="pkg-number">#' + a.number + ' &middot; ' + a.variant_name + '</div>' +
     '<div class="pkg-name">' + a.label + '</div>' + size +
-    '<div class="pkg-price">' + fmtRp(a.price) + '</div>' +
-    '<a href="/user/xl/beli-paket/xtraconf-' + a.number + '/checkout/balance" class="detail-toggle">Beli via Pulsa &rarr;</a>' +
-    '</div>';
+    '<div class="pkg-price">' + price + '</div>' +
+    '</a>';
 }
 
 function cardHtmlFor(key, it, i) {

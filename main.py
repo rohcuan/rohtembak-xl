@@ -1608,13 +1608,15 @@ def _parse_bizz_total(error_msg):
 
 
 def _settle_with_decoy(pay_fn, tokens, items, detail, method, use_decoy):
+    if not use_decoy:
+        return pay_fn(API_KEY, tokens, items, detail["payment_for"], False, overwrite_amount=detail["price"])
     if method == "balance":
         res = pay_fn(API_KEY, tokens, items, detail["payment_for"], False, overwrite_amount=detail["price"])
         if res and res.get("status") == "SUCCESS":
             return res
         print("Pulsa biasa gagal, mencoba pulsa + decoy...")
-    elif not use_decoy:
-        return pay_fn(API_KEY, tokens, items, detail["payment_for"], False, overwrite_amount=detail["price"])
+    else:
+        res = None
 
     items_with_decoy, decoy_price = _append_decoy_item(items, tokens, method)
     if decoy_price is None:
@@ -1642,6 +1644,7 @@ def _process_payment(active_xl, option_number, addon_spec, method, fallback=Fals
     pay_success = None
     detail = None
     pay_extra = {}
+    use_decoy = bool(addon_spec) and addon_spec[0] == FAMILY_CODE_XTRA_CONFERENCE
     _stdout_buf = io.StringIO()
     with redirect_stdout(_stdout_buf):
         if active_xl and active_xl.refresh_token:
@@ -1656,14 +1659,14 @@ def _process_payment(active_xl, option_number, addon_spec, method, fallback=Fals
                     if method == "balance":
                         from app.client.purchase.balance import settlement_balance as pay_balance
                         _api_delay()
-                        res = _settle_with_decoy(pay_balance, tokens, items, detail, "balance", False)
+                        res = _settle_with_decoy(pay_balance, tokens, items, detail, "balance", use_decoy)
                         if res and res.get("status") == "SUCCESS":
                             pay_success = "Pembelian berhasil! Silakan cek aplikasi MyXL."
                         else:
                             pay_error = f"Pembayaran gagal: {res.get('message', 'Unknown error') if res else 'No response'}"
                     elif method == "qris":
                         from app.client.purchase.qris import show_qris_payment
-                        if fallback:
+                        if fallback and use_decoy:
                             _api_delay()
                             qris_result = _settle_with_decoy(show_qris_payment, tokens, items, detail, "qris", True)
                         else:
@@ -1675,11 +1678,11 @@ def _process_payment(active_xl, option_number, addon_spec, method, fallback=Fals
                             pay_extra["qris_b64"] = qris_b64
                             pay_extra["qris_remaining"] = int(qris_remaining or 0)
                         else:
-                            if fallback:
-                                pay_error = "Gagal membuat QRIS metode 2."
-                            else:
+                            if use_decoy and not fallback:
                                 pay_error = "Metode 1 gagal."
                                 pay_extra["qris_fallback_offer"] = True
+                            else:
+                                pay_error = "Gagal membuat QRIS."
                     elif method == "ewallet":
                         from app.client.purchase.ewallet import show_multipayment
                         _api_delay()

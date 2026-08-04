@@ -203,7 +203,7 @@ var EMPTY_MSG = { xcp: 'Tidak ada paket tersedia.', addon10: 'Tidak ada addon te
 var URL_PREFIX = { addon10: 'addon10-xcp', addon15: 'addon15-xcp' };
 var BOX_KEYS = ['xcp', 'addon10', 'addon15', 'xtraconf-balance', 'xtraconf-qris'];
 var BOXES_FROM_KEY = { packages: ['xcp'], addons: ['addon10'], addons_15: ['addon15'], xtra_conf: ['xtraconf-balance', 'xtraconf-qris'] };
-var STREAM_KEY_FROM_BOX = { xcp: 'packages', addon10: 'addons', addon15: 'addons_15', 'xtraconf-balance': 'xtra_conf', 'xtraconf-qris': 'xtra_conf' };
+var FAM_PARAM_FROM_BOX = { xcp: 'xcp', addon10: 'addon10', addon15: 'addon15', 'xtraconf-balance': 'xtraconf', 'xtraconf-qris': 'xtraconf' };
 var DATA_FROM_BOX = { xcp: 'packages', addon10: 'addons', addon15: 'addons_15', 'xtraconf-balance': 'xtra_conf', 'xtraconf-qris': 'xtra_conf' };
 var CACHE_KEY_FROM_STREAM = { packages: 'xcp', addons: 'addon10', addons_15: 'addon15', xtra_conf: 'xtraconf' };
 var CACHE_KEY_FROM_BOX = { 'xtraconf-balance': 'xtraconf', 'xtraconf-qris': 'xtraconf' };
@@ -356,10 +356,11 @@ function loadData() {
         else want.push('meta');
       } else {
         if (r.d) renderBox(r.k, r.d.items, r.d, false);
-        else want.push(STREAM_KEY_FROM_BOX[r.k] || r.k);
+        else want.push(FAM_PARAM_FROM_BOX[r.k] || r.k);
       }
     });
     if (!want.length) return;
+    want = want.filter(function(v, i, a) { return a.indexOf(v) === i; });
     streamData(want.join(','));
   });
 }

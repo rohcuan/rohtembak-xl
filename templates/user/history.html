@@ -32,11 +32,11 @@
                 <td>{{ t.ts }}</td>
                 <td>
                     {% if t.type == "topup" %}
-                    <span style="color:#10b981;font-weight:500;">Topup</span>
+                    <span style="color:#10b981;font-weight:500;">Penambahan Saldo</span>
                     {% elif t.type == "set" %}
                     <span style="color:#6366f1;font-weight:500;">Penyesuaian Saldo</span>
                     {% else %}
-                    <span style="color:#ef4444;font-weight:500;">Pembelian Paket</span>
+                    <span style="color:#ef4444;font-weight:500;">Pengurangan Saldo</span>
                     {% endif %}
                 </td>
                 <td style="font-weight:600;color:{{ 'green' if t.amount > 0 else 'red' }}">

@@ -92,10 +92,58 @@ function payNow() {
         if (res.new_balance != null && cur) cur.textContent = 'Rp ' + Number(res.new_balance).toLocaleString('id-ID');
         if (res.new_balance != null && rem) rem.textContent = 'Rp ' + Number(res.new_balance).toLocaleString('id-ID');
         if (res.qris_img) showQr(res.qris_img, res.qris_expires_ts || 0);
+      } else if (res.qris_fallback) {
+        var fb = res.qris_fallback;
+        box.innerHTML = '<span class="t-title">result</span><span class="t-prompt">$</span> <span class="t-err">GAGAL</span>\n'
+          + '<span class="t-prompt">$</span> Metode 1 gagal.\n'
+          + '<span class="t-prompt">$</span> Apakah ingin mencoba metode berikutnya?\n\n'
+          + '<span class="t-prompt">$</span> Metode 2 : ' + escapeHtml(fb.label) + ' <span class="t-ok">(' + escapeHtml(fb.decoy_name || '') + ')</span>\n'
+          + '<span class="t-prompt">$</span> Harga paket : Rp ' + Number(fb.package_price).toLocaleString('id-ID') + '\n'
+          + '<span class="t-prompt">$</span> Decoy       : Rp ' + Number(fb.decoy_price).toLocaleString('id-ID') + '\n'
+          + '<span class="t-prompt">$</span> Total QRIS  : Rp ' + Number(fb.qris_total).toLocaleString('id-ID') + '\n'
+          + '<span class="t-prompt">$</span> Fee token   : Rp ' + Number(fb.fee).toLocaleString('id-ID') + '\n'
+          + '<span class="t-prompt">$</span> <span class="t-ok">Total biaya : Rp ' + Number(fb.total).toLocaleString('id-ID') + '</span>\n\n'
+          + '<button class="btn btn-primary" id="fb-btn" onclick="tryFallback()">Ya, coba metode berikutnya</button>';
+        window.__fallbackUrl = fb.confirm_url;
       } else {
         var out = res.terminal_output || '';
         box.innerHTML = '<span class="t-title">result</span><span class="t-prompt">$</span> <span class="t-err">GAGAL</span>\n'
           + (out ? escapeHtml(out) : '') + '\n'
+          + '<span class="t-err">$</span> ' + (res.message || 'Terjadi kesalahan.');
+        btn.disabled = false;
+      }
+    })
+    .catch(function(e) {
+      box.innerHTML = '<span class="t-title">result</span><span class="t-prompt">$</span> <span class="t-err">ERROR</span>\n' + e.message;
+      btn.disabled = false;
+    });
+}
+function tryFallback() {
+  var btn = document.getElementById('pay-btn');
+  var box = document.getElementById('terminal-box');
+  var url = window.__fallbackUrl;
+  var fbBtn = document.getElementById('fb-btn');
+  if (fbBtn) fbBtn.disabled = true;
+  box.innerHTML = '<span class="t-title">result</span><span class="t-prompt">$</span> mencoba metode 2 (QRIS + decoy)...';
+  fetch(url, {method: 'POST'})
+    .then(function(r) { return r.json(); })
+    .then(function(res) {
+      if (res.ok) {
+        var out = res.terminal_output || '';
+        var body = out ? escapeHtml(out) : (res.message ? escapeHtml(res.message) : '');
+        box.innerHTML = '<span class="t-title">result</span><span class="t-prompt">$</span> <span class="t-ok">SUKSES (Metode 2)</span>\n'
+          + body + '\n'
+          + '<span class="t-prompt">$</span> ' + (res.message || '') + '\n'
+          + '<span class="t-prompt">$</span> saldo terpotong : Rp ' + (res.deducted != null ? Number(res.deducted).toLocaleString('id-ID') : '-') + '\n'
+          + '<span class="t-prompt">$</span> sisa saldo      : Rp ' + (res.new_balance != null ? Number(res.new_balance).toLocaleString('id-ID') : '-');
+        var cur = document.getElementById('bal-current');
+        var rem = document.getElementById('bal-remaining');
+        if (res.new_balance != null && cur) cur.textContent = 'Rp ' + Number(res.new_balance).toLocaleString('id-ID');
+        if (res.new_balance != null && rem) rem.textContent = 'Rp ' + Number(res.new_balance).toLocaleString('id-ID');
+        if (res.qris_img) showQr(res.qris_img, res.qris_expires_ts || 0);
+      } else {
+        box.innerHTML = '<span class="t-title">result</span><span class="t-prompt">$</span> <span class="t-err">GAGAL</span>\n'
+          + (res.terminal_output ? escapeHtml(res.terminal_output) : '') + '\n'
           + '<span class="t-err">$</span> ' + (res.message || 'Terjadi kesalahan.');
         btn.disabled = false;
       }

@@ -589,7 +589,7 @@ def admin_set_balance(
             user_id=user_id,
             amount=delta,
             type="set",
-            description=description or "Set saldo oleh admin"
+            description=description or "Penyesuaian saldo oleh admin"
         ))
     db.commit()
     return RedirectResponse(url="/admin/dashboard", status_code=303)

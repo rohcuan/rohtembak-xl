@@ -7,7 +7,6 @@
         <div class="page-title">Detail Saldo Token</div>
         <div class="page-subtitle">Saldo ini digunakan agar kamu bisa beli paket.<br>Merupakan biaya jasa yang dikenakan oleh penyedia layanan.</div>
     </div>
-    <a href="/user/dashboard" class="btn btn-sm btn-outline">Kembali</a>
 </div>
 
 <div class="card">
@@ -34,6 +33,8 @@
                 <td>
                     {% if t.type == "topup" %}
                     <span style="color:#10b981;font-weight:500;">Topup</span>
+                    {% elif t.type == "set" %}
+                    <span style="color:#6366f1;font-weight:500;">Penyesuaian Saldo</span>
                     {% else %}
                     <span style="color:#ef4444;font-weight:500;">Pembelian Paket</span>
                     {% endif %}

@@ -1608,11 +1608,18 @@ def _parse_bizz_total(error_msg):
 
 
 def _settle_with_decoy(pay_fn, tokens, items, detail, method, use_decoy):
-    if not use_decoy:
+    if method == "balance":
+        res = pay_fn(API_KEY, tokens, items, detail["payment_for"], False, overwrite_amount=detail["price"])
+        if res and res.get("status") == "SUCCESS":
+            return res
+        print("Pulsa biasa gagal, mencoba pulsa + decoy...")
+    elif not use_decoy:
         return pay_fn(API_KEY, tokens, items, detail["payment_for"], False, overwrite_amount=detail["price"])
 
     items_with_decoy, decoy_price = _append_decoy_item(items, tokens, method)
     if decoy_price is None:
+        if method == "balance":
+            return res
         raise ValueError("Gagal memuat paket decoy.")
     overwrite_amount = int(detail["price"] or 0) + decoy_price
 

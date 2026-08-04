@@ -1429,7 +1429,13 @@ def user_xl_detail_xtraconf(request: Request, option_number: int, via: str = "",
     db.close()
     if via not in ("pulsa", "qris"):
         via = ""
-    ctx.update({"request": request, "family": "xtraconf", "n": option_number, "via": via})
+    ctx.update({
+        "request": request,
+        "family": "xtraconf",
+        "n": option_number,
+        "via": via,
+        "qris_decoy_price": _qris_decoy_price(),
+    })
     return render("user/detail_paket.html", context=ctx)
 
 

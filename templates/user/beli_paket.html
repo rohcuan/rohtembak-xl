@@ -137,6 +137,7 @@ var CACHE_NAME = 'beli-paket';
 var CACHE_TTL = 570;
 var CACHE_META_TTL = 570;
 var XL_ID = "{{ active_xl.phone_number if active_xl else '' }}";
+var QRIS_DECOY_PRICE = {{ qris_decoy_price | default(0) }};
 var CACHE_META = new Request('/beli-paket-cache/' + XL_ID + '/meta');
 var CACHE_KEYS = {
   xcp: new Request('/beli-paket-cache/' + XL_ID + '/xcp'),
@@ -172,6 +173,28 @@ function cardHtml(a, urlPrefix) {
   return html;
 }
 
+function confCardHtml(a) {
+  var muted = a.price === 0 ? ' muted' : '';
+  var base = '<div class="pkg-number">#' + a.number + ' &middot; ' + a.variant_name + '</div>';
+  var size = a.size ? '<div class="pkg-size">' + a.size + '</div>' : '';
+  return '<div class="pkg-card' + muted + '">' + base +
+    '<div class="pkg-name">' + a.label + ' (via Pulsa)</div>' + size +
+    '<div class="pkg-price">' + fmtRp(a.price) + '</div>' +
+    '<a href="/user/xl/beli-paket/xtraconf-' + a.number + '/checkout/balance" class="detail-toggle">Beli via Pulsa &rarr;</a>' +
+    '</div>' +
+    '<div class="pkg-card' + muted + '">' + base +
+    '<div class="pkg-name">' + a.label + ' (via QRIS)</div>' + size +
+    '<div class="pkg-price">' + fmtRp(Number(a.price) + QRIS_DECOY_PRICE) + '</div>' +
+    '<a href="/user/xl/beli-paket/xtraconf-' + a.number + '/checkout/qris" class="detail-toggle">Beli via QRIS &rarr;</a>' +
+    '</div>';
+}
+
+function cardHtmlFor(key, it, i) {
+  if (key === 'xcp') return xcpCardHtml(it, i);
+  if (key === 'xtraconf') return confCardHtml(it);
+  return cardHtml(it, URL_PREFIX[key]);
+}
+
 var EMPTY_MSG = { xcp: 'Tidak ada paket tersedia.', addon10: 'Tidak ada addon tersedia.', addon15: 'Tidak ada addon tersedia.', xtraconf: 'Tidak ada paket tersedia.' };
 var URL_PREFIX = { addon10: 'addon10-xcp', addon15: 'addon15-xcp', xtraconf: 'xtraconf' };
 var BOX_KEYS = ['xcp', 'addon10', 'addon15', 'xtraconf'];
@@ -183,11 +206,7 @@ var streamedBoxes = {};
 function boxHtml(key, items) {
   if (!items || !items.length) return '<div class="pkg-empty">' + (EMPTY_MSG[key] || '') + '</div>';
   var html = '<div class="package-grid">';
-  if (key === 'xcp') {
-    items.forEach(function(p, i) { html += xcpCardHtml(p, i); });
-  } else {
-    items.forEach(function(a) { html += cardHtml(a, URL_PREFIX[key]); });
-  }
+  items.forEach(function(a, i) { html += cardHtmlFor(key, a, i); });
   return html + '</div>';
 }
 
@@ -222,7 +241,7 @@ function renderProgressive(box, key, items) {
   var grid = box.querySelector('.package-grid');
   if (!grid) return;
   items.forEach(function(it, i) {
-    grid.insertAdjacentHTML('beforeend', (key === 'xcp') ? xcpCardHtml(it, i) : cardHtml(it, URL_PREFIX[key]));
+    grid.insertAdjacentHTML('beforeend', cardHtmlFor(key, it, i));
   });
 }
 
@@ -375,7 +394,7 @@ document.addEventListener('DOMContentLoaded', function() {
     ('xcp', 'Xtra Combo Plus', 3),
     ('addon10', 'Addon Xtra Combo Plus 10GB', 6),
     ('addon15', 'Addon Xtra Combo Plus 15GB', 9),
-    ('xtraconf', 'Xtra Conference', 3)
+    ('xtraconf', 'Xtra Conference (Pulsa & QRIS)', 6)
   ] %}
   {% for sid, stitle, scount in sections %}
     <div class="pkg-section">

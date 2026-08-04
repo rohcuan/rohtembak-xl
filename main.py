@@ -1242,6 +1242,7 @@ def user_xl_beli_paket(request: Request, user: User = Depends(get_current_user))
     ctx.update({
         "request": request,
         "family_name": "Xtra Combo Plus",
+        "qris_decoy_price": _qris_decoy_price(),
     })
     return render("user/beli_paket.html", context=ctx)
 
@@ -1610,18 +1611,9 @@ def _parse_bizz_total(error_msg):
 def _settle_with_decoy(pay_fn, tokens, items, detail, method, use_decoy):
     if not use_decoy:
         return pay_fn(API_KEY, tokens, items, detail["payment_for"], False, overwrite_amount=detail["price"])
-    if method == "balance":
-        res = pay_fn(API_KEY, tokens, items, detail["payment_for"], False, overwrite_amount=detail["price"])
-        if res and res.get("status") == "SUCCESS":
-            return res
-        print("Pulsa biasa gagal, mencoba pulsa + decoy...")
-    else:
-        res = None
 
     items_with_decoy, decoy_price = _append_decoy_item(items, tokens, method)
     if decoy_price is None:
-        if method == "balance":
-            return res
         raise ValueError("Gagal memuat paket decoy.")
     overwrite_amount = int(detail["price"] or 0) + decoy_price
 
@@ -1639,7 +1631,7 @@ def _settle_with_decoy(pay_fn, tokens, items, detail, method, use_decoy):
     return res
 
 
-def _process_payment(active_xl, option_number, addon_spec, method, fallback=False):
+def _process_payment(active_xl, option_number, addon_spec, method):
     pay_error = None
     pay_success = None
     detail = None
@@ -1666,23 +1658,15 @@ def _process_payment(active_xl, option_number, addon_spec, method, fallback=Fals
                             pay_error = f"Pembayaran gagal: {res.get('message', 'Unknown error') if res else 'No response'}"
                     elif method == "qris":
                         from app.client.purchase.qris import show_qris_payment
-                        if fallback and use_decoy:
-                            _api_delay()
-                            qris_result = _settle_with_decoy(show_qris_payment, tokens, items, detail, "qris", True)
-                        else:
-                            _api_delay()
-                            qris_result = show_qris_payment(API_KEY, tokens, items, detail["payment_for"], False, overwrite_amount=detail["price"])
+                        _api_delay()
+                        qris_result = _settle_with_decoy(show_qris_payment, tokens, items, detail, "qris", use_decoy)
                         if qris_result:
                             qris_b64, _, qris_remaining = qris_result
                             pay_success = "QRIS berhasil dibuat. Silakan pindai kode QR untuk menyelesaikan pembayaran."
                             pay_extra["qris_b64"] = qris_b64
                             pay_extra["qris_remaining"] = int(qris_remaining or 0)
                         else:
-                            if use_decoy and not fallback:
-                                pay_error = "Metode 1 gagal."
-                                pay_extra["qris_fallback_offer"] = True
-                            else:
-                                pay_error = "Gagal membuat QRIS."
+                            pay_error = "Gagal membuat QRIS."
                     elif method == "ewallet":
                         from app.client.purchase.ewallet import show_multipayment
                         _api_delay()
@@ -1779,6 +1763,15 @@ def _checkout_detail(active_xl, fetch_fn):
     return fetch_fn()
 
 
+def _qris_decoy_price():
+    try:
+        from app.service.decoy import load_decoy_config
+        config = load_decoy_config("qris") or {}
+        return int(config.get("price") or 0)
+    except Exception:
+        return 0
+
+
 def _checkout_context(active_xl, user, detail, method, family_key):
     db = next(get_db())
     try:
@@ -1788,12 +1781,15 @@ def _checkout_context(active_xl, user, detail, method, family_key):
         db.close()
     fee = _get_family_fee(family_key)
     remaining = balance - fee
+    price = detail.get("price") or 0
+    if family_key == "xtraconf" and method == "qris":
+        price = price + _qris_decoy_price()
     return {
         "detail": detail,
         "method": method,
         "method_label": PAY_METHOD_LABELS.get(method, method),
         "balance": balance,
-        "price": detail.get("price") or 0,
+        "price": price,
         "fee": fee,
         "family_label": FAMILY_LABELS.get(family_key, family_key),
         "remaining": remaining,
@@ -1875,7 +1871,7 @@ def checkout_xtraconf(request: Request, option_number: int, method: str, user: U
 
 
 @app.post("/user/xl/beli-paket/xcp-{option_number}/pay/{method}")
-def pay_paket(request: Request, option_number: int, method: str, user: User = Depends(get_current_user), fallback: int = 0):
+def pay_paket(request: Request, option_number: int, method: str, user: User = Depends(get_current_user)):
     if user.role != "user":
         return JSONResponse({"ok": False, "message": "Akses ditolak"}, status_code=403)
     if method not in PAY_METHOD_LABELS:
@@ -1883,12 +1879,12 @@ def pay_paket(request: Request, option_number: int, method: str, user: User = De
     db = next(get_db())
     ctx = get_user_context(user, db)
     db.close()
-    detail, pay_error, pay_success, pay_extra = _process_payment(ctx.get("active_xl"), option_number, False, method, bool(fallback))
+    detail, pay_error, pay_success, pay_extra = _process_payment(ctx.get("active_xl"), option_number, False, method)
     return _pay_response(user, detail, pay_error, pay_success, method, "xcp", pay_extra)
 
 
 @app.post("/user/xl/beli-paket/addon10-xcp-{option_number}/pay/{method}")
-def pay_addon(request: Request, option_number: int, method: str, user: User = Depends(get_current_user), fallback: int = 0):
+def pay_addon(request: Request, option_number: int, method: str, user: User = Depends(get_current_user)):
     if user.role != "user":
         return JSONResponse({"ok": False, "message": "Akses ditolak"}, status_code=403)
     if method not in PAY_METHOD_LABELS:
@@ -1896,12 +1892,12 @@ def pay_addon(request: Request, option_number: int, method: str, user: User = De
     db = next(get_db())
     ctx = get_user_context(user, db)
     db.close()
-    detail, pay_error, pay_success, pay_extra = _process_payment(ctx.get("active_xl"), option_number, ADDON_SPEC_10, method, bool(fallback))
+    detail, pay_error, pay_success, pay_extra = _process_payment(ctx.get("active_xl"), option_number, ADDON_SPEC_10, method)
     return _pay_response(user, detail, pay_error, pay_success, method, "addon10", pay_extra)
 
 
 @app.post("/user/xl/beli-paket/addon15-xcp-{option_number}/pay/{method}")
-def pay_addon15(request: Request, option_number: int, method: str, user: User = Depends(get_current_user), fallback: int = 0):
+def pay_addon15(request: Request, option_number: int, method: str, user: User = Depends(get_current_user)):
     if user.role != "user":
         return JSONResponse({"ok": False, "message": "Akses ditolak"}, status_code=403)
     if method not in PAY_METHOD_LABELS:
@@ -1909,12 +1905,12 @@ def pay_addon15(request: Request, option_number: int, method: str, user: User = 
     db = next(get_db())
     ctx = get_user_context(user, db)
     db.close()
-    detail, pay_error, pay_success, pay_extra = _process_payment(ctx.get("active_xl"), option_number, ADDON_SPEC_15, method, bool(fallback))
+    detail, pay_error, pay_success, pay_extra = _process_payment(ctx.get("active_xl"), option_number, ADDON_SPEC_15, method)
     return _pay_response(user, detail, pay_error, pay_success, method, "addon15", pay_extra)
 
 
 @app.post("/user/xl/beli-paket/xtraconf-{option_number}/pay/{method}")
-def pay_xtraconf(request: Request, option_number: int, method: str, user: User = Depends(get_current_user), fallback: int = 0):
+def pay_xtraconf(request: Request, option_number: int, method: str, user: User = Depends(get_current_user)):
     if user.role != "user":
         return JSONResponse({"ok": False, "message": "Akses ditolak"}, status_code=403)
     if method not in PAY_METHOD_LABELS:
@@ -1922,7 +1918,7 @@ def pay_xtraconf(request: Request, option_number: int, method: str, user: User =
     db = next(get_db())
     ctx = get_user_context(user, db)
     db.close()
-    detail, pay_error, pay_success, pay_extra = _process_payment(ctx.get("active_xl"), option_number, XTRA_CONF_SPEC, method, bool(fallback))
+    detail, pay_error, pay_success, pay_extra = _process_payment(ctx.get("active_xl"), option_number, XTRA_CONF_SPEC, method)
     return _pay_response(user, detail, pay_error, pay_success, method, "xtraconf", pay_extra)
 
 
@@ -2024,23 +2020,6 @@ def _pay_response(user, detail, pay_error, pay_success, method, family_key, pay_
     terminal_output = (pay_extra or {}).get("terminal_output", "")
     if terminal_output:
         resp["terminal_output"] = terminal_output
-    if (pay_extra or {}).get("qris_fallback_offer"):
-        from app.service.decoy import load_decoy_config
-        config = load_decoy_config("qris") or {}
-        price = int((detail or {}).get("price") or 0)
-        decoy_price = int(config.get("price") or 0)
-        fee = _get_family_fee(family_key)
-        url_id = (detail or {}).get("url_id", "")
-        resp["qris_fallback"] = {
-            "label": "QRIS + Decoy",
-            "decoy_name": config.get("option_name", ""),
-            "package_price": price,
-            "decoy_price": decoy_price,
-            "fee": fee,
-            "qris_total": price + decoy_price,
-            "total": price + decoy_price + fee,
-            "confirm_url": f"/user/xl/beli-paket/{url_id}/pay/{method}?fallback=1",
-        }
     return JSONResponse(resp)
 
 

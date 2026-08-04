@@ -1,5 +1,42 @@
 {% extends "base.html" %}
 {% block title %}Detail Saldo Token - RohTembak (XL){% endblock %}
+{% block head %}
+<style>
+.trx-table-wrap { overflow-x: auto; }
+.trx-cards { display: none; }
+@media (max-width: 640px) {
+  .trx-table-wrap { display: none; }
+  .trx-cards { display: block; }
+  .trx-card {
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.06);
+  }
+  .trx-card .trx-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .trx-card .trx-date { font-size: .75rem; color: #888; }
+  .trx-card .trx-amount { font-size: 1.15rem; font-weight: 700; margin-bottom: 4px; }
+  .trx-card .trx-desc { font-size: .8rem; color: #555; }
+}
+</style>
+{% endblock %}
+{% macro type_badge(t) -%}
+  {%- if t.type == "topup" -%}
+  <span style="color:#10b981;font-weight:500;">Penambahan Saldo</span>
+  {%- elif t.type == "set" -%}
+  <span style="color:#6366f1;font-weight:500;">Penyesuaian Saldo</span>
+  {%- else -%}
+  <span style="color:#ef4444;font-weight:500;">Pengurangan Saldo</span>
+  {%- endif -%}
+{%- endmacro %}
 {% block content %}
 
 <div class="header-section">
@@ -17,36 +54,44 @@
 <div class="card">
     <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:.5px;color:#888;margin-bottom:12px;">Riwayat Top Up &amp; Penggunaan Saldo Token</div>
     {% if transactions %}
-    <table>
-        <thead>
-            <tr>
-                <th>Tanggal</th>
-                <th>Tipe</th>
-                <th>Jumlah</th>
-                <th>Keterangan</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for t in transactions %}
-            <tr>
-                <td>{{ t.ts }}</td>
-                <td>
-                    {% if t.type == "topup" %}
-                    <span style="color:#10b981;font-weight:500;">Penambahan Saldo</span>
-                    {% elif t.type == "set" %}
-                    <span style="color:#6366f1;font-weight:500;">Penyesuaian Saldo</span>
-                    {% else %}
-                    <span style="color:#ef4444;font-weight:500;">Pengurangan Saldo</span>
-                    {% endif %}
-                </td>
-                <td style="font-weight:600;color:{{ 'green' if t.amount > 0 else 'red' }}">
-                    {{ "+" if t.amount > 0 else "" }}Rp {{ "{:,}".format(t.amount) }}
-                </td>
-                <td>{{ t.description or "—" }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    <div class="trx-table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Tanggal</th>
+                    <th>Tipe</th>
+                    <th>Jumlah</th>
+                    <th>Keterangan</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for t in transactions %}
+                <tr>
+                    <td>{{ t.ts }}</td>
+                    <td>{{ type_badge(t) }}</td>
+                    <td style="font-weight:600;color:{{ 'green' if t.amount > 0 else 'red' }}">
+                        {{ "+" if t.amount > 0 else "" }}Rp {{ "{:,}".format(t.amount) }}
+                    </td>
+                    <td>{{ t.description or "—" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="trx-cards">
+        {% for t in transactions %}
+        <div class="trx-card">
+            <div class="trx-top">
+                <span class="trx-date">{{ t.ts }}</span>
+                {{ type_badge(t) }}
+            </div>
+            <div class="trx-amount" style="color:{{ 'green' if t.amount > 0 else 'red' }}">
+                {{ "+" if t.amount > 0 else "" }}Rp {{ "{:,}".format(t.amount) }}
+            </div>
+            <div class="trx-desc">{{ t.description or "—" }}</div>
+        </div>
+        {% endfor %}
+    </div>
     {% else %}
     <div class="empty-state">Belum ada transaksi.</div>
     {% endif %}

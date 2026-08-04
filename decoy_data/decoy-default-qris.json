@@ -1,10 +1,10 @@
 {
-    "family_name": "Apps Quota Xtra Combo Plus 2GB",
-    "family_code": "580c1f94-7dc4-416e-96f6-8faf26567516",
+    "family_name": "XL PASS",
+    "family_code": "fff99b6b-5a5d-4ba4-a55b-38f6aca6f91d",
     "is_enterprise": false,
     "migration_type": "NONE",
-    "variant_code": "b50f954a-696e-46d0-8700-8e4d38521525",
-    "option_name": "TikTok 2GB",
-    "order": 27,
-    "price": 1000
+    "variant_code": "6986897d-9f09-4651-ac24-6efdf3dbcf3d",
+    "option_name": "XL PASS 20 Days",
+    "order": 1,
+    "price": 800000
 }

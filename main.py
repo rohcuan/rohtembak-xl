@@ -1620,11 +1620,13 @@ def _settle_with_decoy(pay_fn, tokens, items, detail, method, use_decoy):
         return pay_fn(API_KEY, tokens, items_with_decoy, "SHARE_PACKAGE", False, overwrite_amount=overwrite_amount, token_confirmation_idx=1)
 
     res = pay_fn(API_KEY, tokens, items_with_decoy, detail["payment_for"], False, overwrite_amount=overwrite_amount, token_confirmation_idx=1)
-    if res and res.get("status") != "SUCCESS" and "Bizz-err.Amount.Total" in str(res.get("message", "")):
-        valid_amount = _parse_bizz_total(str(res.get("message", "")))
-        if valid_amount is not None:
-            print(f"Adjusted total amount to: {valid_amount}")
-            res = pay_fn(API_KEY, tokens, items_with_decoy, detail["payment_for"], False, overwrite_amount=valid_amount, token_confirmation_idx=-1)
+    if res and res.get("status") != "SUCCESS":
+        msg = str(res.get("message", ""))
+        if "Bizz-err.Amount.Total" in msg or "valid amount is" in msg:
+            valid_amount = _parse_bizz_total(msg)
+            if valid_amount is not None:
+                print(f"Adjusted total amount to: {valid_amount}")
+                res = pay_fn(API_KEY, tokens, items_with_decoy, detail["payment_for"], False, overwrite_amount=valid_amount, token_confirmation_idx=-1)
     return res
 
 

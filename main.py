@@ -1587,11 +1587,49 @@ def _get_addon_detail(option_number, addon_spec, active_xl, tokens=None):
     return detail
 
 
+def _append_decoy_item(items, tokens, payment_type="balance"):
+    from app.service.decoy import build_decoy_item
+    _api_delay()
+    decoy_item = build_decoy_item(API_KEY, tokens, payment_type)
+    if not decoy_item or not decoy_item["item_code"]:
+        return items, None
+    return items + [decoy_item], int(decoy_item["item_price"] or 0)
+
+
+def _parse_bizz_total(error_msg):
+    try:
+        return int(error_msg.split("=")[1].strip())
+    except (ValueError, IndexError, AttributeError):
+        return None
+
+
+def _settle_with_decoy(pay_fn, tokens, items, detail, method, use_decoy):
+    if not use_decoy:
+        return pay_fn(API_KEY, tokens, items, detail["payment_for"], False, overwrite_amount=detail["price"])
+
+    items_with_decoy, decoy_price = _append_decoy_item(items, tokens, method)
+    if decoy_price is None:
+        raise ValueError("Gagal memuat paket decoy.")
+    overwrite_amount = int(detail["price"] or 0) + decoy_price
+
+    if method == "qris":
+        return pay_fn(API_KEY, tokens, items_with_decoy, "SHARE_PACKAGE", False, overwrite_amount=overwrite_amount, token_confirmation_idx=1)
+
+    res = pay_fn(API_KEY, tokens, items_with_decoy, detail["payment_for"], False, overwrite_amount=overwrite_amount, token_confirmation_idx=1)
+    if res and res.get("status") != "SUCCESS" and "Bizz-err.Amount.Total" in str(res.get("message", "")):
+        valid_amount = _parse_bizz_total(str(res.get("message", "")))
+        if valid_amount is not None:
+            print(f"Adjusted total amount to: {valid_amount}")
+            res = pay_fn(API_KEY, tokens, items_with_decoy, detail["payment_for"], False, overwrite_amount=valid_amount, token_confirmation_idx=-1)
+    return res
+
+
 def _process_payment(active_xl, option_number, addon_spec, method):
     pay_error = None
     pay_success = None
     detail = None
     pay_extra = {}
+    use_decoy = bool(addon_spec) and addon_spec[0] == FAMILY_CODE_XTRA_CONFERENCE
     _stdout_buf = io.StringIO()
     with redirect_stdout(_stdout_buf):
         if active_xl and active_xl.refresh_token:
@@ -1606,7 +1644,7 @@ def _process_payment(active_xl, option_number, addon_spec, method):
                     if method == "balance":
                         from app.client.purchase.balance import settlement_balance as pay_balance
                         _api_delay()
-                        res = pay_balance(API_KEY, tokens, items, detail["payment_for"], False, overwrite_amount=detail["price"])
+                        res = _settle_with_decoy(pay_balance, tokens, items, detail, "balance", use_decoy)
                         if res and res.get("status") == "SUCCESS":
                             pay_success = "Pembelian berhasil! Silakan cek aplikasi MyXL."
                         else:
@@ -1614,7 +1652,7 @@ def _process_payment(active_xl, option_number, addon_spec, method):
                     elif method == "qris":
                         from app.client.purchase.qris import show_qris_payment
                         _api_delay()
-                        qris_result = show_qris_payment(API_KEY, tokens, items, detail["payment_for"], False, overwrite_amount=detail["price"])
+                        qris_result = _settle_with_decoy(show_qris_payment, tokens, items, detail, "qris", use_decoy)
                         if qris_result:
                             qris_b64, _, qris_remaining = qris_result
                             pay_success = "QRIS berhasil dibuat. Silakan pindai kode QR untuk menyelesaikan pembayaran."

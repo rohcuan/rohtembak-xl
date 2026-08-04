@@ -71,37 +71,6 @@
 .badge-voice { background: #fce7f3; color: #be185d; }
 .badge-text { background: #d1fae5; color: #047857; }
 .badge-other { background: #f3f4f6; color: #6b7280; }
-.detail-toggle {
-  display: flex; align-items: center; gap: 6px;
-  margin-top: 10px; padding: 6px 0 4px;
-  border-top: 1px solid #eee;
-  font-size: .8rem; color: #6366f1; font-weight: 500;
-  cursor: pointer; user-select: none; transition: color .15s;
-}
-.detail-toggle:hover { color: #4f46e5; }
-.detail-toggle .arrow {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 18px; height: 18px; border-radius: 4px;
-  background: #f0f0f0; color: #888;
-  font-size: .6rem; line-height: 1;
-  transition: all .2s;
-}
-.detail-toggle.open .arrow {
-  background: #eef2ff; color: #6366f1; transform: rotate(90deg);
-}
-.detail-body {
-  display: none; margin-top: 6px;
-}
-.detail-body.open { display: block; }
-.detail-body .d-row {
-  padding: 10px 0 8px;
-}
-.detail-body .d-row + .d-row {
-  border-top: 1px solid #eee;
-}
-.detail-body .d-label { font-size: .7rem; color: #aaa; letter-spacing: .3px; display: block; margin-bottom: 4px; }
-.detail-body .d-value { font-size: .85rem; color: #333; font-weight: 400; word-break: break-all; display: block; }
-.detail-body .d-value.code { font-family: 'SF Mono', 'Consolas', monospace; font-size: .78rem; font-weight: 400; color: #555; }
 @media (max-width: 600px) {
   .paket-grid { grid-template-columns: 1fr; }
 }
@@ -134,13 +103,6 @@
   <a href="/user/dashboard" class="btn btn-outline btn-sm">&larr; Kembali</a>
 </div>
 
-<script>
-function toggleDetail(el) {
-  el.classList.toggle('open');
-  var body = el.nextElementSibling;
-  if (body) body.classList.toggle('open');
-}
-</script>
 <script>
 var INFO_XL_ID = "{{ active_xl.phone_number if active_xl else '' }}";
 var INFO_CACHE_NAME = 'xl-data';

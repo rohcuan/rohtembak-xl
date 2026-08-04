@@ -67,16 +67,6 @@
           {% endfor %}
         </div>
         {% endif %}
-
-        <div class="detail-toggle" onclick="toggleDetail(this)">
-          <span class="arrow">&#9654;</span> Detail Paket
-        </div>
-        <div class="detail-body">
-          <div class="d-row"><span class="d-label">Family Name</span><span class="d-value">{{ quota.package_family.name or "—" if quota.package_family else "—" }}</span></div>
-          <div class="d-row"><span class="d-label">Family Type</span><span class="d-value">{{ quota.package_family.package_family_type or "—" if quota.package_family else "—" }}</span></div>
-          <div class="d-row"><span class="d-label">Product Domain</span><span class="d-value">{{ quota.product_domain or "—" }}</span></div>
-          <div class="d-row"><span class="d-label">Quota Code</span><span class="d-value code">{{ quota.quota_code or "—" }}</span></div>
-        </div>
       </div>
     {% endfor %}
     </div>

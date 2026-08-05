@@ -436,7 +436,7 @@ def admin_credentials_update(
         new_username = new_username.strip()
         if not new_username:
             return RedirectResponse(url="/admin/credentials?error=username_kosong", status_code=303)
-        if db.query(User).filter(User.username == new_username, User.id != user.id).first():
+        if db.query(User).filter(User.username.ilike(new_username), User.id != user.id).first():
             return RedirectResponse(url="/admin/credentials?error=username_dipakai", status_code=303)
         user.username = new_username
     db.add(user)

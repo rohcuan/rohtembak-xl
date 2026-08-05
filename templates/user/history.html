@@ -41,7 +41,7 @@
 
 <div class="card">
     <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:.5px;color:#888;margin-bottom:8px;">Saldo Token Saat Ini</div>
-    <div style="font-size:2rem;font-weight:700;color:#059669;">Rp {{ "{:,}".format(balance or 0) }}</div>
+    <div style="font-size:1.4rem;font-weight:700;color:#059669;">{{ "{:,}".format(balance or 0) }} IDR</div>
 </div>
 
 <div class="card">
@@ -63,7 +63,7 @@
                     <td>{{ t.ts }}</td>
                     <td>{{ type_badge(t) }}</td>
                     <td style="font-weight:600;color:{{ 'green' if t.amount > 0 else 'red' }}">
-                        {{ "+" if t.amount > 0 else "" }}Rp {{ "{:,}".format(t.amount) }}
+                        {{ "+" if t.amount > 0 else "-" }}{{ "{:,}".format(t.amount|abs) }} IDR
                     </td>
                     <td>{{ t.description or "—" }}</td>
                 </tr>
@@ -77,7 +77,7 @@
             <div class="trx-date">{{ t.ts }}</div>
             {{ type_badge(t) }}
             <div class="trx-amount" style="color:{{ 'green' if t.amount > 0 else 'red' }}">
-                {{ "+" if t.amount > 0 else "" }}Rp {{ "{:,}".format(t.amount) }}
+                {{ "+" if t.amount > 0 else "-" }}{{ "{:,}".format(t.amount|abs) }} IDR
             </div>
             <div class="trx-desc">{{ t.description or "—" }}</div>
         </div>

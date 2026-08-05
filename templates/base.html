@@ -63,7 +63,7 @@
                         {% if user.role != 'admin' %}
                         <div class="dropdown-row">
                             <span class="dropdown-label">Saldo Token</span>
-                            <span class="dropdown-value">Rp {{ "{:,}".format(balance or 0) }}</span>
+                            <span class="dropdown-value">{{ "{:,}".format(balance or 0) }} IDR</span>
                         </div>
                         {% else %}
                         <div class="dropdown-row" style="cursor:pointer;" onclick="location.href='/admin/penghasilan'">

@@ -310,11 +310,13 @@ def login(
     role: str = Form("user"),
     db: Session = Depends(get_db),
 ):
-    user = db.query(User).filter(User.username == username).first()
+    user = db.query(User).filter(
+        (User.username == username) | (User.email == username)
+    ).first()
     if not user or not verify_password(password, user.password_hash):
         return render("login.html", context={
             "request": request,
-            "error": "Username atau password salah"
+            "error": "Email/Username atau password salah"
         }, status_code=400)
 
     if role == "admin" and user.role != "admin":

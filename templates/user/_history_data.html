@@ -34,8 +34,6 @@
                 <td data-label="Aksi" style="text-align:right;">
                     {% if r.kind == "qris" and not r.expired and r.img %}
                     <button class="btn btn-sm btn-primary qris-view" onclick="showQr('{{ r.img }}', {{ r.expires_ts or 0 }})">Lihat QR</button>
-                    {% elif r.kind == "qris" and r.expired %}
-                    <span style="color:#ef4444;font-weight:500;">Expired</span>
                     {% else %}
                     <span style="color:#d1d5db;">—</span>
                     {% endif %}

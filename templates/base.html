@@ -80,15 +80,8 @@
                         <div class="dropdown-row" style="cursor:pointer;" onclick="location.href='/admin/credentials'">
                             <span class="dropdown-label">Edit Admin Credentials</span>
                         </div>
-                        <div class="has-sub">
-                            <div class="dropdown-row" style="cursor:pointer;" onclick="toggleSubmenu(this)">
-                                <span class="dropdown-label">Backup</span>
-                                <svg class="chevron sub-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                            </div>
-                            <div class="submenu">
-                                <a href="/admin/backup?format=json" class="dropdown-item">JSON</a>
-                                <a href="/admin/backup?format=txt" class="dropdown-item">TXT</a>
-                            </div>
+                        <div class="dropdown-row" style="cursor:pointer;" onclick="location.href='/admin/backup'">
+                            <span class="dropdown-label">Backup (ZIP)</span>
                         </div>
                         <div class="dropdown-row" style="cursor:pointer;" onclick="location.href='/admin/restore'">
                             <span class="dropdown-label">Restore Backup</span>

@@ -41,8 +41,11 @@
 
 {% if result %}
 <div class="restore-msg">
-    <strong>Restore selesai.</strong> Pengguna dibuat: <strong>{{ result.created }}</strong>,
-    diperbarui: <strong>{{ result.updated }}</strong>, dilewati: <strong>{{ result.skipped }}</strong>.
+    <strong>Restore selesai.</strong>
+    {% if result.admin %}<div>Admin: {{ result.admin }}</div>{% endif %}
+    <div>Pengguna dibuat: <strong>{{ result.created }}</strong>, diperbarui: <strong>{{ result.updated }}</strong>, dilewati: <strong>{{ result.skipped }}</strong>.</div>
+    <div>Akun XL (nomor + refresh token): dipulihkan <strong>{{ result.xl_restored }}</strong>{% if result.xl_skipped %}, dilewati {{ result.xl_skipped }}{% endif %}.</div>
+    <div>Fee paket dipulihkan: <strong>{{ result.fee_restored }}</strong>.</div>
     {% if result.skipped_users %}
     <ul class="restore-list">
         {% for u in result.skipped_users %}<li>{{ u }}</li>{% endfor %}
@@ -53,7 +56,7 @@
 
 <div class="card" style="max-width:520px;">
     <h2>Restore Backup</h2>
-    <div class="page-subtitle">Unggah file backup untuk mengembalikan akun dan saldo pengguna.</div>
+    <div class="page-subtitle">Unggah file backup ZIP untuk mengembalikan semua data ke posisi semula.</div>
 
     <form method="POST" action="/admin/restore" enctype="multipart/form-data" id="restoreForm">
         <div class="form-group">
@@ -61,14 +64,14 @@
             <div class="dropzone" id="dropzone" onclick="document.getElementById('backup_file').click()">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
                 <div class="dz-title">Klik atau tarik file ke sini</div>
-                <div class="dz-sub">Format yang didukung: .json atau .txt</div>
+                <div class="dz-sub">Format yang didukung: .zip (backup lengkap), .json, .txt</div>
             </div>
-            <input type="file" name="backup_file" id="backup_file" accept=".json,.txt,application/json,text/plain" onchange="updateDropzone(this)" style="display:none;">
-            <p class="restore-hint">Pengguna yang sudah ada akan diperbarui password, email, dan saldonya. Pengguna baru akan dibuat. Akun admin tidak akan diubah.</p>
+            <input type="file" name="backup_file" id="backup_file" accept=".zip,.json,.txt,application/zip,application/json,text/plain" onchange="updateDropzone(this)" style="display:none;">
+            <p class="restore-hint">Restore mengembalikan akun admin (username/password), pengguna + saldo, fee paket, serta nomor XL beserta refresh token-nya (nomor yang aktif/logged-in ikut dipulihkan).</p>
         </div>
 
         <div class="restore-msg warn" style="margin:0 0 16px;">
-            <strong>Perhatian:</strong> restore akan menimpa data saldo pengguna yang cocok dengan isi file backup.
+            <strong>Perhatian:</strong> restore akan menimpa data pengguna, saldo, fee, dan akun XL sesuai isi file backup.
         </div>
 
         <div style="display:flex;gap:8px;">

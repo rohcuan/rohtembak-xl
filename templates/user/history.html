@@ -15,7 +15,11 @@
     margin-bottom: 10px;
     box-shadow: 0 1px 3px rgba(0,0,0,.06);
   }
-  .trx-card .trx-date { font-size: .8rem; color: #888; margin-bottom: 4px; }
+  .trx-card .trx-date { font-size: .8rem; color: #888; }
+  .trx-card .trx-divider {
+    border-top: 1px solid #e0e0e0;
+    margin: 8px -14px 10px;
+  }
   .trx-card .trx-amount { font-size: .85rem; font-weight: 600; margin-bottom: 4px; }
   .trx-card .trx-desc { font-size: .85rem; color: #555; }
 }
@@ -75,6 +79,7 @@
         {% for t in transactions %}
         <div class="trx-card">
             <div class="trx-date">{{ t.ts }}</div>
+            <div class="trx-divider"></div>
             {{ type_badge(t) }}
             <div class="trx-amount" style="color:{{ 'green' if t.amount > 0 else 'red' }}">
                 {{ "+" if t.amount > 0 else "-" }}{{ "{:,}".format(t.amount|abs) }} IDR

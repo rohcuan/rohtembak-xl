@@ -74,11 +74,19 @@ function payNow() {
   var box = document.getElementById('terminal-box');
   if (btn.disabled) return;
   btn.disabled = true;
-  box.innerHTML = '<span class="t-title">result</span><span class="t-prompt">$</span> memproses pembayaran...';
+  box.innerHTML = '<span class="t-title">result</span><span class="t-prompt">$</span> memproses pembayaran<span id="pay-dots">...</span>';
+  stopPayDots();
+  dotsTimerInt = setInterval(function() {
+    var el = document.getElementById('pay-dots');
+    if (!el) { stopPayDots(); return; }
+    var n = el.textContent.length >= 3 ? 1 : el.textContent.length + 1;
+    el.textContent = Array(n + 1).join('.');
+  }, 300);
 
   fetch('{{ pay_url }}', {method: 'POST'})
     .then(function(r) { return r.json(); })
     .then(function(res) {
+      stopPayDots();
       if (res.ok) {
         var out = res.terminal_output || '';
         var body = out ? escapeHtml(out) : (res.message ? escapeHtml(res.message) : '');
@@ -102,9 +110,14 @@ function payNow() {
       }
     })
     .catch(function(e) {
+      stopPayDots();
       box.innerHTML = '<span class="t-title">result</span><span class="t-prompt">$</span> <span class="t-err">ERROR</span>\n' + e.message;
       btn.disabled = false;
     });
+}
+var dotsTimerInt = null;
+function stopPayDots() {
+  if (dotsTimerInt) { clearInterval(dotsTimerInt); dotsTimerInt = null; }
 }
 function escapeHtml(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\n/g, '\n');

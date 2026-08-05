@@ -95,7 +95,7 @@ chmod +x install.sh
 rm -f /tmp/install.sh
 
 # --- 5. Restore runtime data --------------------------------------------------
-    log "Restoring runtime data..."
+log "Restoring runtime data..."
     for item in "${RETAIN_ITEMS[@]}"; do
         for src in "${BACKUP_DIR}"/${item}; do
             if [[ -e "${src}" ]]; then

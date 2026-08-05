@@ -138,6 +138,10 @@ function closeQr() {
   document.getElementById('qr-overlay').classList.remove('show');
   if (qrTimerInt) clearInterval(qrTimerInt);
   qrTimerInt = null;
+  document.getElementById('qrisClosedModal').classList.add('show');
+}
+function closeQrisClosedModal() {
+  document.getElementById('qrisClosedModal').classList.remove('show');
 }
 function isMaxPendingError(text) {
   return (text || '').indexOf('Reach Maximum Pending Transaction') !== -1;
@@ -228,6 +232,19 @@ function closePendingModal() {
     </div>
     <div class="modal-actions">
       <button type="button" class="btn btn-primary" onclick="closePendingModal()">Saya mengerti</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="qrisClosedModal" onclick="if(event.target===this)closeQrisClosedModal()">
+  <div class="modal">
+    <h3>Tidak sengaja menutup QRIS?</h3>
+    <div class="modal-body">
+      <p style="margin:0;">QRIS yang masih aktif tetap bisa dilihat kembali. Buka <strong>Riwayat Transaksi</strong>, lalu jangan lupa tekan <strong>Refresh Data</strong> terlebih dahulu untuk memuat ulang.</p>
+    </div>
+    <div class="modal-actions">
+      <a href="/user/xl/history" class="btn btn-primary">Buka Riwayat Transaksi</a>
+      <button type="button" class="btn btn-outline" onclick="closeQrisClosedModal()">Tutup</button>
     </div>
   </div>
 </div>

@@ -44,19 +44,25 @@
                 </div>
                 <div class="dropdown-menu" id="userDropdown">
                     <div class="dropdown-header">
-                        <div class="dropdown-field">
-                            <span class="dropdown-field-label">Role</span>
-                            <span class="dropdown-field-value">{{ 'Admin' if user.role == 'admin' else 'User' }}</span>
-                        </div>
-                        <div class="dropdown-sep"></div>
-                        <div class="dropdown-field">
-                            <span class="dropdown-field-label">email</span>
-                            <span class="dropdown-field-value">{{ user.email }}</span>
-                        </div>
-                        <div class="dropdown-sep"></div>
-                        <div class="dropdown-field">
-                            <span class="dropdown-field-label">username</span>
-                            <span class="dropdown-field-value">{{ user.username }}</span>
+                        <div class="has-sub">
+                            <div class="dropdown-row" style="cursor:pointer;" onclick="toggleSubmenu(this)">
+                                <span class="dropdown-label" style="font-weight:600;color:#1a1a2e;">Info Profil</span>
+                                <svg class="chevron sub-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                            </div>
+                            <div class="submenu">
+                                <div class="dropdown-field" style="margin:8px 12px 0;">
+                                    <span class="dropdown-field-label">Role</span>
+                                    <span class="dropdown-field-value">{{ 'Admin' if user.role == 'admin' else 'User' }}</span>
+                                </div>
+                                <div class="dropdown-field" style="margin:8px 12px 0;">
+                                    <span class="dropdown-field-label">email</span>
+                                    <span class="dropdown-field-value">{{ user.email }}</span>
+                                </div>
+                                <div class="dropdown-field" style="margin:8px 12px 10px;">
+                                    <span class="dropdown-field-label">username</span>
+                                    <span class="dropdown-field-value">{{ user.username }}</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div class="dropdown-body">

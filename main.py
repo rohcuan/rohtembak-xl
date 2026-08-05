@@ -374,14 +374,21 @@ def admin_dashboard(request: Request, user: User = Depends(get_current_user)):
     admin_bal = db.query(Balance).filter(Balance.user_id == user.id).first()
     db.close()
     fees = _get_all_family_fees()
+    fee_rows = []
+    for fam in ("xcp", "addon10", "addon15", "xtraconf"):
+        fee_rows.append({
+            "key": fam,
+            "label": FAMILY_LABELS.get(fam, fam),
+            "pulsa": fees.get(_fee_key(fam, "balance"), 0),
+            "qris": fees.get(_fee_key(fam, "qris"), 0),
+        })
     first_login = user.username == "admin" and verify_password("admin", user.password_hash)
     return render("admin/dashboard.html", context={
         "request": request,
         "user": user,
         "users": user_data,
         "balance": admin_bal.balance if admin_bal else 0,
-        "fees": fees,
-        "FEE_CATEGORY_LABELS": FEE_CATEGORY_LABELS,
+        "fee_rows": fee_rows,
         "first_login": first_login,
     })
 
@@ -434,15 +441,17 @@ def admin_credentials_update(
 
 @app.post("/admin/fees/set")
 def admin_set_fee(
-    fee_key: str = Form(...),
-    fee: int = Form(...),
+    family_key: str = Form(...),
+    fee_pulsa: int = Form(...),
+    fee_qris: int = Form(...),
     user: User = Depends(get_current_user),
 ):
     if user.role != "admin":
         return RedirectResponse(url="/user/dashboard", status_code=303)
-    if fee_key not in FAMILY_FEE_DEFAULTS or fee < 0:
+    if family_key not in FAMILY_LABELS or fee_pulsa < 0 or fee_qris < 0:
         return RedirectResponse(url="/admin/dashboard", status_code=303)
-    _set_family_fee(fee_key, fee)
+    _set_family_fee(_fee_key(family_key, "balance"), fee_pulsa)
+    _set_family_fee(_fee_key(family_key, "qris"), fee_qris)
     return RedirectResponse(url="/admin/dashboard", status_code=303)
 
 
@@ -1728,17 +1737,6 @@ FAMILY_FEE_DEFAULTS = {
     "addon15:qris": 1000,
     "xtraconf:balance": 1000,
     "xtraconf:qris": 1000,
-}
-
-FEE_CATEGORY_LABELS = {
-    "xcp:balance": "Xtra Combo Plus (Pulsa)",
-    "xcp:qris": "Xtra Combo Plus (QRIS)",
-    "addon10:balance": "Addon Xtra Combo Plus 10GB (Pulsa)",
-    "addon10:qris": "Addon Xtra Combo Plus 10GB (QRIS)",
-    "addon15:balance": "Addon Xtra Combo Plus 15GB (Pulsa)",
-    "addon15:qris": "Addon Xtra Combo Plus 15GB (QRIS)",
-    "xtraconf:balance": "Xtra Conference (Pulsa)",
-    "xtraconf:qris": "Xtra Conference (QRIS)",
 }
 
 FAMILY_LABELS = {

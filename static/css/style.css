@@ -24,6 +24,7 @@ a:hover { text-decoration: underline; }
     display: flex;
     align-items: center;
     justify-content: center;
+    padding: 20px;
     background: linear-gradient(135deg, #4361ee 0%, #7209b7 100%);
 }
 .login-card {

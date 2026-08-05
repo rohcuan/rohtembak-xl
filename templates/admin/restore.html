@@ -24,6 +24,17 @@
 .dropzone input[type=file] { display: none; }
 .restore-hint { font-size: 13px; color: #888; margin: 8px 0 0; line-height: 1.5; }
 .restore-list { margin: 8px 0 0; padding-left: 18px; font-size: 13.5px; line-height: 1.7; }
+.restore-chk {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 12px; border: 1px solid #e5e7eb; border-radius: 8px;
+  font-size: 14px; color: #374151; cursor: pointer; margin-bottom: 6px;
+  transition: border-color .15s ease;
+}
+.restore-chk:hover { border-color: #b9c6f5; }
+.restore-chk input { width: 16px; height: 16px; accent-color: #4361ee; }
+.restore-chk-all {
+  background: #f1f5ff; border-style: dashed; font-weight: 600; color: #1a1a2e;
+}
 </style>
 {% endblock %}
 {% block content %}
@@ -42,10 +53,11 @@
 {% if result %}
 <div class="restore-msg">
     <strong>Restore selesai.</strong>
+    <div>Bagian dipulihkan: {{ result.sections | join(', ') }}.</div>
     {% if result.admin %}<div>Admin: {{ result.admin }}</div>{% endif %}
-    <div>Pengguna dibuat: <strong>{{ result.created }}</strong>, diperbarui: <strong>{{ result.updated }}</strong>, dilewati: <strong>{{ result.skipped }}</strong>.</div>
-    <div>Akun XL (nomor + refresh token): dipulihkan <strong>{{ result.xl_restored }}</strong>{% if result.xl_skipped %}, dilewati {{ result.xl_skipped }}{% endif %}.</div>
-    <div>Fee paket dipulihkan: <strong>{{ result.fee_restored }}</strong>.</div>
+    {% if result.created is defined %}<div>Pengguna dibuat: <strong>{{ result.created }}</strong>, diperbarui: <strong>{{ result.updated }}</strong>, dilewati: <strong>{{ result.skipped }}</strong>.</div>{% endif %}
+    {% if result.xl_restored is defined %}<div>Nomor XL (refresh token): dipulihkan <strong>{{ result.xl_restored }}</strong>{% if result.xl_skipped %}, dilewati {{ result.xl_skipped }}{% endif %}.</div>{% endif %}
+    {% if result.fee_restored is defined %}<div>Fee paket dipulihkan: <strong>{{ result.fee_restored }}</strong>.</div>{% endif %}
     {% if result.skipped_users %}
     <ul class="restore-list">
         {% for u in result.skipped_users %}<li>{{ u }}</li>{% endfor %}
@@ -56,7 +68,7 @@
 
 <div class="card" style="max-width:520px;">
     <h2>Restore Backup</h2>
-    <div class="page-subtitle">Unggah file backup ZIP untuk mengembalikan semua data ke posisi semula.</div>
+    <div class="page-subtitle">Unggah file backup ZIP untuk mengembalikan data ke posisi semula.</div>
 
     <form method="POST" action="/admin/restore" enctype="multipart/form-data" id="restoreForm">
         <div class="form-group">
@@ -67,11 +79,20 @@
                 <div class="dz-sub">Format yang didukung: .zip (backup lengkap), .json, .txt</div>
             </div>
             <input type="file" name="backup_file" id="backup_file" accept=".zip,.json,.txt,application/zip,application/json,text/plain" onchange="updateDropzone(this)" style="display:none;">
-            <p class="restore-hint">Restore mengembalikan akun admin (username/password), pengguna + saldo, fee paket, serta nomor XL beserta refresh token-nya (nomor yang aktif/logged-in ikut dipulihkan).</p>
         </div>
 
+        <div class="form-group">
+            <label>Bagian yang Dipulihkan</label>
+            <label class="restore-chk"><input type="checkbox" name="section" value="admin" checked> Akun admin (username &amp; password)</label>
+            <label class="restore-chk"><input type="checkbox" name="section" value="users" checked> Pengguna &amp; saldo token</label>
+            <label class="restore-chk"><input type="checkbox" name="section" value="xl_accounts" checked> Nomor XL &amp; refresh token</label>
+            <label class="restore-chk"><input type="checkbox" name="section" value="fees" checked> Fee paket</label>
+            <label class="restore-chk restore-chk-all"><input type="checkbox" id="selectAll" checked> Pilih semua</label>
+        </div>
+        <p class="restore-hint">Default memulihkan seluruh isi backup. Kosongkan bagian yang tidak ingin dipulihkan.</p>
+
         <div class="restore-msg warn" style="margin:0 0 16px;">
-            <strong>Perhatian:</strong> restore akan menimpa data pengguna, saldo, fee, dan akun XL sesuai isi file backup.
+            <strong>Perhatian:</strong> bagian yang dipilih akan menimpa data saat ini sesuai isi file backup (nomor XL aktif/logged-in ikut dipulihkan).
         </div>
 
         <div style="display:flex;gap:8px;">
@@ -90,6 +111,22 @@ function updateDropzone(input) {
     dz.querySelector('.dz-title').textContent = name ? name : 'Klik atau tarik file ke sini';
     btn.disabled = !name;
 }
+var selectAll = document.getElementById('selectAll');
+var sectionBoxes = Array.prototype.slice.call(document.querySelectorAll('input[name="section"]'));
+function syncSelectAll() {
+    selectAll.checked = sectionBoxes.every(function(b) { return b.checked; });
+}
+selectAll.addEventListener('change', function() {
+    sectionBoxes.forEach(function(b) { b.checked = selectAll.checked; });
+});
+sectionBoxes.forEach(function(b) { b.addEventListener('change', syncSelectAll); });
+document.getElementById('restoreForm').addEventListener('submit', function(e) {
+    if (!sectionBoxes.some(function(b) { return b.checked; })) {
+        e.preventDefault();
+        alert('Pilih minimal satu bagian untuk dipulihkan.');
+        return;
+    }
+});
 var dz = document.getElementById('dropzone');
 ['dragenter', 'dragover'].forEach(function(ev) {
     dz.addEventListener(ev, function(e) { e.preventDefault(); dz.classList.add('dragover'); });

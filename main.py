@@ -695,16 +695,25 @@ def admin_backup(format: str = "zip", admin_user: User = Depends(get_current_use
         raise HTTPException(status_code=403, detail="Forbidden")
     admin = db.query(User).filter(User.role == "admin").first()
     users = db.query(User).filter(User.role == "user").all()
-    data = []
+    admin_data = {
+        "username": admin.username if admin else "",
+        "password": (admin.password or admin.password_hash) if admin else "",
+        "email": admin.email if admin else "",
+    }
+    users_data = []
+    xl_data = []
     for u in users:
         bal = db.query(Balance).filter(Balance.user_id == u.id).first()
-        xls = db.query(XLAccount).filter(XLAccount.user_id == u.id).all()
-        data.append({
+        users_data.append({
             "username": u.username,
             "password": u.password or u.password_hash,
             "email": u.email,
             "saldo": bal.balance if bal else 0,
-            "xl_accounts": [{
+        })
+        xls = db.query(XLAccount).filter(XLAccount.user_id == u.id).all()
+        for x in xls:
+            xl_data.append({
+                "username": u.username,
                 "phone_number": x.phone_number,
                 "label": x.label,
                 "refresh_token": x.refresh_token,
@@ -712,22 +721,11 @@ def admin_backup(format: str = "zip", admin_user: User = Depends(get_current_use
                 "subscriber_id": x.subscriber_id,
                 "subscription_type": x.subscription_type,
                 "is_active": bool(x.is_active),
-            } for x in xls],
-        })
-    payload = {
-        "version": 2,
-        "exported_at": datetime.now(WIB).strftime("%Y-%m-%d %H:%M:%S WIB"),
-        "admin": {
-            "username": admin.username if admin else "",
-            "password": (admin.password or admin.password_hash) if admin else "",
-            "email": admin.email if admin else "",
-        },
-        "users": data,
-        "fees": _get_all_family_fees(),
-    }
+            })
+    fees = _get_all_family_fees()
     if format == "txt":
         lines = []
-        for u in data:
+        for u in users_data:
             lines.append(f"username: {u['username']}")
             lines.append(f"password: {u['password']}")
             lines.append(f"email: {u['email']}")
@@ -738,12 +736,29 @@ def admin_backup(format: str = "zip", admin_user: User = Depends(get_current_use
         resp.headers["Content-Disposition"] = 'attachment; filename="backup.txt"'
         return resp
     if format == "json":
+        payload = {
+            "version": 2,
+            "exported_at": datetime.now(WIB).strftime("%Y-%m-%d %H:%M:%S WIB"),
+            "admin": admin_data,
+            "users": [dict(u, xl_accounts=[a for a in xl_data if a["username"] == u["username"]]) for u in users_data],
+            "fees": fees,
+        }
         resp = JSONResponse(payload)
         resp.headers["Content-Disposition"] = 'attachment; filename="backup.json"'
         return resp
+    exported_at = datetime.now(WIB).strftime("%Y-%m-%d %H:%M:%S WIB")
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("backup.json", json.dumps(payload, indent=2, ensure_ascii=False))
+        zf.writestr("manifest.json", json.dumps({
+            "version": 3,
+            "app": "RohTembak (XL)",
+            "exported_at": exported_at,
+            "counts": {"users": len(users_data), "xl_accounts": len(xl_data), "fees": len(fees)},
+        }, indent=2, ensure_ascii=False))
+        zf.writestr("admin.json", json.dumps(admin_data, indent=2, ensure_ascii=False))
+        zf.writestr("users.json", json.dumps(users_data, indent=2, ensure_ascii=False))
+        zf.writestr("xl_accounts.json", json.dumps(xl_data, indent=2, ensure_ascii=False))
+        zf.writestr("fees.json", json.dumps(fees, indent=2, ensure_ascii=False))
     buf.seek(0)
     resp = Response(content=buf.getvalue(), media_type="application/zip")
     resp.headers["Content-Disposition"] = 'attachment; filename="backup.zip"'
@@ -757,25 +772,83 @@ def _is_zip_bytes(raw_bytes: bytes) -> bool:
     return raw_bytes[:4] == b"PK\x03\x04"
 
 
+def _norm_user_entry(entry) -> dict:
+    return {
+        "username": entry.get("username"),
+        "password": entry.get("password"),
+        "email": entry.get("email", ""),
+        "saldo": entry.get("saldo", entry.get("balance", 0)),
+    }
+
+
+def _norm_backup(data: dict) -> dict:
+    """Normalize full backup data into sections {admin, users, xl_accounts, fees}."""
+    users_raw = data.get("users") or []
+    users = [_norm_user_entry(u) for u in users_raw if isinstance(u, dict)]
+    xl_accounts = data.get("xl_accounts")
+    if xl_accounts is None:
+        xl_accounts = []
+        for u in users_raw:
+            if not isinstance(u, dict):
+                continue
+            for a in u.get("xl_accounts") or []:
+                if isinstance(a, dict):
+                    acc = dict(a)
+                    acc.setdefault("username", u.get("username"))
+                    xl_accounts.append(acc)
+    return {
+        "kind": "full",
+        "version": data.get("version", 2),
+        "admin": data.get("admin") if isinstance(data.get("admin"), dict) else None,
+        "users": users,
+        "xl_accounts": xl_accounts or None,
+        "fees": data.get("fees") if isinstance(data.get("fees"), dict) else None,
+    }
+
+
 def _parse_backup_json(data) -> dict:
-    """Returns {'kind': 'full'|'users', 'admin', 'users', 'fees'} from parsed JSON."""
+    """Returns normalized sections from a single JSON file (v2 full or users-only)."""
     if isinstance(data, dict):
         if data.get("version") == 2 or "admin" in data or "fees" in data:
-            users = data.get("users")
-            if not isinstance(users, list):
+            if not isinstance(data.get("users"), list):
                 raise ValueError("Format JSON tidak dikenali. Gunakan file hasil backup (field 'users').")
-            return {
-                "kind": "full",
-                "admin": data.get("admin") if isinstance(data.get("admin"), dict) else None,
-                "users": users,
-                "fees": data.get("fees") if isinstance(data.get("fees"), dict) else {},
-            }
+            return _norm_backup(data)
         users = data.get("users")
         if isinstance(users, list):
-            return {"kind": "users", "admin": None, "users": users, "fees": {}}
+            return {"kind": "users", "version": 1, "admin": None,
+                    "users": [_norm_user_entry(u) for u in users if isinstance(u, dict)],
+                    "xl_accounts": None, "fees": None}
     if isinstance(data, list):
-        return {"kind": "users", "admin": None, "users": data, "fees": {}}
+        return {"kind": "users", "version": 1, "admin": None,
+                "users": [_norm_user_entry(u) for u in data if isinstance(u, dict)],
+                "xl_accounts": None, "fees": None}
     raise ValueError("Format JSON tidak dikenali. Gunakan file hasil backup.")
+
+
+def _load_backup_v3(zf) -> dict | None:
+    """Read v3 multi-file ZIP. Returns normalized sections or None if not v3."""
+    try:
+        manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
+    except (KeyError, json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    if manifest.get("version") != 3:
+        return None
+
+    def read(name):
+        try:
+            return json.loads(zf.read(name).decode("utf-8"))
+        except KeyError:
+            return None
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            raise ValueError(f"File {name} di dalam ZIP tidak valid.")
+
+    return _norm_backup({
+        "version": 3,
+        "admin": read("admin.json"),
+        "users": read("users.json"),
+        "xl_accounts": read("xl_accounts.json"),
+        "fees": read("fees.json"),
+    })
 
 
 def _parse_backup_entries(raw: str) -> list:
@@ -803,15 +876,19 @@ def _parse_backup_entries(raw: str) -> list:
 
 
 def _load_backup_data(raw_bytes: bytes, filename: str) -> dict:
-    """Read backup from ZIP / JSON / TXT upload. Returns {kind, admin, users, fees}."""
+    """Read backup from ZIP / JSON / TXT upload. Returns normalized sections."""
     name = (filename or "").lower()
     if name.endswith(".zip") or _is_zip_bytes(raw_bytes):
         try:
             with zipfile.ZipFile(io.BytesIO(raw_bytes)) as zf:
-                names = [n for n in zf.namelist() if n.lower().endswith(".json")]
-                if not names:
-                    raise ValueError("ZIP tidak berisi file backup (backup.json).")
-                target = "backup.json" if "backup.json" in names else names[0]
+                data = _load_backup_v3(zf)
+                if data:
+                    return data
+                names = set(zf.namelist())
+                json_names = [n for n in names if n.lower().endswith(".json")]
+                if not json_names:
+                    raise ValueError("ZIP tidak berisi file backup (manifest.json / backup.json).")
+                target = "backup.json" if "backup.json" in names else sorted(json_names)[0]
                 inner = zf.read(target).decode("utf-8")
         except (zipfile.BadZipFile, UnicodeDecodeError, RuntimeError, KeyError):
             raise ValueError("File ZIP tidak valid atau rusak.")
@@ -829,7 +906,8 @@ def _load_backup_data(raw_bytes: bytes, filename: str) -> dict:
             return _parse_backup_json(json.loads(stripped))
         except ValueError as e:
             raise ValueError(f"Format JSON tidak dikenali: {e}")
-    return {"kind": "users", "admin": None, "users": _parse_backup_entries(text), "fees": {}}
+    return {"kind": "users", "version": 1, "admin": None,
+            "users": _parse_backup_entries(text), "xl_accounts": None, "fees": None}
 
 
 def _validate_restore_entry(entry: dict) -> dict | None:
@@ -884,6 +962,7 @@ def admin_restore_page(request: Request, user: User = Depends(get_current_user))
 async def admin_restore_upload(
     request: Request,
     backup_file: UploadFile = File(...),
+    section: list[str] = Form(default=[]),
     admin_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -900,24 +979,33 @@ async def admin_restore_upload(
     except ValueError as e:
         return _restore_render(request, admin_user, error=str(e))
 
-    entries = data["users"]
-    if data["kind"] == "users" and not entries:
-        return _restore_render(request, admin_user, error="Tidak ada data valid dalam file backup.")
+    if not section:
+        section = ["admin", "users", "fees", "xl_accounts"]
+    requested = set(section)
+    section_labels = {
+        "admin": "Akun admin",
+        "users": "Pengguna & saldo",
+        "xl_accounts": "Nomor XL",
+        "fees": "Fee paket",
+    }
+    result = {"sections": [section_labels[s] for s in section if s in section_labels]}
 
     # 1. Restore fee settings
     fee_restored = 0
-    for key, fee in data["fees"].items():
-        if key in FAMILY_FEE_DEFAULTS and isinstance(fee, int) and not isinstance(fee, bool) and fee >= 0:
-            row = db.query(FamilyFee).filter(FamilyFee.family_key == key).first()
-            if row:
-                row.fee = fee
-            else:
-                db.add(FamilyFee(family_key=key, fee=fee))
-            fee_restored += 1
+    if "fees" in requested and data["fees"]:
+        for key, fee in data["fees"].items():
+            if key in FAMILY_FEE_DEFAULTS and isinstance(fee, int) and not isinstance(fee, bool) and fee >= 0:
+                row = db.query(FamilyFee).filter(FamilyFee.family_key == key).first()
+                if row:
+                    row.fee = fee
+                else:
+                    db.add(FamilyFee(family_key=key, fee=fee))
+                fee_restored += 1
+        result["fee_restored"] = fee_restored
 
     # 2. Restore admin credentials
     admin_msg = None
-    if data["kind"] == "full" and data["admin"]:
+    if "admin" in requested and data["admin"]:
         a_username = str(data["admin"].get("username") or "").strip()
         a_password = str(data["admin"].get("password") or "").strip()
         a_email = str(data["admin"].get("email") or "").strip()
@@ -937,88 +1025,105 @@ async def admin_restore_upload(
                     admin_obj.email = a_email
         else:
             admin_msg = "Data admin tidak valid, dilewati."
+        result["admin"] = admin_msg
 
-    # 3. Restore users + their XL accounts (replace per user)
+    # 3. Restore users (create/update)
     created = updated = skipped = 0
     skipped_users = []
-    xl_restored = 0
-    xl_skipped = 0
     seen = set()
-    for entry in entries:
-        e = _validate_restore_entry(entry)
-        raw_username = str(entry.get("username") or "").strip()
-        username_lk = raw_username.lower()
-        if e is None or username_lk in seen:
-            skipped += 1
-            if raw_username and username_lk not in seen:
-                skipped_users.append(raw_username)
-            continue
-        seen.add(username_lk)
-        admin_username = _admin_username(db)
-        if username_lk == admin_username.lower():
-            skipped += 1
-            skipped_users.append(f"{e['username']} (admin)")
-            continue
-        existing = db.query(User).filter(User.username == e["username"]).first()
-        if existing and existing.role != "user":
-            skipped += 1
-            skipped_users.append(f"{e['username']} (admin)")
-            continue
-        email = _resolve_restore_email(db, existing, e["username"], e["email"])
-        if existing:
-            existing.password = e["password"]
-            existing.password_hash = hash_password(e["password"])
-            existing.email = email
-            bal = db.query(Balance).filter(Balance.user_id == existing.id).first()
-            if not bal:
-                bal = Balance(user_id=existing.id, balance=0)
-                db.add(bal)
-            if bal.balance != e["saldo"]:
-                db.add(BalanceTransaction(
-                    user_id=existing.id,
-                    amount=e["saldo"] - bal.balance,
-                    type="set",
-                    description="Restore dari backup"
-                ))
-                bal.balance = e["saldo"]
+    if "users" in requested:
+        if data["kind"] == "users" and not data["users"]:
+            return _restore_render(request, admin_user, error="Tidak ada data valid dalam file backup.")
+        for entry in data["users"]:
+            e = _validate_restore_entry(entry)
+            raw_username = str(entry.get("username") or "").strip()
+            username_lk = raw_username.lower()
+            if e is None or username_lk in seen:
+                skipped += 1
+                if raw_username and username_lk not in seen:
+                    skipped_users.append(raw_username)
+                continue
+            seen.add(username_lk)
+            admin_username = _admin_username(db)
+            if username_lk == admin_username.lower():
+                skipped += 1
+                skipped_users.append(f"{e['username']} (admin)")
+                continue
+            existing = db.query(User).filter(User.username == e["username"]).first()
+            if existing and existing.role != "user":
+                skipped += 1
+                skipped_users.append(f"{e['username']} (admin)")
+                continue
+            email = _resolve_restore_email(db, existing, e["username"], e["email"])
+            if existing:
+                existing.password = e["password"]
+                existing.password_hash = hash_password(e["password"])
+                existing.email = email
+                bal = db.query(Balance).filter(Balance.user_id == existing.id).first()
+                if not bal:
+                    bal = Balance(user_id=existing.id, balance=0)
+                    db.add(bal)
+                if bal.balance != e["saldo"]:
+                    db.add(BalanceTransaction(
+                        user_id=existing.id,
+                        amount=e["saldo"] - bal.balance,
+                        type="set",
+                        description="Restore dari backup"
+                    ))
+                    bal.balance = e["saldo"]
+                updated += 1
+            else:
+                u = User(
+                    username=e["username"],
+                    email=email,
+                    password_hash=hash_password(e["password"]),
+                    password=e["password"],
+                    role="user",
+                )
+                db.add(u)
+                db.flush()
+                db.add(Balance(user_id=u.id, balance=e["saldo"]))
+                if e["saldo"] > 0:
+                    db.add(BalanceTransaction(
+                        user_id=u.id,
+                        amount=e["saldo"],
+                        type="set",
+                        description="Restore dari backup"
+                    ))
+                created += 1
+        result["created"] = created
+        result["updated"] = updated
+        result["skipped"] = skipped
+        result["skipped_users"] = skipped_users
+
+    # 4. Restore XL accounts (replace per user)
+    xl_restored = xl_skipped = 0
+    if "xl_accounts" in requested and data["xl_accounts"]:
+        by_user = {}
+        for a in data["xl_accounts"]:
+            if not isinstance(a, dict):
+                xl_skipped += 1
+                continue
+            username = str(a.get("username") or "").strip()
+            phone = str(a.get("phone_number") or "").strip()
+            if not username or not phone:
+                xl_skipped += 1
+                continue
+            by_user.setdefault(username, []).append(a)
+        for username, accs in by_user.items():
+            existing = db.query(User).filter(User.username == username).first()
+            if not existing or existing.role != "user":
+                xl_skipped += len(accs)
+                continue
             uid = existing.id
-            updated += 1
-        else:
-            u = User(
-                username=e["username"],
-                email=email,
-                password_hash=hash_password(e["password"]),
-                password=e["password"],
-                role="user",
-            )
-            db.add(u)
-            db.flush()
-            uid = u.id
-            db.add(Balance(user_id=uid, balance=e["saldo"]))
-            if e["saldo"] > 0:
-                db.add(BalanceTransaction(
-                    user_id=uid,
-                    amount=e["saldo"],
-                    type="set",
-                    description="Restore dari backup"
-                ))
-            created += 1
-        if isinstance(entry, dict) and "xl_accounts" in entry:
             old_xls = db.query(XLAccount).filter(XLAccount.user_id == uid).all()
             for o in old_xls:
                 _XL_TOKEN_CACHE.pop(o.subscriber_id or o.id, None)
             db.query(XLAccount).filter(XLAccount.user_id == uid).delete()
-            for a in entry["xl_accounts"] or []:
-                if not isinstance(a, dict):
-                    xl_skipped += 1
-                    continue
-                phone = str(a.get("phone_number") or "").strip()
-                if not phone:
-                    xl_skipped += 1
-                    continue
+            for a in accs:
                 db.add(XLAccount(
                     user_id=uid,
-                    phone_number=phone,
+                    phone_number=str(a.get("phone_number") or "").strip(),
                     label=str(a.get("label") or "")[:50],
                     refresh_token=str(a.get("refresh_token") or ""),
                     refresh_expires_at=a.get("refresh_expires_at"),
@@ -1027,18 +1132,16 @@ async def admin_restore_upload(
                     is_active=bool(a.get("is_active")),
                 ))
                 xl_restored += 1
-    db.commit()
+        result["xl_restored"] = xl_restored
+        result["xl_skipped"] = xl_skipped
+    elif "xl_accounts" in requested:
+        result["xl_restored"] = 0
 
-    return _restore_render(request, admin_user, result={
-        "admin": admin_msg,
-        "created": created,
-        "updated": updated,
-        "skipped": skipped,
-        "skipped_users": skipped_users,
-        "xl_restored": xl_restored,
-        "xl_skipped": xl_skipped,
-        "fee_restored": fee_restored,
-    })
+    if not fee_restored and not created and not updated and not xl_restored and "admin" not in result:
+        return _restore_render(request, admin_user, error="Tidak ada data valid untuk bagian yang dipilih dalam file backup.")
+
+    db.commit()
+    return _restore_render(request, admin_user, result=result)
 
 
 # ─── User Dashboard ─────────────────────────────────────────────────────────

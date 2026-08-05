@@ -311,8 +311,13 @@ def login(
     db: Session = Depends(get_db),
 ):
     user = db.query(User).filter(
-        (User.username == username) | (User.email == username)
+        (User.username == username.strip()) | (User.email == username.strip())
     ).first()
+    if not username.strip():
+        return render("login.html", context={
+            "request": request,
+            "error": "Email atau username wajib diisi"
+        }, status_code=400)
     if not user or not verify_password(password, user.password_hash):
         return render("login.html", context={
             "request": request,
@@ -485,6 +490,11 @@ def admin_add_balance(
     return RedirectResponse(url="/admin/dashboard", status_code=303)
 
 
+def _admin_username(db: Session) -> str:
+    admin = db.query(User).filter(User.role == "admin").first()
+    return admin.username if admin else "admin"
+
+
 @app.post("/admin/users/add")
 def admin_add_user(
     username: str = Form(...),
@@ -501,8 +511,8 @@ def admin_add_user(
         raise HTTPException(status_code=400, detail="Email wajib diisi")
     if not username.strip():
         raise HTTPException(status_code=400, detail="Username wajib diisi")
-    if username.strip().lower() == "admin":
-        raise HTTPException(status_code=400, detail="Username 'admin' tidak boleh digunakan")
+    if username.strip().lower() == _admin_username(db).lower():
+        raise HTTPException(status_code=400, detail="Username admin tidak boleh digunakan")
 
     existing = db.query(User).filter(
         (User.username == username) | (User.email == email)
@@ -844,6 +854,11 @@ async def admin_restore_upload(
                 skipped_users.append(raw_username)
             continue
         seen.add(username_lk)
+        admin_username = _admin_username(db)
+        if username_lk == admin_username.lower():
+            skipped += 1
+            skipped_users.append(f"{e['username']} (admin)")
+            continue
         existing = db.query(User).filter(User.username == e["username"]).first()
         if existing and existing.role != "user":
             skipped += 1
@@ -2266,10 +2281,10 @@ def register(
             "request": request,
             "error": "Username wajib diisi"
         }, status_code=400)
-    if username.strip().lower() == "admin":
+    if username.strip().lower() == _admin_username(db).lower():
         return render("register.html", context={
             "request": request,
-            "error": "Username 'admin' tidak boleh digunakan"
+            "error": "Username admin tidak boleh digunakan"
         }, status_code=400)
     existing = db.query(User).filter(
         (User.username == username) | (User.email == email)

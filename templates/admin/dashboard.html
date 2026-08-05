@@ -156,21 +156,21 @@ document.addEventListener('click', function(e) {
 </div>
 
 <div class="card">
-    <h2 style="font-size:16px;margin-bottom:12px;">Saldo Token yang Terkonsumsi per Family</h2>
+    <h2 style="font-size:16px;margin-bottom:12px;">Saldo Token yang Terkonsumsi per Kategori</h2>
     <table id="fees-table">
         <thead>
             <tr>
-                <th>Family</th>
+                <th>Kategori</th>
                 <th>Saldo Token (IDR)</th>
             </tr>
         </thead>
         <tbody>
             {% for key, value in fees.items() %}
             <tr>
-                <td data-label="Family"><strong>{{ key }}</strong></td>
+                <td data-label="Kategori"><strong>{{ FEE_CATEGORY_LABELS.get(key, key) }}</strong></td>
                 <td data-label="Saldo Token">
                     <form method="POST" action="/admin/fees/set" class="fees-form">
-                        <input type="hidden" name="family_key" value="{{ key }}">
+                        <input type="hidden" name="fee_key" value="{{ key }}">
                         <input type="number" name="fee" value="{{ value }}" min="0" step="100" class="form-control" required>
                         <button type="submit" class="btn btn-sm btn-outline">Simpan</button>
                     </form>

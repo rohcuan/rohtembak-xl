@@ -381,6 +381,7 @@ def admin_dashboard(request: Request, user: User = Depends(get_current_user)):
         "users": user_data,
         "balance": admin_bal.balance if admin_bal else 0,
         "fees": fees,
+        "FEE_CATEGORY_LABELS": FEE_CATEGORY_LABELS,
         "first_login": first_login,
     })
 
@@ -433,15 +434,15 @@ def admin_credentials_update(
 
 @app.post("/admin/fees/set")
 def admin_set_fee(
-    family_key: str = Form(...),
+    fee_key: str = Form(...),
     fee: int = Form(...),
     user: User = Depends(get_current_user),
 ):
     if user.role != "admin":
         return RedirectResponse(url="/user/dashboard", status_code=303)
-    if family_key not in FAMILY_FEE_DEFAULTS or fee < 0:
+    if fee_key not in FAMILY_FEE_DEFAULTS or fee < 0:
         return RedirectResponse(url="/admin/dashboard", status_code=303)
-    _set_family_fee(family_key, fee)
+    _set_family_fee(fee_key, fee)
     return RedirectResponse(url="/admin/dashboard", status_code=303)
 
 
@@ -1719,10 +1720,25 @@ PAY_METHOD_LABELS = {
 }
 
 FAMILY_FEE_DEFAULTS = {
-    "xcp": 2000,
-    "addon10": 1000,
-    "addon15": 1000,
-    "xtraconf": 1000,
+    "xcp:balance": 2000,
+    "xcp:qris": 2000,
+    "addon10:balance": 1000,
+    "addon10:qris": 1000,
+    "addon15:balance": 1000,
+    "addon15:qris": 1000,
+    "xtraconf:balance": 1000,
+    "xtraconf:qris": 1000,
+}
+
+FEE_CATEGORY_LABELS = {
+    "xcp:balance": "Xtra Combo Plus (Pulsa)",
+    "xcp:qris": "Xtra Combo Plus (QRIS)",
+    "addon10:balance": "Addon Xtra Combo Plus 10GB (Pulsa)",
+    "addon10:qris": "Addon Xtra Combo Plus 10GB (QRIS)",
+    "addon15:balance": "Addon Xtra Combo Plus 15GB (Pulsa)",
+    "addon15:qris": "Addon Xtra Combo Plus 15GB (QRIS)",
+    "xtraconf:balance": "Xtra Conference (Pulsa)",
+    "xtraconf:qris": "Xtra Conference (QRIS)",
 }
 
 FAMILY_LABELS = {
@@ -1731,6 +1747,10 @@ FAMILY_LABELS = {
     "addon15": "Addon Xtra Combo Plus 15GB",
     "xtraconf": "Xtra Conference",
 }
+
+
+def _fee_key(family_key, method):
+    return f"{family_key}:{method}"
 
 
 def _family_key_from_url_id(url_id):
@@ -1794,7 +1814,7 @@ def _checkout_context(active_xl, user, detail, method, family_key):
         balance = bal.balance if bal else 0
     finally:
         db.close()
-    fee = _get_family_fee(family_key)
+    fee = _get_family_fee(_fee_key(family_key, method))
     remaining = balance - fee
     price = detail.get("price") or 0
     if family_key == "xtraconf" and method == "qris":
@@ -2015,7 +2035,7 @@ def _fetch_pending_qris(active_xl, tokens=None, transactions=None):
 
 def _pay_response(user, detail, pay_error, pay_success, method, family_key, pay_extra=None):
     if pay_success:
-        fee = _get_family_fee(family_key)
+        fee = _get_family_fee(_fee_key(family_key, method))
         new_balance = _deduct_token_balance(
             user,
             fee,

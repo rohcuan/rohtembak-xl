@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}RohTembak (XL){% endblock %}</title>
-    <link rel="stylesheet" href="/static/css/style.css?v=24">
+    <link rel="stylesheet" href="/static/css/style.css?v=25">
     <style>
 .modal-overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,.45);
@@ -97,7 +97,7 @@
                     <div class="dropdown-footer">
                         {% if user.role != 'admin' %}<a href="https://wa.me/6289512992313?text=Halo%20mimin%2C%20mau%20topup%20saldo%20RohTembak%20%28XL%29%20nya%20dong%21" class="dropdown-item" target="_blank" rel="noopener">Topup Saldo Token</a>{% endif %}
                         {% if user.role != 'admin' %}<a href="/user/detail-saldo-token" class="dropdown-item">Riwayat Saldo Token</a>{% endif %}
-                        <a href="javascript:void(0)" class="dropdown-item" onclick="openClearCacheModal()">Clear Cache</a>
+                        <a href="javascript:void(0)" class="dropdown-item clear-cache" onclick="openClearCacheModal()">Clear Cache</a>
                         <a href="/logout" class="dropdown-logout">Logout</a>
                     </div>
                 </div>

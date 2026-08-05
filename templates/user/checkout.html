@@ -147,7 +147,7 @@ function closeQr() {
 {% if detail %}
 <div class="card" style="padding:0;overflow:hidden;">
   <div style="padding:20px 24px;">
-    <div style="font-size:.75rem;color:#999;margin-bottom:2px;">{% if detail.number %}#{{ detail.number }} &middot;{% endif %} {{ detail.variant_name }}</div>
+    <div style="font-size:.75rem;color:#999;margin-bottom:10px;">{% if detail.number %}#{{ detail.number }} &middot;{% endif %} {{ detail.variant_name }}</div>
     <div style="font-size:1.2rem;font-weight:700;color:#222;">{{ detail.option_name }}</div>
     <div style="font-size:1.3rem;font-weight:700;color:#059669;margin:4px 0 0;">{{ "{:,}".format(price) }} IDR</div>
     <div class="summary-meta" style="margin-top:8px;">

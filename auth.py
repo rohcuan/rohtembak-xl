@@ -56,7 +56,7 @@ def seed_users(db: Session):
     if not existing:
         admin = User(
             username="admin",
-            email="admin@example.com",
+            email="",
             password_hash=hash_password("admin"),
             password="admin",
             role="admin"

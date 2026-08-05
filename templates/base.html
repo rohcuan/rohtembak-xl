@@ -54,10 +54,12 @@
                                     <span class="dropdown-field-label">Role</span>
                                     <span class="dropdown-field-value">{{ 'admin' if user.role == 'admin' else 'user' }}</span>
                                 </div>
+                                {% if user.role != 'admin' %}
                                 <div class="dropdown-field" style="margin:8px 12px 0;">
                                     <span class="dropdown-field-label">email</span>
                                     <span class="dropdown-field-value">{{ user.email }}</span>
                                 </div>
+                                {% endif %}
                                 <div class="dropdown-field" style="margin:8px 12px 10px;">
                                     <span class="dropdown-field-label">username</span>
                                     <span class="dropdown-field-value">{{ user.username }}</span>

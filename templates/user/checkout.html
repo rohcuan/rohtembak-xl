@@ -85,12 +85,12 @@ function payNow() {
         box.innerHTML = '<span class="t-title">result</span><span class="t-prompt">$</span> <span class="t-ok">SUKSES</span>\n'
           + body + '\n'
           + '<span class="t-prompt">$</span> ' + (res.message || '') + '\n'
-          + '<span class="t-prompt">$</span> saldo terpotong : Rp ' + (res.deducted != null ? Number(res.deducted).toLocaleString('id-ID') : '-') + '\n'
-          + '<span class="t-prompt">$</span> sisa saldo      : Rp ' + (res.new_balance != null ? Number(res.new_balance).toLocaleString('id-ID') : '-');
+          + '<span class="t-prompt">$</span> saldo terpotong : ' + (res.deducted != null ? Number(res.deducted).toLocaleString('id-ID') + ' IDR' : '-') + '\n'
+          + '<span class="t-prompt">$</span> sisa saldo      : ' + (res.new_balance != null ? Number(res.new_balance).toLocaleString('id-ID') + ' IDR' : '-');
         var cur = document.getElementById('bal-current');
         var rem = document.getElementById('bal-remaining');
-        if (res.new_balance != null && cur) cur.textContent = 'Rp ' + Number(res.new_balance).toLocaleString('id-ID');
-        if (res.new_balance != null && rem) rem.textContent = 'Rp ' + Number(res.new_balance).toLocaleString('id-ID');
+        if (res.new_balance != null && cur) cur.textContent = Number(res.new_balance).toLocaleString('id-ID') + ' IDR';
+        if (res.new_balance != null && rem) rem.textContent = Number(res.new_balance).toLocaleString('id-ID') + ' IDR';
         if (res.qris_img) showQr(res.qris_img, res.qris_expires_ts || 0);
       } else {
         var out = res.terminal_output || '';
@@ -149,7 +149,7 @@ function closeQr() {
   <div style="padding:20px 24px;">
     <div style="font-size:.75rem;color:#999;margin-bottom:2px;">{% if detail.number %}#{{ detail.number }} &middot;{% endif %} {{ detail.variant_name }}</div>
     <div style="font-size:1.2rem;font-weight:700;color:#222;">{{ detail.option_name }}</div>
-    <div style="font-size:1.3rem;font-weight:700;color:#059669;margin:4px 0 0;">Rp {{ "{:,}".format(price) }}</div>
+    <div style="font-size:1.3rem;font-weight:700;color:#059669;margin:4px 0 0;">{{ "{:,}".format(price) }} IDR</div>
     <div class="summary-meta" style="margin-top:8px;">
       Metode Pembayaran: <strong>{{ method_label }}</strong> &middot; Masa Aktif: <strong>{{ detail.validity or "-" }}</strong>
     </div>
@@ -163,15 +163,15 @@ function closeQr() {
         <h3>Detail Saldo Token yang Akan Terkonsumsi</h3>
         <div class="saldo-row">
           <span class="k">Saldo token saat ini</span>
-          <span class="v" id="bal-current">Rp {{ "{:,}".format(balance) }}</span>
+          <span class="v" id="bal-current">{{ "{:,}".format(balance) }} IDR</span>
         </div>
         <div class="saldo-row">
           <span class="k">Saldo token yang akan terkonsumsi</span>
-          <span class="v">Rp {{ "{:,}".format(fee) }}</span>
+          <span class="v">{{ "{:,}".format(fee) }} IDR</span>
         </div>
         <div class="saldo-row total">
           <span class="k">Sisa saldo setelah pembayaran</span>
-          <span class="v{% if insufficient %} neg{% endif %}" id="bal-remaining">Rp {{ "{:,}".format(remaining) }}</span>
+          <span class="v{% if insufficient %} neg{% endif %}" id="bal-remaining">{{ "{:,}".format(remaining) }} IDR</span>
         </div>
         {% if insufficient %}
         <div class="saldo-warn">Saldo token tidak mencukupi untuk paket ini.</div>

@@ -501,6 +501,8 @@ def admin_add_user(
         raise HTTPException(status_code=400, detail="Email wajib diisi")
     if not username.strip():
         raise HTTPException(status_code=400, detail="Username wajib diisi")
+    if username.strip().lower() == "admin":
+        raise HTTPException(status_code=400, detail="Username 'admin' tidak boleh digunakan")
 
     existing = db.query(User).filter(
         (User.username == username) | (User.email == email)
@@ -2263,6 +2265,11 @@ def register(
         return render("register.html", context={
             "request": request,
             "error": "Username wajib diisi"
+        }, status_code=400)
+    if username.strip().lower() == "admin":
+        return render("register.html", context={
+            "request": request,
+            "error": "Username 'admin' tidak boleh digunakan"
         }, status_code=400)
     existing = db.query(User).filter(
         (User.username == username) | (User.email == email)

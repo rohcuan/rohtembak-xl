@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}Restore Backup - RohTembak (XL){% endblock %}
+{% block head %}
+<style>
+.card h2 { margin: 0 0 4px; font-size: 16px; }
+.restore-msg {
+  background: #d1fae5; border: 1px solid #6ee7b7; color: #047857;
+  padding: 12px 16px; border-radius: 10px; font-size: 14px; margin-bottom: 16px;
+}
+.restore-msg.warn {
+  background: #fff3cd; border: 1px solid #ffe08a; color: #7a5c00;
+}
+.dropzone {
+  border: 2px dashed #c7cdd8; border-radius: 12px; padding: 26px 16px;
+  text-align: center; cursor: pointer; transition: all .15s ease;
+  background: #f8fafc; margin-bottom: 8px;
+}
+.dropzone.dragover { border-color: #4361ee; background: #eef1ff; }
+.dropzone svg { width: 32px; height: 32px; color: #9ca3af; margin-bottom: 8px; }
+.dropzone .dz-title { font-size: 14px; font-weight: 600; color: #333; }
+.dropzone .dz-sub { font-size: 12.5px; color: #888; margin-top: 4px; }
+.dropzone.has-file { border-style: solid; border-color: #6ee7b7; background: #ecfdf5; }
+.dropzone.has-file .dz-title { color: #047857; word-break: break-all; }
+.dropzone input[type=file] { display: none; }
+.restore-hint { font-size: 13px; color: #888; margin: 8px 0 0; line-height: 1.5; }
+.restore-list { margin: 8px 0 0; padding-left: 18px; font-size: 13.5px; line-height: 1.7; }
+</style>
+{% endblock %}
+{% block content %}
+
+<div class="header-section">
+    <div>
+        <div class="page-title">Restore Backup</div>
+        <div class="page-subtitle">Pulihkan data pengguna dari file backup (JSON / TXT).</div>
+    </div>
+</div>
+
+{% if error %}
+<div class="error-msg">{{ error }}</div>
+{% endif %}
+
+{% if result %}
+<div class="restore-msg">
+    <strong>Restore selesai.</strong> Pengguna dibuat: <strong>{{ result.created }}</strong>,
+    diperbarui: <strong>{{ result.updated }}</strong>, dilewati: <strong>{{ result.skipped }}</strong>.
+    {% if result.skipped_users %}
+    <ul class="restore-list">
+        {% for u in result.skipped_users %}<li>{{ u }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+</div>
+{% endif %}
+
+<div class="card" style="max-width:520px;">
+    <h2>Restore Backup</h2>
+    <div class="page-subtitle">Unggah file backup untuk mengembalikan akun dan saldo pengguna.</div>
+
+    <form method="POST" action="/admin/restore" enctype="multipart/form-data" id="restoreForm">
+        <div class="form-group">
+            <label>File Backup</label>
+            <div class="dropzone" id="dropzone" onclick="document.getElementById('backup_file').click()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                <div class="dz-title">Klik atau tarik file ke sini</div>
+                <div class="dz-sub">Format yang didukung: .json atau .txt</div>
+            </div>
+            <input type="file" name="backup_file" id="backup_file" accept=".json,.txt,application/json,text/plain" onchange="updateDropzone(this)" style="display:none;">
+            <p class="restore-hint">Pengguna yang sudah ada akan diperbarui password, email, dan saldonya. Pengguna baru akan dibuat. Akun admin tidak akan diubah.</p>
+        </div>
+
+        <div class="restore-msg warn" style="margin:0 0 16px;">
+            <strong>Perhatian:</strong> restore akan menimpa data saldo pengguna yang cocok dengan isi file backup.
+        </div>
+
+        <div style="display:flex;gap:8px;">
+            <a href="/admin/dashboard" class="btn btn-outline">Batal</a>
+            <button type="submit" class="btn btn-primary" id="submitBtn" disabled>Restore</button>
+        </div>
+    </form>
+</div>
+
+<script>
+function updateDropzone(input) {
+    var dz = document.getElementById('dropzone');
+    var btn = document.getElementById('submitBtn');
+    var name = input.files && input.files[0] ? input.files[0].name : '';
+    dz.classList.toggle('has-file', !!name);
+    dz.querySelector('.dz-title').textContent = name ? name : 'Klik atau tarik file ke sini';
+    btn.disabled = !name;
+}
+var dz = document.getElementById('dropzone');
+['dragenter', 'dragover'].forEach(function(ev) {
+    dz.addEventListener(ev, function(e) { e.preventDefault(); dz.classList.add('dragover'); });
+});
+['dragleave', 'drop'].forEach(function(ev) {
+    dz.addEventListener(ev, function(e) { e.preventDefault(); dz.classList.remove('dragover'); });
+});
+dz.addEventListener('drop', function(e) {
+    var file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (!file) return;
+    var input = document.getElementById('backup_file');
+    var dt = new DataTransfer();
+    dt.items.add(file);
+    input.files = dt.files;
+    updateDropzone(input);
+});
+</script>
+{% endblock %}

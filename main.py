@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastapi import FastAPI, Request, Depends, Form, HTTPException, status
+from fastapi import FastAPI, Request, Depends, Form, File, UploadFile, HTTPException, status
 from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
@@ -709,6 +709,189 @@ def admin_backup(format: str = "json", admin_user: User = Depends(get_current_us
     resp = JSONResponse(payload)
     resp.headers["Content-Disposition"] = 'attachment; filename="backup.json"'
     return resp
+
+
+MAX_BACKUP_RESTORE_SIZE = 1 * 1024 * 1024
+
+
+def _parse_backup_entries(raw: str) -> list:
+    raw = raw.replace("\r\n", "\n")
+    stripped = raw.strip()
+    if not stripped:
+        raise ValueError("File kosong. Tidak ada data untuk direstore.")
+    if stripped.startswith("{") or stripped.startswith("["):
+        data = json.loads(stripped)
+        if isinstance(data, dict):
+            data = data.get("users", [])
+        if not isinstance(data, list):
+            raise ValueError("Format JSON tidak dikenali. Gunakan file hasil backup (field 'users').")
+        entries = []
+        for u in data:
+            if not isinstance(u, dict):
+                continue
+            entries.append({
+                "username": u.get("username"),
+                "password": u.get("password"),
+                "email": u.get("email", ""),
+                "saldo": u.get("saldo", u.get("balance", 0)),
+            })
+        return entries
+    entries = []
+    for block in raw.split("\n\n"):
+        fields = {}
+        for line in block.splitlines():
+            if ":" in line:
+                key, _, value = line.partition(":")
+                fields[key.strip().lower()] = value.strip()
+        if not fields:
+            continue
+        entries.append({
+            "username": fields.get("username"),
+            "password": fields.get("password"),
+            "email": fields.get("email", ""),
+            "saldo": fields.get("saldo", "0"),
+        })
+    return entries
+
+
+def _validate_restore_entry(entry: dict) -> dict | None:
+    username = str(entry.get("username") or "").strip()
+    password = str(entry.get("password") or "").strip()
+    email = str(entry.get("email") or "").strip()
+    if not username or not password:
+        return None
+    if len(username) > 50 or len(password) > 255 or len(email) > 100:
+        return None
+    try:
+        saldo = int(float(str(entry.get("saldo") or "0").replace(",", "").strip()))
+    except (ValueError, TypeError):
+        return None
+    if saldo < 0:
+        return None
+    return {"username": username, "password": password, "email": email, "saldo": saldo}
+
+
+def _restore_render(request: Request, user: User, result: dict | None = None, error: str | None = None):
+    return render("admin/restore.html", context={
+        "request": request,
+        "user": user,
+        "result": result,
+        "error": error,
+    })
+
+
+def _resolve_restore_email(db: Session, existing: User | None, username: str, email: str) -> str:
+    if email:
+        owner = db.query(User).filter(User.email == email).first()
+        if owner and (existing is None or owner.id != existing.id):
+            email = ""
+    if not email:
+        if existing:
+            return existing.email or ""
+        candidate = f"{username}@restore.invalid"
+        while db.query(User).filter(User.email == candidate).first():
+            candidate = "_" + candidate
+        return candidate
+    return email
+
+
+@app.get("/admin/restore", response_class=HTMLResponse)
+def admin_restore_page(request: Request, user: User = Depends(get_current_user)):
+    if user.role != "admin":
+        return RedirectResponse(url="/user/dashboard", status_code=303)
+    return _restore_render(request, user)
+
+
+@app.post("/admin/restore")
+async def admin_restore_upload(
+    request: Request,
+    backup_file: UploadFile = File(...),
+    admin_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if admin_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    raw_bytes = await backup_file.read()
+    if not raw_bytes:
+        return _restore_render(request, admin_user, error="File kosong. Pilih file backup yang benar.")
+    if len(raw_bytes) > MAX_BACKUP_RESTORE_SIZE:
+        return _restore_render(request, admin_user, error="Ukuran file terlalu besar (maksimal 1 MB).")
+    try:
+        raw = raw_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        return _restore_render(request, admin_user, error="Isi file tidak valid (harus teks UTF-8).")
+
+    try:
+        entries = _parse_backup_entries(raw)
+    except ValueError as e:
+        return _restore_render(request, admin_user, error=str(e))
+    if not entries:
+        return _restore_render(request, admin_user, error="Tidak ada data valid dalam file backup.")
+
+    created = updated = skipped = 0
+    skipped_users = []
+    seen = set()
+    for entry in entries:
+        e = _validate_restore_entry(entry)
+        raw_username = str(entry.get("username") or "").strip()
+        username_lk = raw_username.lower()
+        if e is None or username_lk in seen:
+            skipped += 1
+            if raw_username and username_lk not in seen:
+                skipped_users.append(raw_username)
+            continue
+        seen.add(username_lk)
+        existing = db.query(User).filter(User.username == e["username"]).first()
+        if existing and existing.role != "user":
+            skipped += 1
+            skipped_users.append(f"{e['username']} (admin)")
+            continue
+        email = _resolve_restore_email(db, existing, e["username"], e["email"])
+        if existing:
+            existing.password = e["password"]
+            existing.password_hash = hash_password(e["password"])
+            existing.email = email
+            bal = db.query(Balance).filter(Balance.user_id == existing.id).first()
+            if not bal:
+                bal = Balance(user_id=existing.id, balance=0)
+                db.add(bal)
+            if bal.balance != e["saldo"]:
+                db.add(BalanceTransaction(
+                    user_id=existing.id,
+                    amount=e["saldo"] - bal.balance,
+                    type="set",
+                    description="Restore dari backup"
+                ))
+                bal.balance = e["saldo"]
+            updated += 1
+        else:
+            u = User(
+                username=e["username"],
+                email=email,
+                password_hash=hash_password(e["password"]),
+                password=e["password"],
+                role="user",
+            )
+            db.add(u)
+            db.flush()
+            db.add(Balance(user_id=u.id, balance=e["saldo"]))
+            if e["saldo"] > 0:
+                db.add(BalanceTransaction(
+                    user_id=u.id,
+                    amount=e["saldo"],
+                    type="set",
+                    description="Restore dari backup"
+                ))
+            created += 1
+    db.commit()
+
+    return _restore_render(request, admin_user, result={
+        "created": created,
+        "updated": updated,
+        "skipped": skipped,
+        "skipped_users": skipped_users,
+    })
 
 
 # ─── User Dashboard ─────────────────────────────────────────────────────────

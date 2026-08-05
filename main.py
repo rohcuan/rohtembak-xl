@@ -487,6 +487,11 @@ def admin_add_user(
     if admin_user.role != "admin":
         raise HTTPException(status_code=403, detail="Forbidden")
 
+    if not email.strip():
+        raise HTTPException(status_code=400, detail="Email wajib diisi")
+    if not username.strip():
+        raise HTTPException(status_code=400, detail="Username wajib diisi")
+
     existing = db.query(User).filter(
         (User.username == username) | (User.email == email)
     ).first()
@@ -494,8 +499,8 @@ def admin_add_user(
         raise HTTPException(status_code=400, detail="Username atau email sudah terdaftar")
 
     user = User(
-        username=username,
-        email=email,
+        username=username.strip(),
+        email=email.strip(),
         password_hash=hash_password(password),
         password=password,
         role="user"
@@ -2048,6 +2053,16 @@ def register(
     password: str = Form(...),
     db: Session = Depends(get_db),
 ):
+    if not email.strip():
+        return render("register.html", context={
+            "request": request,
+            "error": "Email wajib diisi"
+        }, status_code=400)
+    if not username.strip():
+        return render("register.html", context={
+            "request": request,
+            "error": "Username wajib diisi"
+        }, status_code=400)
     existing = db.query(User).filter(
         (User.username == username) | (User.email == email)
     ).first()
@@ -2058,8 +2073,8 @@ def register(
         }, status_code=400)
 
     user = User(
-        username=username,
-        email=email,
+        username=username.strip(),
+        email=email.strip(),
         password_hash=hash_password(password),
         password=password,
         role="user"

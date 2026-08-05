@@ -8,9 +8,14 @@ set -euo pipefail
 # username/password).
 #
 # NOTE: This is NOT part of install.sh. It must be run manually from a
-# terminal / SSH session inside the container or on the server:
+# terminal / SSH session inside the container or on the server.
+#
+# It can be run from any working directory (e.g. your home dir) - no need
+# to cd into the app folder first:
 #
 #   sudo bash /opt/rohtembak/reset-admin-credentials.sh
+#   # or, if you copied it elsewhere:
+#   sudo bash ~/reset-admin-credentials.sh
 #
 # It resets the first admin account to:
 #   username : admin

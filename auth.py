@@ -52,14 +52,17 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
 
 
 def seed_users(db: Session):
-    existing = db.query(User).filter(User.username == "admin").first()
-    if not existing:
-        admin = User(
-            username="admin",
-            email="",
-            password_hash=hash_password("admin"),
-            password="admin",
-            role="admin"
-        )
-        db.add(admin)
-        db.commit()
+    # Only seed a fresh install (no users at all). Do NOT re-create "admin"
+    # whenever a user literally named "admin" is missing -- the real admin may
+    # have been renamed, and re-seeding adds a duplicate admin/admin.
+    if db.query(User).count() > 0:
+        return
+    admin = User(
+        username="admin",
+        email="",
+        password_hash=hash_password("admin"),
+        password="admin",
+        role="admin"
+    )
+    db.add(admin)
+    db.commit()

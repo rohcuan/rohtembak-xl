@@ -95,7 +95,7 @@
                         {% endif %}
                     </div>
                     <div class="dropdown-footer">
-                        {% if user.role != 'admin' %}<a href="https://wa.me/6289512992313?text=Halo%20mimin%2C%20mau%20topup%20saldo%20RohTembak%20%28XL%29%20nya%20dong%21" class="dropdown-item" target="_blank" rel="noopener">Topup Saldo Token</a>{% endif %}
+                        {% if user.role != 'admin' %}<a href="javascript:void(0)" class="dropdown-item" onclick="openTopupModal()">Topup Saldo Token</a>{% endif %}
                         {% if user.role != 'admin' %}<a href="/user/detail-saldo-token" class="dropdown-item">Riwayat Saldo Token</a>{% endif %}
                         <a href="javascript:void(0)" class="dropdown-item clear-cache" onclick="openClearCacheModal()">Clear Cache</a>
                         <a href="/logout" class="dropdown-logout">Logout</a>
@@ -128,6 +128,16 @@
         </div>
     </div>
 </div>
+<div class="modal-overlay" id="topupModal" onclick="if(event.target===this)closeTopupModal()">
+    <div class="modal">
+        <h3>Topup Saldo Token</h3>
+        <p class="modal-body">Saat ini topup saldo masih dilayani secara manual. Silakan chat via WhatsApp untuk memesan, nanti mimin bantu isi saldo kamu.</p>
+        <div class="modal-actions">
+            <button type="button" class="btn btn-outline" onclick="closeTopupModal()">Nanti saja</button>
+            <a class="btn btn-primary" href="https://wa.me/6289512992313?text=Halo%20mimin%2C%20mau%20topup%20saldo%20RohTembak%20%28XL%29%20nya%20dong%21" target="_blank" rel="noopener">Chat WhatsApp</a>
+        </div>
+    </div>
+</div>
 <div class="modal-overlay" id="sessionExpiredModal">
     <div class="modal">
         <h3>Sesi Berakhir</h3>
@@ -149,6 +159,16 @@ function openClearCacheModal() {
   if (dd) dd.classList.remove('show');
   var m = document.getElementById('clearCacheModal');
   if (m) m.classList.add('show');
+}
+function openTopupModal() {
+  var dd = document.getElementById('userDropdown');
+  if (dd) dd.classList.remove('show');
+  var m = document.getElementById('topupModal');
+  if (m) m.classList.add('show');
+}
+function closeTopupModal() {
+  var m = document.getElementById('topupModal');
+  if (m) m.classList.remove('show');
 }
 function closeClearCacheModal() {
   var m = document.getElementById('clearCacheModal');

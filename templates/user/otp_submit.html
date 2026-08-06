@@ -56,4 +56,21 @@
     </div>
 </div>
 
+<script>
+(function() {
+    var form = document.querySelector('form[action="/user/xl/otp/submit"]');
+    if (!form) return;
+    form.addEventListener('submit', function() {
+        try {
+            var keys = [];
+            for (var i = 0; i < sessionStorage.length; i++) {
+                var k = sessionStorage.key(i);
+                if (k && k.indexOf('reotp_state_') === 0) keys.push(k);
+            }
+            for (var j = 0; j < keys.length; j++) sessionStorage.removeItem(keys[j]);
+        } catch (e) {}
+    });
+})();
+</script>
+
 {% endblock %}

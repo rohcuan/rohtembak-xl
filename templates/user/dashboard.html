@@ -87,7 +87,24 @@ function bannerSetInfo(xi) {
 }
 var BANNER_CACHE_NAME = 'banner';
 var BANNER_CACHE_TTL = 570;
+var SESSION_TTL = 570;
 var BANNER_CACHE_REQ = new Request('/banner-cache/' + DASH_XL_ID + '/info');
+function reotpStateKey() { return 'reotp_state_' + DASH_XL_ID; }
+function reotpStateGet() {
+  try {
+    var d = JSON.parse(sessionStorage.getItem(reotpStateKey()));
+    if (!d || d.token_ok !== false || typeof d.at !== 'number') return null;
+    return d;
+  } catch (e) { return null; }
+}
+function reotpStateSet() {
+  try {
+    sessionStorage.setItem(reotpStateKey(), JSON.stringify({ token_ok: false, at: Date.now() / 1000 }));
+  } catch (e) {}
+}
+function reotpStateClear() {
+  try { sessionStorage.removeItem(reotpStateKey()); } catch (e) {}
+}
 function bannerCachePut(xi) {
   if (!('caches' in window) || !xi) return;
   caches.open(BANNER_CACHE_NAME).then(function(cache) {
@@ -97,6 +114,11 @@ function bannerCachePut(xi) {
   });
 }
 function bannerFetch(force) {
+  var st = reotpStateGet();
+  if (!force && st && (Date.now() / 1000 - st.at) <= SESSION_TTL) {
+    maybeShowReotpNotice();
+    return Promise.resolve({ token_ok: false });
+  }
   return fetch('/user/xl/banner-info', { credentials: 'same-origin', cache: 'no-store' })
     .then(function(r) { return r.json(); })
     .then(function(res) {
@@ -104,22 +126,17 @@ function bannerFetch(force) {
         bannerSetInfo(res.xl_info);
         bannerCachePut(res.xl_info);
       }
-      maybeShowReotpNotice(res, force);
+      if (res && res.token_ok === false) reotpStateSet(); else reotpStateClear();
+      maybeShowReotpNotice();
       return res;
     });
 }
-function maybeShowReotpNotice(res, force) {
-  if (!res || res.token_ok !== false || !DASH_XL_ACTIVE_ID) return;
-  if (!force) {
-    try { if (sessionStorage.getItem('reotp_dismiss_' + DASH_XL_ID)) return; } catch (e) {}
-  }
+function maybeShowReotpNotice() {
+  if (!DASH_XL_ACTIVE_ID) return;
   showFloatingNotice(
     'Perlu login ulang',
     'Nomor aktif ' + DASH_XL_ID + ' tidak bisa dimuat. Ketuk "OTP ulang" untuk mengirim kode baru, atau "Tutup" untuk memilih nomor lain.',
-    '/user/xl/otp/request?xl_id=' + DASH_XL_ACTIVE_ID,
-    function() {
-      try { sessionStorage.setItem('reotp_dismiss_' + DASH_XL_ID, '1'); } catch (e) {}
-    }
+    '/user/xl/otp/request?xl_id=' + DASH_XL_ACTIVE_ID
   );
 }
 function refreshPageData() {
@@ -148,7 +165,7 @@ function refreshAllData() {
   });
 }
 function bannerLoad() {
-  var check = function() { bannerFetch(true); };
+  var check = function() { bannerFetch(); };
   if (!('caches' in window)) { check(); return; }
   caches.open(BANNER_CACHE_NAME).then(function(cache) {
     return cache.match(BANNER_CACHE_REQ);

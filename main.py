@@ -18,7 +18,7 @@ from database import init_db, get_db
 from models import User, XLAccount, Balance, BalanceTransaction, FamilyFee
 from auth import (
     verify_password, create_access_token, decode_token,
-    get_current_user, seed_users, hash_password
+    get_current_user, seed_users, hash_password, ACCESS_TOKEN_EXPIRE_MINUTES
 )
 
 from datetime import datetime, timezone, timedelta
@@ -342,7 +342,7 @@ def login(
         url="/admin/dashboard" if role == "admin" else "/user/dashboard",
         status_code=303
     )
-    resp.set_cookie(key="access_token", value=token, httponly=True, max_age=900)
+    resp.set_cookie(key="access_token", value=token, httponly=True, max_age=int(ACCESS_TOKEN_EXPIRE_MINUTES * 60))
     return resp
 
 
@@ -2646,7 +2646,7 @@ def register(
 
     token = create_access_token({"sub": str(user.id), "role": "user"})
     resp = RedirectResponse(url="/user/dashboard", status_code=303)
-    resp.set_cookie(key="access_token", value=token, httponly=True, max_age=900)
+    resp.set_cookie(key="access_token", value=token, httponly=True, max_age=int(ACCESS_TOKEN_EXPIRE_MINUTES * 60))
     return resp
 
 

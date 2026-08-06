@@ -41,19 +41,6 @@
 </div>
 {% endif %}
 
-{% if active_xl %}
-<div class="xl-reotp-warn" id="reotpBanner" style="display:none;">
-    <div>
-        <strong>Nomor aktif {{ active_xl.phone_number }} gagal dimuat ulang.</strong>
-        Refresh token nomor ini tidak berfungsi (mismatch / kedaluwarsa). Login ulang dengan OTP agar bisa dipakai, atau pilih nomor lain di daftar di bawah.
-    </div>
-    <div class="xl-reotp-actions">
-        <a class="btn btn-sm btn-primary" href="/user/xl/otp/request?xl_id={{ active_xl.id }}">Re-OTP</a>
-        <button type="button" class="btn btn-sm btn-outline" onclick="dismissReotpBanner()">Tutup</button>
-    </div>
-</div>
-{% endif %}
-
 {% if error %}
 <div class="error-msg">{{ error }}</div>
 {% endif %}
@@ -84,22 +71,10 @@
     {% endif %}
 </div>
 
-<div class="modal-overlay" id="reotpActivateModal" onclick="if(event.target===this)closeReotpActivateModal()">
-    <div class="modal">
-        <h3>Refresh Token Bermasalah</h3>
-        <p class="modal-body">Nomor <strong id="reotpActivatePhone">—</strong> gagal diperbarui otomatis (refresh token tidak berfungsi). Login ulang dengan OTP agar nomor ini bisa dipakai.</p>
-        <div class="modal-actions" style="flex-wrap:wrap;">
-            <button type="button" class="btn btn-outline" style="flex:1 1 100%;" onclick="closeReotpActivateModal()">Batal</button>
-            <button type="button" class="btn btn-outline" style="flex:1;" id="reotpActivateForce">Aktifkan tetap</button>
-            <a class="btn btn-primary" style="flex:1;" id="reotpActivateGo" href="#">Re-OTP</a>
-        </div>
-    </div>
-</div>
-
 <script>
 var DASH_XL_ID = "{{ active_xl.phone_number if active_xl else '' }}";
+var DASH_XL_ACTIVE_ID = {{ active_xl.id if active_xl else 0 }};
 var ACTIVE_CHECKING = false;
-var REOTP_FORCE_FORM = null;
 function bannerFmtRp(n) {
   n = Number(n);
   if (isNaN(n)) return '';
@@ -130,20 +105,21 @@ function bannerFetch() {
         bannerSetInfo(res.xl_info);
         bannerCachePut(res.xl_info);
       }
-      maybeShowReotpBanner(res);
+      maybeShowReotpNotice(res);
       return res;
     });
 }
-function dismissReotpBanner() {
-  var b = document.getElementById('reotpBanner');
-  if (b) b.style.display = 'none';
-  try { sessionStorage.setItem('reotp_dismiss_' + DASH_XL_ID, '1'); } catch (e) {}
-}
-function maybeShowReotpBanner(res) {
-  if (!res || res.token_ok !== false) return;
+function maybeShowReotpNotice(res) {
+  if (!res || res.token_ok !== false || !DASH_XL_ACTIVE_ID) return;
   try { if (sessionStorage.getItem('reotp_dismiss_' + DASH_XL_ID)) return; } catch (e) {}
-  var b = document.getElementById('reotpBanner');
-  if (b) b.style.display = 'flex';
+  showFloatingNotice(
+    'Perlu login ulang',
+    'Nomor aktif ' + DASH_XL_ID + ' tidak bisa dimuat. Ketuk "OTP ulang" untuk mengirim kode baru, atau "Tutup" untuk memilih nomor lain.',
+    '/user/xl/otp/request?xl_id=' + DASH_XL_ACTIVE_ID,
+    function() {
+      try { sessionStorage.setItem('reotp_dismiss_' + DASH_XL_ID, '1'); } catch (e) {}
+    }
+  );
 }
 function xlActivate(ev, xlId) {
   if (ACTIVE_CHECKING) return false;
@@ -161,7 +137,11 @@ function xlActivate(ev, xlId) {
     .then(function(r) { return r.json().catch(function() { return {}; }); })
     .then(function(res) {
       if (res && res.ok && res.token_ok === false) {
-        openReotpActivateModal(form, xlId, res.phone_number || '');
+        showFloatingNotice(
+          'Nomor belum bisa dipakai',
+          'Nomor ' + (res.phone_number || 'ini') + ' belum tersambung. Ketuk "OTP ulang" untuk mengirim kode baru lewat SMS.',
+          '/user/xl/otp/request?xl_id=' + xlId
+        );
       } else {
         form.submit();
       }
@@ -170,28 +150,6 @@ function xlActivate(ev, xlId) {
     .catch(function() { restore(); form.submit(); });
   return false;
 }
-function openReotpActivateModal(form, xlId, phone) {
-  REOTP_FORCE_FORM = form;
-  var p = document.getElementById('reotpActivatePhone');
-  if (p) p.textContent = phone || 'nomor ini';
-  var go = document.getElementById('reotpActivateGo');
-  if (go) go.href = '/user/xl/otp/request?xl_id=' + xlId;
-  var m = document.getElementById('reotpActivateModal');
-  if (m) m.classList.add('show');
-}
-function closeReotpActivateModal() {
-  var m = document.getElementById('reotpActivateModal');
-  if (m) m.classList.remove('show');
-  REOTP_FORCE_FORM = null;
-}
-(function() {
-  var force = document.getElementById('reotpActivateForce');
-  if (force) force.onclick = function() {
-    var f = REOTP_FORCE_FORM;
-    closeReotpActivateModal();
-    if (f) f.submit();
-  };
-})();
 function refreshPageData() {
   return fetch(location.pathname + '?frag=1&_t=' + Date.now(), { credentials: 'same-origin' })
     .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })

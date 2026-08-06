@@ -289,18 +289,25 @@ def root():
 
 # ─── Login ─────────────────────────────────────────────────────────────────
 
+def _redirect_authenticated(request: Request):
+    """If a valid session cookie exists, bounce to the right dashboard."""
+    token = request.cookies.get("access_token")
+    if not token:
+        return None
+    payload = decode_token(token)
+    if not payload:
+        return None
+    if payload.get("role") == "admin":
+        return RedirectResponse(url="/admin/dashboard", status_code=303)
+    return RedirectResponse(url="/user/dashboard", status_code=303)
+
+
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
-    token = request.cookies.get("access_token")
-    if token:
-        payload = decode_token(token)
-        if payload:
-            role = payload.get("role", "user")
-            if role == "admin":
-                return RedirectResponse(url="/admin/dashboard", status_code=303)
-            return RedirectResponse(url="/user/dashboard", status_code=303)
-    role = request.query_params.get("role", "user")
-    return render("login.html", context={"request": request, "role": role})
+    bounce = _redirect_authenticated(request)
+    if bounce:
+        return bounce
+    return render("login.html", context={"request": request})
 
 
 @app.post("/login")
@@ -308,47 +315,78 @@ def login(
     request: Request,
     username: str = Form(...),
     password: str = Form(...),
-    role: str = Form("user"),
     db: Session = Depends(get_db),
 ):
-    user = db.query(User).filter(
-        (User.username == username.strip()) | (User.email == username.strip())
-    ).first()
     if not username.strip():
         return render("login.html", context={
             "request": request,
             "error": "Email atau username wajib diisi"
         }, status_code=400)
+    user = db.query(User).filter(
+        (User.username == username.strip()) | (User.email == username.strip())
+    ).first()
     if not user or not verify_password(password, user.password_hash):
         return render("login.html", context={
             "request": request,
             "error": "Email/Username atau password salah"
         }, status_code=400)
-
-    if role == "admin" and user.role != "admin":
-        return render("login.html", context={
-            "request": request,
-            "error": "Akun ini tidak memiliki akses admin"
-        }, status_code=403)
-
-    if role == "user" and user.role != "user":
+    if user.role != "user":
         return render("login.html", context={
             "request": request,
             "error": "Akun admin tidak bisa login sebagai pengguna biasa"
         }, status_code=403)
 
     token = create_access_token({"sub": str(user.id), "role": user.role})
-    resp = RedirectResponse(
-        url="/admin/dashboard" if role == "admin" else "/user/dashboard",
-        status_code=303
-    )
+    resp = RedirectResponse(url="/user/dashboard", status_code=303)
+    resp.set_cookie(key="access_token", value=token, httponly=True, max_age=int(ACCESS_TOKEN_EXPIRE_MINUTES * 60))
+    return resp
+
+
+@app.get("/admin/login", response_class=HTMLResponse)
+def admin_login_page(request: Request):
+    bounce = _redirect_authenticated(request)
+    if bounce:
+        return bounce
+    return render("admin_login.html", context={"request": request})
+
+
+@app.post("/admin/login")
+def admin_login(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    if not username.strip():
+        return render("admin_login.html", context={
+            "request": request,
+            "error": "Username wajib diisi"
+        }, status_code=400)
+    user = db.query(User).filter(User.username == username.strip()).first()
+    if not user or not verify_password(password, user.password_hash):
+        return render("admin_login.html", context={
+            "request": request,
+            "error": "Username atau password salah"
+        }, status_code=400)
+    if user.role != "admin":
+        return render("admin_login.html", context={
+            "request": request,
+            "error": "Akun ini tidak memiliki akses admin"
+        }, status_code=403)
+
+    token = create_access_token({"sub": str(user.id), "role": user.role})
+    resp = RedirectResponse(url="/admin/dashboard", status_code=303)
     resp.set_cookie(key="access_token", value=token, httponly=True, max_age=int(ACCESS_TOKEN_EXPIRE_MINUTES * 60))
     return resp
 
 
 @app.get("/logout")
-def logout():
-    resp = RedirectResponse(url="/login", status_code=303)
+def logout(request: Request):
+    dest = "/login"
+    payload = decode_token(request.cookies.get("access_token") or "")
+    if payload and payload.get("role") == "admin":
+        dest = "/admin/login"
+    resp = RedirectResponse(url=dest, status_code=303)
     resp.delete_cookie("access_token")
     return resp
 

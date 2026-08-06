@@ -148,21 +148,21 @@ function refreshAllData() {
   });
 }
 function bannerLoad() {
-  if (!('caches' in window)) { bannerFetch(); return; }
+  var check = function() { bannerFetch(true); };
+  if (!('caches' in window)) { check(); return; }
   caches.open(BANNER_CACHE_NAME).then(function(cache) {
     return cache.match(BANNER_CACHE_REQ);
   }).then(function(r) {
-    if (!r) { bannerFetch(); return; }
+    if (!r) { check(); return; }
     return r.json().then(function(d) {
       if (d && d.xl_info && (Date.now() / 1000 - d.fetched_at) <= BANNER_CACHE_TTL) {
         bannerSetInfo(d.xl_info);
-      } else {
-        bannerFetch();
       }
+      check();
     });
   }).catch(function(err) {
     console.error('[banner] cache baca gagal:', err);
-    bannerFetch();
+    check();
   });
 }
 document.addEventListener('DOMContentLoaded', bannerLoad);

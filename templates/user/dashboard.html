@@ -74,7 +74,6 @@
 <script>
 var DASH_XL_ID = "{{ active_xl.phone_number if active_xl else '' }}";
 var DASH_XL_ACTIVE_ID = {{ active_xl.id if active_xl else 0 }};
-var ACTIVE_CHECKING = false;
 function bannerFmtRp(n) {
   n = Number(n);
   if (isNaN(n)) return '';
@@ -120,35 +119,6 @@ function maybeShowReotpNotice(res) {
       try { sessionStorage.setItem('reotp_dismiss_' + DASH_XL_ID, '1'); } catch (e) {}
     }
   );
-}
-function xlActivate(ev, xlId) {
-  if (ACTIVE_CHECKING) return false;
-  ev.preventDefault();
-  var form = ev.target.closest ? ev.target.closest('form') : null;
-  if (!form) return false;
-  ACTIVE_CHECKING = true;
-  var btn = form.querySelector('button');
-  function restore() {
-    ACTIVE_CHECKING = false;
-    if (btn) { btn.disabled = false; btn.textContent = 'Aktifkan'; }
-  }
-  if (btn) { btn.disabled = true; btn.textContent = 'Cek...'; }
-  fetch('/user/xl/check?xl_id=' + xlId, { credentials: 'same-origin', cache: 'no-store' })
-    .then(function(r) { return r.json().catch(function() { return {}; }); })
-    .then(function(res) {
-      if (res && res.ok && res.token_ok === false) {
-        showFloatingNotice(
-          'Nomor belum bisa dipakai',
-          'Nomor ' + (res.phone_number || 'ini') + ' belum tersambung. Ketuk "OTP ulang" untuk mengirim kode baru lewat SMS.',
-          '/user/xl/otp/request?xl_id=' + xlId
-        );
-      } else {
-        form.submit();
-      }
-      restore();
-    })
-    .catch(function() { restore(); form.submit(); });
-  return false;
 }
 function refreshPageData() {
   return fetch(location.pathname + '?frag=1&_t=' + Date.now(), { credentials: 'same-origin' })

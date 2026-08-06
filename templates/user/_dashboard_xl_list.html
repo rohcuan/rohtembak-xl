@@ -10,7 +10,7 @@
     </div>
     <div class="actions">
         {% if not xl.is_active %}
-        <form method="POST" action="/user/xl/set-active" style="display:inline" onsubmit="return xlActivate(event, {{ xl.id }})">
+        <form method="POST" action="/user/xl/set-active" style="display:inline">
             <input type="hidden" name="xl_id" value="{{ xl.id }}">
             <button class="btn btn-sm btn-outline">Aktifkan</button>
         </form>

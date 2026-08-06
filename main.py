@@ -1229,31 +1229,6 @@ def set_active_xl(
     return RedirectResponse(url="/user/dashboard", status_code=303)
 
 
-@app.get("/user/xl/check")
-def user_xl_check(
-    xl_id: int,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Test whether the account's refresh token can still produce XL tokens."""
-    if user.role != "user":
-        return JSONResponse({"ok": False, "token_ok": False}, status_code=403)
-    xl = db.query(XLAccount).filter(
-        XLAccount.id == xl_id, XLAccount.user_id == user.id
-    ).first()
-    if not xl:
-        return JSONResponse({"ok": False, "token_ok": False}, status_code=404)
-    token_ok = False
-    if xl.refresh_token:
-        try:
-            _api_delay()
-            token_ok = _get_xl_tokens(xl) is not None
-        except Exception as e:
-            print(f"[xl_check] {xl.phone_number}: {e}")
-            token_ok = False
-    return JSONResponse({"ok": True, "token_ok": token_ok, "phone_number": xl.phone_number})
-
-
 @app.post("/user/xl/add")
 def add_xl(
     request: Request,

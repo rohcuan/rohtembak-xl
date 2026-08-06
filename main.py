@@ -1229,6 +1229,31 @@ def set_active_xl(
     return RedirectResponse(url="/user/dashboard", status_code=303)
 
 
+@app.get("/user/xl/check")
+def user_xl_check(
+    xl_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Test whether the account's refresh token can still produce XL tokens."""
+    if user.role != "user":
+        return JSONResponse({"ok": False, "token_ok": False}, status_code=403)
+    xl = db.query(XLAccount).filter(
+        XLAccount.id == xl_id, XLAccount.user_id == user.id
+    ).first()
+    if not xl:
+        return JSONResponse({"ok": False, "token_ok": False}, status_code=404)
+    token_ok = False
+    if xl.refresh_token:
+        try:
+            _api_delay()
+            token_ok = _get_xl_tokens(xl) is not None
+        except Exception as e:
+            print(f"[xl_check] {xl.phone_number}: {e}")
+            token_ok = False
+    return JSONResponse({"ok": True, "token_ok": token_ok, "phone_number": xl.phone_number})
+
+
 @app.post("/user/xl/add")
 def add_xl(
     request: Request,
@@ -1299,13 +1324,24 @@ def remove_xl(
 # ─── XL OTP Login Flow ────────────────────────────────────────────────────
 
 @app.get("/user/xl/otp/request", response_class=HTMLResponse)
-def xl_otp_request_page(request: Request, user: User = Depends(get_current_user)):
+def xl_otp_request_page(
+    request: Request,
+    xl_id: int = 0,
+    user: User = Depends(get_current_user),
+):
     if user.role != "user":
         return RedirectResponse(url="/admin/dashboard", status_code=303)
     db = next(get_db())
     ctx = get_user_context(user, db)
+    existing = None
+    if xl_id:
+        existing = db.query(XLAccount).filter(
+            XLAccount.id == xl_id, XLAccount.user_id == user.id
+        ).first()
     db.close()
     ctx["request"] = request
+    ctx["existing"] = existing
+    ctx["relogin"] = existing is not None
     return render("user/otp_request.html", context=ctx)
 
 
@@ -1314,6 +1350,7 @@ def xl_otp_request(
     request: Request,
     phone_number: str = Form(...),
     label: str = Form(""),
+    xl_id: int = Form(0),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -1326,13 +1363,24 @@ def xl_otp_request(
         ctx.update({"request": request, "error": "Nomor tidak valid. Harus diawali 628 dan 10-15 digit"})
         return render("user/otp_request.html", context=ctx, status_code=400)
 
-    existing = db.query(XLAccount).filter(
-        XLAccount.user_id == user.id,
-        XLAccount.phone_number == phone_number
-    ).first()
-    if existing:
-        ctx.update({"request": request, "error": "Nomor ini sudah terdaftar"})
-        return render("user/otp_request.html", context=ctx, status_code=400)
+    if xl_id:
+        existing = db.query(XLAccount).filter(
+            XLAccount.id == xl_id, XLAccount.user_id == user.id
+        ).first()
+        if not existing:
+            ctx.update({"request": request, "error": "Nomor tidak ditemukan. Silakan daftarkan ulang."})
+            return render("user/otp_request.html", context=ctx, status_code=400)
+        if existing.phone_number != phone_number:
+            ctx.update({"request": request, "error": "Nomor tidak cocok dengan catatan. Gunakan nomor sesuai daftar."})
+            return render("user/otp_request.html", context=ctx, status_code=400)
+    else:
+        existing = db.query(XLAccount).filter(
+            XLAccount.user_id == user.id,
+            XLAccount.phone_number == phone_number
+        ).first()
+        if existing:
+            ctx.update({"request": request, "error": "Nomor ini sudah terdaftar. Gunakan tombol Re-OTP dari daftar nomor."})
+            return render("user/otp_request.html", context=ctx, status_code=400)
 
     try:
         _api_delay()
@@ -1344,10 +1392,10 @@ def xl_otp_request(
         ctx.update({"request": request, "error": "Gagal mengirim OTP. Periksa nomor atau tunggu beberapa saat."})
         return render("user/otp_request.html", context=ctx, status_code=400)
 
-    return RedirectResponse(
-        url=f"/user/xl/otp/submit?phone={phone_number}&label={label}&sid={subscriber_id}",
-        status_code=303
-    )
+    url = f"/user/xl/otp/submit?phone={phone_number}&label={label}&sid={subscriber_id}"
+    if xl_id:
+        url += f"&xl_id={xl_id}"
+    return RedirectResponse(url=url, status_code=303)
 
 
 @app.get("/user/xl/otp/submit", response_class=HTMLResponse)
@@ -1356,6 +1404,7 @@ def xl_otp_submit_page(
     phone: str = "",
     label: str = "",
     sid: str = "",
+    xl_id: int = 0,
     user: User = Depends(get_current_user),
 ):
     if user.role != "user":
@@ -1365,7 +1414,7 @@ def xl_otp_submit_page(
     db = next(get_db())
     ctx = get_user_context(user, db)
     db.close()
-    ctx.update({"request": request, "phone_number": phone, "label": label, "sid": sid})
+    ctx.update({"request": request, "phone_number": phone, "label": label, "sid": sid, "xl_id": xl_id})
     return render("user/otp_submit.html", context=ctx)
 
 
@@ -1376,6 +1425,7 @@ def xl_otp_submit(
     otp_code: str = Form(...),
     label: str = Form(""),
     subscriber_id: str = Form(""),
+    xl_id: int = Form(0),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -1417,22 +1467,44 @@ def xl_otp_submit(
     if profile and "subscription_type" in profile:
         subscription_type = profile["subscription_type"]
 
-    has_active = db.query(XLAccount).filter(
-        XLAccount.user_id == user.id, XLAccount.is_active == True
-    ).count() > 0
+    if xl_id:
+        target = db.query(XLAccount).filter(
+            XLAccount.id == xl_id, XLAccount.user_id == user.id
+        ).first()
+    else:
+        target = None
 
-    xl = XLAccount(
-        user_id=user.id,
-        phone_number=phone_number,
-        label=label,
-        refresh_token=refresh_token,
-        refresh_expires_at=refresh_expires_at,
-        subscriber_id=subscriber_id,
-        subscription_type=subscription_type,
-        is_active=not has_active,
-    )
-    db.add(xl)
-    db.commit()
+    if target:
+        old_sid = target.subscriber_id
+        _XL_TOKEN_CACHE.pop(old_sid or target.id, None)
+        db.query(XLAccount).filter(
+            XLAccount.user_id == user.id, XLAccount.is_active == True
+        ).update({"is_active": False})
+        target.phone_number = phone_number
+        target.label = label
+        target.refresh_token = refresh_token
+        target.refresh_expires_at = refresh_expires_at
+        target.subscriber_id = subscriber_id
+        target.subscription_type = subscription_type
+        target.is_active = True
+        db.commit()
+    else:
+        has_active = db.query(XLAccount).filter(
+            XLAccount.user_id == user.id, XLAccount.is_active == True
+        ).count() > 0
+
+        xl = XLAccount(
+            user_id=user.id,
+            phone_number=phone_number,
+            label=label,
+            refresh_token=refresh_token,
+            refresh_expires_at=refresh_expires_at,
+            subscriber_id=subscriber_id,
+            subscription_type=subscription_type,
+            is_active=not has_active,
+        )
+        db.add(xl)
+        db.commit()
 
     return RedirectResponse(url="/user/dashboard", status_code=303)
 
@@ -2015,7 +2087,13 @@ def user_xl_banner_info(user: User = Depends(get_current_user)):
     db = next(get_db())
     ctx = get_user_context(user, db)
     db.close()
-    return JSONResponse({"ok": True, "xl_info": _get_xl_info(ctx.get("active_xl"))})
+    active = ctx.get("active_xl")
+    xl_info = _get_xl_info(active)
+    token_ok = xl_info is not None
+    if not token_ok and active and active.refresh_token:
+        cached = _XL_TOKEN_CACHE.get(active.subscriber_id or active.id)
+        token_ok = bool(cached and cached.get("expires_at", 0) > time.time())
+    return JSONResponse({"ok": True, "xl_info": xl_info, "token_ok": token_ok})
 
 
 # ─── Payment Routes ─────────────────────────────────────────────────────────

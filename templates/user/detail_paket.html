@@ -127,7 +127,7 @@ function esc(s) {
 function fmtRp(v) {
   v = Number(v);
   if (isNaN(v)) return '';
-  return 'Rp ' + v.toLocaleString('id-ID');
+  return v.toLocaleString('id-ID') + ' IDR';
 }
 function fmtQuota(v) {
   v = Number(v);

@@ -16,7 +16,7 @@
         </div>
         <div class="banner-item">
             <div class="label">Pulsa</div>
-            <div class="value" data-banner="pulsa">{% if xl_info and xl_info.main_credit %}Rp {{ xl_info.main_credit|rupiah }}{% else %}—{% endif %}</div>
+            <div class="value" data-banner="pulsa">{% if xl_info and xl_info.main_credit %}{{ xl_info.main_credit|rupiah }} IDR{% else %}—{% endif %}</div>
         </div>
         <div class="banner-item">
             <div class="label">Masa Aktif</div>
@@ -77,7 +77,7 @@ var DASH_XL_ACTIVE_ID = {{ active_xl.id if active_xl else 0 }};
 function bannerFmtRp(n) {
   n = Number(n);
   if (isNaN(n)) return '';
-  return 'Rp ' + n.toLocaleString('id-ID');
+  return n.toLocaleString('id-ID') + ' IDR';
 }
 function bannerSetInfo(xi) {
   var pulsa = document.querySelector('[data-banner="pulsa"]');

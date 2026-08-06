@@ -54,7 +54,7 @@ def _tgl_jam_wib(ts):
 
 
 def _fmt_harga(value):
-    """Normalize any price shape (int, '30000', 'IDR 30000', 'IDR30.000') to 'IDR 30.000'."""
+    """Normalize any price shape (int, '30000', 'IDR 30000', 'IDR30.000') to '30.000 IDR'."""
     if value is None:
         return None
     digits = "".join(ch for ch in str(value) if ch.isdigit())
@@ -64,7 +64,7 @@ def _fmt_harga(value):
         n = int(digits)
     except ValueError:
         return None
-    return "IDR {:,.0f}".format(n).replace(",", ".")
+    return "{:,.0f} IDR".format(n).replace(",", ".")
 
 
 def _fmt_idr(n):

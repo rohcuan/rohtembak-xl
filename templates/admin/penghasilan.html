@@ -67,7 +67,7 @@
            class="seg-btn {{ 'active' if metric == key }}">{{ label }}</a>
         {% endfor %}
     </div>
-    <div class="income-value">Rp {{ (total or 0)|rupiah }}</div>
+    <div class="income-value">{{ (total or 0)|rupiah }} IDR</div>
     <div class="toggle-group">
         {% for key, label in INCOME_RANGES %}
         <a href="/admin/penghasilan?metric={{ metric }}&range={{ key }}"
@@ -84,7 +84,7 @@
             <tr>
                 <td data-label="Waktu">{{ d.ts }}</td>
                 <td data-label="User">{{ d.username }}</td>
-                <td data-label="Jumlah" class="amount-col">Rp {{ d.amount|rupiah }}</td>
+                <td data-label="Jumlah" class="amount-col">{{ d.amount|rupiah }} IDR</td>
             </tr>
             {% else %}
             <tr><td colspan="3" class="empty-state">Belum ada transaksi pada periode ini.</td></tr>

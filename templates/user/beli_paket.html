@@ -163,14 +163,14 @@ var CACHE_KEYS = {
 function fmtRp(n) {
   n = Number(n);
   if (isNaN(n)) return '';
-  return 'Rp ' + n.toLocaleString('id-ID');
+  return n.toLocaleString('id-ID') + ' IDR';
 }
 
 function xcpCardHtml(p, i) {
   return '<a class="pkg-card" href="/user/xl/beli-paket/xcp-' + p.number + '/detail">' +
     '<div class="pkg-number">Alternatif ' + (i + 1) + ' &middot; Option #' + p.number + '</div>' +
     '<div class="pkg-name">Xtra Combo Plus 30k</div>' +
-    '<div class="pkg-price">Rp 30.000</div>' +
+    '<div class="pkg-price">30.000 IDR</div>' +
     '</a>';
 }
 

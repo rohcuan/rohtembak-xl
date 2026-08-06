@@ -96,7 +96,7 @@ function bannerCachePut(xi) {
     console.error('[banner] cache gagal:', err);
   });
 }
-function bannerFetch() {
+function bannerFetch(force) {
   return fetch('/user/xl/banner-info', { credentials: 'same-origin', cache: 'no-store' })
     .then(function(r) { return r.json(); })
     .then(function(res) {
@@ -104,13 +104,15 @@ function bannerFetch() {
         bannerSetInfo(res.xl_info);
         bannerCachePut(res.xl_info);
       }
-      maybeShowReotpNotice(res);
+      maybeShowReotpNotice(res, force);
       return res;
     });
 }
-function maybeShowReotpNotice(res) {
+function maybeShowReotpNotice(res, force) {
   if (!res || res.token_ok !== false || !DASH_XL_ACTIVE_ID) return;
-  try { if (sessionStorage.getItem('reotp_dismiss_' + DASH_XL_ID)) return; } catch (e) {}
+  if (!force) {
+    try { if (sessionStorage.getItem('reotp_dismiss_' + DASH_XL_ID)) return; } catch (e) {}
+  }
   showFloatingNotice(
     'Perlu login ulang',
     'Nomor aktif ' + DASH_XL_ID + ' tidak bisa dimuat. Ketuk "OTP ulang" untuk mengirim kode baru, atau "Tutup" untuk memilih nomor lain.',
@@ -137,7 +139,7 @@ function refreshAllData() {
   var orig = el.textContent;
   el.disabled = true;
   el.textContent = 'Memuat...';
-  return Promise.all([bannerFetch(), refreshPageData()]).then(function() {
+  return Promise.all([bannerFetch(true), refreshPageData()]).then(function() {
     el.disabled = false;
     el.textContent = orig;
   }).catch(function() {

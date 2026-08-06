@@ -26,20 +26,6 @@
 }
 .xl-refresh-warn strong { font-weight: 600; }
 .xl-refresh-warn a { color: #7a5c00; font-weight: 600; }
-.floating-notice {
-  position: fixed; left: 50%; bottom: 20px;
-  transform: translateX(-50%) translateY(20px);
-  width: calc(100% - 32px); max-width: 420px; background: #fff;
-  border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,.25);
-  border: 1px solid #f2b8b8; z-index: 300; padding: 14px 16px;
-  opacity: 0; pointer-events: none;
-  transition: opacity .2s ease, transform .2s ease;
-}
-.floating-notice.show { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
-.floating-notice-title { font-size: 14px; font-weight: 700; color: #7a1f1f; margin: 0 0 4px; }
-.floating-notice-msg { font-size: 13.5px; color: #555; line-height: 1.5; margin: 0 0 12px; }
-.floating-notice-actions { display: flex; gap: 8px; }
-.floating-notice-actions .btn { flex: 1; justify-content: center; }
     </style>
     {% block head %}{% endblock %}
 </head>
@@ -161,12 +147,14 @@
         </div>
     </div>
 </div>
-<div class="floating-notice" id="floatingNotice">
-    <div class="floating-notice-title" id="floatingNoticeTitle">Perlu login ulang</div>
-    <div class="floating-notice-msg" id="floatingNoticeMsg"></div>
-    <div class="floating-notice-actions">
-        <button type="button" class="btn btn-sm btn-outline" id="floatingNoticeClose">Tutup</button>
-        <a class="btn btn-sm btn-primary" id="floatingNoticeAction" href="#">OTP ulang</a>
+<div class="modal-overlay" id="reotpNoticeModal" onclick="if(event.target===this)closeFloatingNotice()">
+    <div class="modal">
+        <h3 id="floatingNoticeTitle">Perlu login ulang</h3>
+        <p class="modal-body" id="floatingNoticeMsg"></p>
+        <div class="modal-actions">
+            <button type="button" class="btn btn-outline" id="floatingNoticeClose">Tutup</button>
+            <a class="btn btn-primary" id="floatingNoticeAction" href="#">OTP ulang</a>
+        </div>
     </div>
 </div>
 <script>
@@ -216,7 +204,7 @@ function showFloatingNotice(title, msg, actionHref, onClose) {
   var t = document.getElementById('floatingNoticeTitle');
   var m = document.getElementById('floatingNoticeMsg');
   var a = document.getElementById('floatingNoticeAction');
-  var n = document.getElementById('floatingNotice');
+  var n = document.getElementById('reotpNoticeModal');
   if (t) t.textContent = title;
   if (m) m.textContent = msg;
   if (a) a.href = actionHref || '#';
@@ -224,7 +212,7 @@ function showFloatingNotice(title, msg, actionHref, onClose) {
   if (n) n.classList.add('show');
 }
 function closeFloatingNotice() {
-  var n = document.getElementById('floatingNotice');
+  var n = document.getElementById('reotpNoticeModal');
   if (n) n.classList.remove('show');
   if (FLOATING_NOTICE_ON_CLOSE) {
     var fn = FLOATING_NOTICE_ON_CLOSE;

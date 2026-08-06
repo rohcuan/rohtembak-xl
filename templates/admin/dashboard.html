@@ -171,10 +171,10 @@ document.addEventListener('click', function(e) {
             <tr>
                 <td data-label="Nama Paket"><strong>{{ row.label }}</strong></td>
                 <td data-label="Fee Pulsa">
-                    <input type="number" name="fee_pulsa" value="{{ row.pulsa }}" min="0" step="100" class="form-control fee-input" form="fee-form-{{ row.key }}" required>
+                    <input type="number" name="fee_pulsa" value="{{ row.pulsa }}" min="0" step="1" class="form-control fee-input" form="fee-form-{{ row.key }}" required>
                 </td>
                 <td data-label="Fee QRIS">
-                    <input type="number" name="fee_qris" value="{{ row.qris }}" min="0" step="100" class="form-control fee-input" form="fee-form-{{ row.key }}" required>
+                    <input type="number" name="fee_qris" value="{{ row.qris }}" min="0" step="1" class="form-control fee-input" form="fee-form-{{ row.key }}" required>
                 </td>
                 <td>
                     <form method="POST" action="/admin/fees/set" class="fees-form" id="fee-form-{{ row.key }}">

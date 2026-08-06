@@ -143,7 +143,7 @@ document.addEventListener('click', function(e) {
             <tr>
                 <td data-label="Username"><strong>{{ u.username }}</strong></td>
                 <td data-label="Email">{{ u.email }}</td>
-                <td data-label="Saldo" style="font-weight:600;">Rp {{ "{:,}".format(u.balance) }}</td>
+                <td data-label="Saldo" style="font-weight:600;">Rp {{ u.balance|rupiah }}</td>
                 <td data-label="XL">{{ u.xl_count }} nomor</td>
             </tr>
             {% endfor %}

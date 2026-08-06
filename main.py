@@ -67,6 +67,14 @@ def _fmt_harga(value):
     return "IDR {:,.0f}".format(n).replace(",", ".")
 
 
+def _fmt_idr(n):
+    """Format a number with dot thousand separators: 30000 -> '30.000'."""
+    try:
+        return "{:,.0f}".format(int(n)).replace(",", ".")
+    except (ValueError, TypeError):
+        return "0"
+
+
 def _fmt_xl_ts(ts):
     """XL transaction timestamps are WIB wall-clock stored as if UTC (+7h ahead of the
     real instant). Subtract 7h first so the rendered WIB matches XL's formated_date."""
@@ -112,6 +120,7 @@ def _parse_xl_dt(s):
 
 jinja_env.filters["datetimeformat"] = lambda ts: _fmt_xl_expiry(ts) or "—"
 jinja_env.filters["quotabyte"] = format_quota_byte
+jinja_env.filters["rupiah"] = lambda n: _fmt_idr(n)
 
 API_DELAY = float(os.getenv("API_DELAY", "2.0"))
 _XL_CALL_LIMIT = max(1, int(os.getenv("XL_CALL_LIMIT", "6")))

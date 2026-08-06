@@ -177,7 +177,7 @@ function closePendingModal() {
   <div style="padding:20px 24px;">
     <div style="font-size:.75rem;color:#999;margin-bottom:10px;">{% if detail.number %}#{{ detail.number }} &middot;{% endif %} {{ detail.variant_name }}</div>
     <div style="font-size:1.2rem;font-weight:700;color:#222;">{{ detail.option_name }}</div>
-    <div style="font-size:1.3rem;font-weight:700;color:#059669;margin:4px 0 0;">{{ "{:,}".format(price) }} IDR</div>
+    <div style="font-size:1.3rem;font-weight:700;color:#059669;margin:4px 0 0;">{{ price|rupiah }} IDR</div>
     <div class="summary-meta" style="margin-top:8px;">
       Metode Pembayaran: <strong>{{ method_label }}</strong> &middot; Masa Aktif: <strong>{{ detail.validity or "-" }}</strong>
     </div>
@@ -191,15 +191,15 @@ function closePendingModal() {
         <h3>Detail Saldo Token yang Akan Terkonsumsi</h3>
         <div class="saldo-row">
           <span class="k">Saldo token saat ini</span>
-          <span class="v" id="bal-current">{{ "{:,}".format(balance) }} IDR</span>
+          <span class="v" id="bal-current">{{ balance|rupiah }} IDR</span>
         </div>
         <div class="saldo-row">
           <span class="k">Saldo token yang akan terkonsumsi</span>
-          <span class="v">{{ "{:,}".format(fee) }} IDR</span>
+          <span class="v">{{ fee|rupiah }} IDR</span>
         </div>
         <div class="saldo-row total">
           <span class="k">Sisa saldo setelah pembayaran</span>
-          <span class="v{% if insufficient %} neg{% endif %}" id="bal-remaining">{{ "{:,}".format(remaining) }} IDR</span>
+          <span class="v{% if insufficient %} neg{% endif %}" id="bal-remaining">{{ remaining|rupiah }} IDR</span>
         </div>
         {% if insufficient %}
         <div class="saldo-warn">Saldo token tidak mencukupi untuk paket ini.</div>

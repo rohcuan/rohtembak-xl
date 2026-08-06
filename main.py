@@ -2068,7 +2068,10 @@ def user_xl_banner_info(user: User = Depends(get_current_user)):
     if not token_ok and active and active.refresh_token:
         cached = _XL_TOKEN_CACHE.get(active.subscriber_id or active.id)
         token_ok = bool(cached and cached.get("expires_at", 0) > time.time())
-    return JSONResponse({"ok": True, "xl_info": xl_info, "token_ok": token_ok})
+    return JSONResponse(
+        {"ok": True, "xl_info": xl_info, "token_ok": token_ok},
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 # ─── Payment Routes ─────────────────────────────────────────────────────────

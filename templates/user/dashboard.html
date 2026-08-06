@@ -97,7 +97,7 @@ function bannerCachePut(xi) {
   });
 }
 function bannerFetch() {
-  return fetch('/user/xl/banner-info', { credentials: 'same-origin' })
+  return fetch('/user/xl/banner-info', { credentials: 'same-origin', cache: 'no-store' })
     .then(function(r) { return r.json(); })
     .then(function(res) {
       if (res && res.ok && res.xl_info) {

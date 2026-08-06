@@ -126,8 +126,9 @@ function bannerFetch(force) {
         bannerSetInfo(res.xl_info);
         bannerCachePut(res.xl_info);
       }
-      if (res && res.token_ok === false) reotpStateSet(); else reotpStateClear();
-      maybeShowReotpNotice();
+      var bad = !!(res && res.token_ok === false);
+      if (bad) reotpStateSet(); else reotpStateClear();
+      if (bad) maybeShowReotpNotice();
       return res;
     });
 }

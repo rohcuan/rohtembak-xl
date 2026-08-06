@@ -56,7 +56,8 @@ def ax_fingerprint(dev: DeviceInfo, secret_key_32hex_ascii: str) -> str:
     return base64.b64encode(ct).decode("ascii")
 
 def load_ax_fp() -> str:
-    fp_path = "ax.fp"
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    fp_path = os.path.join(project_root, "ax.fp")
     if os.path.exists(fp_path):
         with open(fp_path, "r", encoding="utf-8") as f:
             content = f.read().strip()

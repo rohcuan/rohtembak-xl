@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import os
 import json
 import uuid
@@ -12,7 +13,6 @@ from app.client.encrypt import (
     ts_gmt7_without_colon,
     ax_api_signature,
     load_ax_fp,
-    ax_device_id
 )
 
 BASE_CIAM_URL = os.getenv("BASE_CIAM_URL")
@@ -20,9 +20,11 @@ if not BASE_CIAM_URL:
     raise ValueError("BASE_CIAM_URL environment variable not set")
 
 BASIC_AUTH = os.getenv("BASIC_AUTH")
-AX_DEVICE_ID = ax_device_id()
-AX_FP = load_ax_fp()
 UA = os.getenv("UA")
+
+def _ax_device_id_and_fp():
+    fp = load_ax_fp()
+    return hashlib.md5(fp.encode("utf-8")).hexdigest(), fp
 
 def validate_contact(contact: str) -> bool:
     if not contact.startswith("628") or len(contact) > 14:
@@ -50,8 +52,8 @@ def get_otp(contact: str) -> str:
     headers = {
         "Accept-Encoding": "gzip, deflate, br",
         "Authorization": f"Basic {BASIC_AUTH}",
-        "Ax-Device-Id": AX_DEVICE_ID,
-        "Ax-Fingerprint": AX_FP,
+        "Ax-Device-Id": _ax_device_id_and_fp()[0],
+        "Ax-Fingerprint": _ax_device_id_and_fp()[1],
         "Ax-Request-At": ax_request_at,
         "Ax-Request-Device": "samsung",
         "Ax-Request-Device-Model": "SM-N935F",
@@ -93,8 +95,8 @@ def extend_session(subscriber_id: str) -> str:
     headers = {
         "Accept-Encoding": "gzip, deflate, br",
         "Authorization": f"Basic {BASIC_AUTH}",
-        "Ax-Device-Id": AX_DEVICE_ID,
-        "Ax-Fingerprint": AX_FP,
+        "Ax-Device-Id": _ax_device_id_and_fp()[0],
+        "Ax-Fingerprint": _ax_device_id_and_fp()[1],
         "Ax-Request-At": ax_request_at,
         "Ax-Request-Device": "samsung",
         "Ax-Request-Device-Model": "SM-N935F",
@@ -159,8 +161,8 @@ def submit_otp(
         "Accept-Encoding": "gzip, deflate, br",
         "Authorization": f"Basic {BASIC_AUTH}",
         "Ax-Api-Signature": signature,
-        "Ax-Device-Id": AX_DEVICE_ID,
-        "Ax-Fingerprint": AX_FP,
+        "Ax-Device-Id": _ax_device_id_and_fp()[0],
+        "Ax-Fingerprint": _ax_device_id_and_fp()[1],
         "Ax-Request-At": ts_header,
         "Ax-Request-Device": "samsung",
         "Ax-Request-Device-Model": "SM-N935F",
@@ -195,11 +197,11 @@ def get_new_token(api_key: str, refresh_token: str, subscriber_id: str) -> str:
     headers = {
         "Host": BASE_CIAM_URL.replace("https://", ""),
         "ax-request-at": ax_request_at,
-        "ax-device-id": AX_DEVICE_ID,
+        "ax-device-id": _ax_device_id_and_fp()[0],
         "ax-request-id": ax_request_id,
         "ax-request-device": "samsung",
         "ax-request-device-model": "SM-N935F",
-        "ax-fingerprint": AX_FP,
+        "ax-fingerprint": _ax_device_id_and_fp()[1],
         "authorization": f"Basic {BASIC_AUTH}",
         "user-agent": UA,
         "ax-substype": "PREPAID",
@@ -264,11 +266,11 @@ def get_auth_code(tokens: dict, pin: str, msisdn: str):
     headers = {
         "Host": host_header,
         "Ax-Request-At": ax_request_at,
-        "Ax-Device-Id": AX_DEVICE_ID,
+        "Ax-Device-Id": _ax_device_id_and_fp()[0],
         "Ax-Request-Id": ax_request_id,
         "Ax-Request-Device": "samsung",
         "Ax-Request-Device-Model": "SM-N935F",
-        "Ax-Fingerprint": AX_FP,
+        "Ax-Fingerprint": _ax_device_id_and_fp()[1],
         "Authorization": f"Bearer {tokens['access_token']}",
         "User-Agent": UA,
         "Ax-Substype": "PREPAID",

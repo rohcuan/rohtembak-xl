@@ -747,6 +747,7 @@ def admin_backup(format: str = "zip", admin_user: User = Depends(get_current_use
         resp.headers["Content-Disposition"] = 'attachment; filename="backup.json"'
         return resp
     exported_at = datetime.now(WIB).strftime("%Y-%m-%d %H:%M:%S WIB")
+    ax_fp = _read_ax_fp_file()
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("manifest.json", json.dumps({
@@ -759,6 +760,8 @@ def admin_backup(format: str = "zip", admin_user: User = Depends(get_current_use
         zf.writestr("users.json", json.dumps(users_data, indent=2, ensure_ascii=False))
         zf.writestr("xl_accounts.json", json.dumps(xl_data, indent=2, ensure_ascii=False))
         zf.writestr("fees.json", json.dumps(fees, indent=2, ensure_ascii=False))
+        if ax_fp:
+            zf.writestr("device.fp", ax_fp)
     buf.seek(0)
     resp = Response(content=buf.getvalue(), media_type="application/zip")
     resp.headers["Content-Disposition"] = 'attachment; filename="backup.zip"'
@@ -766,6 +769,31 @@ def admin_backup(format: str = "zip", admin_user: User = Depends(get_current_use
 
 
 MAX_BACKUP_RESTORE_SIZE = 1 * 1024 * 1024
+
+
+def _read_ax_fp_file() -> str:
+    """Read the current device fingerprint (ax.fp) content, generating it if absent."""
+    fp_path = os.path.join(BASE_DIR, "ax.fp")
+    if not os.path.exists(fp_path):
+        try:
+            load_ax_fp()
+        except Exception:
+            return ""
+    try:
+        with open(fp_path, "r", encoding="utf-8") as f:
+            return f.read().strip()
+    except (OSError, UnicodeDecodeError):
+        return ""
+
+
+def _write_ax_fp_file(content: str) -> bool:
+    """Persist the device fingerprint to ax.fp so restored refresh tokens match the device."""
+    try:
+        with open(os.path.join(BASE_DIR, "ax.fp"), "w", encoding="utf-8") as f:
+            f.write(content)
+        return True
+    except OSError:
+        return False
 
 
 def _is_zip_bytes(raw_bytes: bytes) -> bool:
@@ -842,13 +870,25 @@ def _load_backup_v3(zf) -> dict | None:
         except (json.JSONDecodeError, UnicodeDecodeError):
             raise ValueError(f"File {name} di dalam ZIP tidak valid.")
 
-    return _norm_backup({
+    device_fp = None
+    try:
+        raw_fp = zf.read("device.fp").decode("utf-8").strip()
+        if raw_fp:
+            device_fp = raw_fp
+    except KeyError:
+        pass
+    except (UnicodeDecodeError, RuntimeError):
+        raise ValueError("File device.fp di dalam ZIP tidak valid.")
+
+    data = _norm_backup({
         "version": 3,
         "admin": read("admin.json"),
         "users": read("users.json"),
         "xl_accounts": read("xl_accounts.json"),
         "fees": read("fees.json"),
     })
+    data["device_fp"] = device_fp
+    return data
 
 
 def _parse_backup_entries(raw: str) -> list:
@@ -1095,6 +1135,14 @@ async def admin_restore_upload(
         result["updated"] = updated
         result["skipped"] = skipped
         result["skipped_users"] = skipped_users
+
+    # 3b. Restore device fingerprint (ax.fp) so restored refresh tokens match this device
+    if "xl_accounts" in requested and data.get("device_fp"):
+        if _write_ax_fp_file(data["device_fp"]):
+            result["device_fp_restored"] = True
+        else:
+            result["device_fp_restored"] = False
+            result["device_fp_error"] = "Gagal menulis ax.fp. Cek izin folder aplikasi."
 
     # 4. Restore XL accounts (replace per user)
     xl_restored = xl_skipped = 0

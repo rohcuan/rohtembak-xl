@@ -57,6 +57,9 @@
     {% if result.admin %}<div>Admin: {{ result.admin }}</div>{% endif %}
     {% if result.created is defined %}<div>Pengguna dibuat: <strong>{{ result.created }}</strong>, diperbarui: <strong>{{ result.updated }}</strong>, dilewati: <strong>{{ result.skipped }}</strong>.</div>{% endif %}
     {% if result.xl_restored is defined %}<div>Nomor XL (refresh token): dipulihkan <strong>{{ result.xl_restored }}</strong>{% if result.xl_skipped %}, dilewati {{ result.xl_skipped }}{% endif %}.</div>{% endif %}
+    {% if result.device_fp_restored is defined %}
+    <div>Identitas perangkat (ax.fp): {% if result.device_fp_restored %}<strong>dipulihkan</strong>{% else %}<strong>gagal</strong>{% endif %}{% if result.device_fp_error %} — {{ result.device_fp_error }}{% endif %}.</div>
+    {% endif %}
     {% if result.fee_restored is defined %}<div>Fee paket dipulihkan: <strong>{{ result.fee_restored }}</strong>.</div>{% endif %}
     {% if result.skipped_users %}
     <ul class="restore-list">

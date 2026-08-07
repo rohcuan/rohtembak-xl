@@ -24,6 +24,21 @@ INSTALL_DIR="/opt/rohtembak"
 SERVICE_NAME="rohtembak"
 APP_PORT="${APP_PORT:-8000}"
 
+# --no-systemd: install code + venv only, skip the systemd unit. Used by the
+# container entrypoint (entrypoint.sh) where the runtime handles restart/logs.
+INSTALL_SYSTEMD=1
+for arg in "$@"; do
+    case "${arg}" in
+        --no-systemd) INSTALL_SYSTEMD=0 ;;
+        --help|-h)
+            echo "Usage: $0 [--no-systemd]"
+            echo "  --no-systemd  Skip systemd service creation (container entrypoint mode)."
+            exit 0
+            ;;
+        *) warn "Unknown argument: ${arg}" ;;
+    esac
+done
+
 log() { echo -e "\033[1;32m[install]\033[0m $*"; }
 warn() { echo -e "\033[1;33m[warn]\033[0m $*"; }
 die()  { echo -e "\033[1;31m[error]\033[0m $*" >&2; exit 1; }
@@ -108,21 +123,26 @@ else
             fi
         done
     else
-        log "Interactive secret setup. Press Enter to leave a value blank."
-        for key in "${SECRET_KEYS[@]}"; do
-            current="$(grep -E "^${key}=" "${INSTALL_DIR}/.env" | cut -d= -f2-)"
-            read -r -p "  ${key} [${current}]: " value
-            if [[ -n "${value}" ]]; then
-                sed -i "s|^${key}=.*|${key}=${value}|" "${INSTALL_DIR}/.env"
-            fi
-        done
+        if [[ -t 0 ]]; then
+            log "Interactive secret setup. Press Enter to leave a value blank."
+            for key in "${SECRET_KEYS[@]}"; do
+                current="$(grep -E "^${key}=" "${INSTALL_DIR}/.env" | cut -d= -f2-)"
+                read -r -p "  ${key} [${current}]: " value
+                if [[ -n "${value}" ]]; then
+                    sed -i "s|^${key}=.*|${key}=${value}|" "${INSTALL_DIR}/.env"
+                fi
+            done
+        else
+            warn "No TTY - skipping interactive secret setup. Fill ${INSTALL_DIR}/.env manually."
+        fi
     fi
     log "Wrote ${INSTALL_DIR}/.env"
 fi
 
-# --- 5. systemd service --------------------------------------------------------
-log "Installing systemd service..."
-cat > "/etc/systemd/system/${SERVICE_NAME}.service" <<EOF
+# --- 5. systemd service (skipped with --no-systemd) ---------------------------
+if [[ "${INSTALL_SYSTEMD}" -eq 1 ]]; then
+    log "Installing systemd service..."
+    cat > "/etc/systemd/system/${SERVICE_NAME}.service" <<EOF
 [Unit]
 Description=RohTembak (XL) WebUI
 After=network-online.target
@@ -140,14 +160,17 @@ Environment=PYTHONUNBUFFERED=1
 WantedBy=multi-user.target
 EOF
 
-systemctl daemon-reload
-systemctl enable "${SERVICE_NAME}" --now
+    systemctl daemon-reload
+    systemctl enable "${SERVICE_NAME}" --now
 
-sleep 2
-if systemctl is-active --quiet "${SERVICE_NAME}"; then
-    log "Service ${SERVICE_NAME} is running."
+    sleep 2
+    if systemctl is-active --quiet "${SERVICE_NAME}"; then
+        log "Service ${SERVICE_NAME} is running."
+    else
+        warn "Service failed to start. Check: journalctl -u ${SERVICE_NAME} -n 50"
+    fi
 else
-    warn "Service failed to start. Check: journalctl -u ${SERVICE_NAME} -n 50"
+    log "Skipping systemd service (--no-systemd). The container entrypoint will run the app."
 fi
 
 # --- 6. Summary ----------------------------------------------------------------
@@ -155,6 +178,11 @@ IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 log "Done!"
 echo
 echo "  URL        : http://${IP:-localhost}:${APP_PORT}/"
-echo "  Admin login: admin / admin"
-echo "  Logs       : journalctl -u ${SERVICE_NAME} -f"
-echo "  Restart    : systemctl restart ${SERVICE_NAME}"
+if [[ "${INSTALL_SYSTEMD}" -eq 1 ]]; then
+    echo "  Admin login: admin / admin"
+    echo "  Logs       : journalctl -u ${SERVICE_NAME} -f"
+    echo "  Restart    : systemctl restart ${SERVICE_NAME}"
+else
+    echo "  Logs       : podman logs <container>  (or docker logs)"
+    echo "  Restart    : podman restart <container>"
+fi

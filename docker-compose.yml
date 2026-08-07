@@ -1,18 +1,19 @@
 services:
   rohtembak:
-    image: jrei/systemd-debian:12
+    image: debian:12
     container_name: rohtembak
     hostname: rohtembak
-    privileged: true
     ports:
       - "8000:8000"
-    tmpfs:
-      - /run
-      - /run/lock
-    volumes:
-      - /sys/fs/cgroup:/sys/fs/cgroup:rw
     environment:
-      container: docker
+      APP_PORT: 8000
+      INSTALL_DIR: /opt/rohtembak
+    volumes:
+      - rohtembak_data:/opt/rohtembak
+      - ./entrypoint.sh:/usr/local/bin/entrypoint.sh:ro
     restart: unless-stopped
     stop_grace_period: 30s
-    command: /sbin/init
+    entrypoint: ["/bin/bash", "/usr/local/bin/entrypoint.sh"]
+
+volumes:
+  rohtembak_data:

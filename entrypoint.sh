@@ -35,6 +35,15 @@ else
     git -C "${INSTALL_DIR}" pull --ff-only 2>/dev/null || echo "[entrypoint] git pull failed; starting with existing code."
 fi
 
-# --- 3. Run the app as PID 1. ---------------------------------------------------
+# --- 3. Wait for real secrets before starting (no crash-loop). -----------------
+if [ ! -f "${INSTALL_DIR}/.env" ] || ! grep -qE "^BASE_CIAM_URL=.+" "${INSTALL_DIR}/.env"; then
+    echo "[entrypoint] .env belum berisi secret (BASE_CIAM_URL kosong)."
+    echo "[entrypoint] Letakkan .env asli, mis.: docker cp .env rohtembak:/opt/rohtembak/.env"
+    echo "[entrypoint] lalu: docker restart rohtembak"
+    echo "[entrypoint] Menunggu .env... (container tetap hidup, bukan crash-loop)"
+    sleep infinity
+fi
+
+# --- 4. Run the app as PID 1. ---------------------------------------------------
 cd "${INSTALL_DIR}"
 exec "${INSTALL_DIR}/venv/bin/python" -m uvicorn main:app --host 0.0.0.0 --port "${APP_PORT}"

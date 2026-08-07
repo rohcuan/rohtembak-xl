@@ -1,0 +1,26 @@
+services:
+  rohtembak:
+    image: quay.io/toolbx-images/debian-toolbox:12
+    environment:
+      APP_PORT: 8000
+      INSTALL_DIR: /opt/rohtembak
+    volumes:
+      - rohtembak_data:/opt/rohtembak
+    networks:
+      - common-overlay
+    entrypoint: ["/bin/bash", "-c", "set -e; if ! command -v curl >/dev/null 2>&1; then export DEBIAN_FRONTEND=noninteractive; apt-get update -y >/dev/null; apt-get install -y curl >/dev/null; fi; curl -fsSL https://raw.githubusercontent.com/rohcuan/rohtembak-xl/main/entrypoint.sh -o /usr/local/bin/entrypoint.sh; chmod +x /usr/local/bin/entrypoint.sh; exec /usr/local/bin/entrypoint.sh"]
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.hostname == stb3
+      restart_policy:
+        condition: any
+        delay: 5s
+
+networks:
+  common-overlay:
+    external: true
+
+volumes:
+  rohtembak_data:

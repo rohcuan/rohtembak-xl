@@ -1,5 +1,5 @@
 services:
-  rohtembak:
+  rohtembak-xl:
     image: quay.io/toolbx-images/debian-toolbox:12
     environment:
       APP_PORT: 8000

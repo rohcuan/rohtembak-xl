@@ -1,4 +1,5 @@
 import os
+import secrets
 from datetime import datetime, timedelta, timezone
 from jose import JWTError, jwt
 from fastapi import Depends, HTTPException, status, Request
@@ -10,7 +11,34 @@ from models import User
 
 load_dotenv()
 
-SECRET_KEY = os.getenv("JWT_SECRET", "fallback-secret-key")
+# Values that are public (committed .env / old defaults). A JWT signing key that
+# ships in a public repo lets anyone forge session tokens, so these are never
+# used as the real key -- a random per-install secret is generated instead.
+_PUBLIC_FALLBACKS = {
+    "fallback-secret-key",
+    "me-cli-web-jwt-secret-key-2026",
+    "change-me-to-a-long-random-string",
+}
+
+
+def _load_jwt_secret() -> str:
+    env_val = os.getenv("JWT_SECRET", "").strip()
+    if env_val and env_val not in _PUBLIC_FALLBACKS:
+        return env_val
+    secret_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "jwt_secret")
+    os.makedirs(os.path.dirname(secret_file), exist_ok=True)
+    if os.path.isfile(secret_file):
+        val = open(secret_file, encoding="utf-8").read().strip()
+        if val:
+            return val
+    val = secrets.token_urlsafe(48)
+    with open(secret_file, "w", encoding="utf-8") as f:
+        f.write(val)
+        f.write("\n")
+    return val
+
+
+SECRET_KEY = _load_jwt_secret()
 ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = float(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "9.5"))
 

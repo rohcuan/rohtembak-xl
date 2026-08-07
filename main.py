@@ -347,7 +347,7 @@ def login(
 
     token = create_access_token({"sub": str(user.id), "role": user.role})
     resp = RedirectResponse(url="/user/dashboard", status_code=303)
-    resp.set_cookie(key="access_token", value=token, httponly=True, max_age=int(ACCESS_TOKEN_EXPIRE_MINUTES * 60))
+    resp.set_cookie(key="access_token", value=token, httponly=True, samesite="lax", max_age=int(ACCESS_TOKEN_EXPIRE_MINUTES * 60))
     return resp
 
 
@@ -385,7 +385,7 @@ def admin_login(
 
     token = create_access_token({"sub": str(user.id), "role": user.role})
     resp = RedirectResponse(url="/admin/dashboard", status_code=303)
-    resp.set_cookie(key="access_token", value=token, httponly=True, max_age=int(ACCESS_TOKEN_EXPIRE_MINUTES * 60))
+    resp.set_cookie(key="access_token", value=token, httponly=True, samesite="lax", max_age=int(ACCESS_TOKEN_EXPIRE_MINUTES * 60))
     return resp
 
 
@@ -2693,7 +2693,7 @@ def register(
 
     token = create_access_token({"sub": str(user.id), "role": "user"})
     resp = RedirectResponse(url="/user/dashboard", status_code=303)
-    resp.set_cookie(key="access_token", value=token, httponly=True, max_age=int(ACCESS_TOKEN_EXPIRE_MINUTES * 60))
+    resp.set_cookie(key="access_token", value=token, httponly=True, samesite="lax", max_age=int(ACCESS_TOKEN_EXPIRE_MINUTES * 60))
     return resp
 
 

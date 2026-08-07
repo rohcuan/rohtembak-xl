@@ -11,10 +11,6 @@ services:
     volumes:
       - rohtembak_data:/opt/rohtembak
       - ./entrypoint.sh:/usr/local/bin/entrypoint.sh:ro
-      - type: bind
-        source: ./.env
-        target: /opt/rohtembak/.env
-        optional: true
     restart: unless-stopped
     stop_grace_period: 30s
     entrypoint: ["/bin/bash", "/usr/local/bin/entrypoint.sh"]

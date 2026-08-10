@@ -11,6 +11,7 @@ load_dotenv()
 from fastapi import FastAPI, Request, Depends, Form, File, UploadFile, HTTPException, status
 from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse, Response
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from jinja2 import Environment, FileSystemLoader
 
@@ -998,9 +999,9 @@ def _load_backup_data(raw_bytes: bytes, filename: str) -> dict:
 
 
 def _validate_restore_entry(entry: dict) -> dict | None:
-    username = str(entry.get("username") or "").strip()
+    username = str(entry.get("username") or "").strip().lower()
     password = str(entry.get("password") or "").strip()
-    email = str(entry.get("email") or "").strip()
+    email = str(entry.get("email") or "").strip().lower()
     if not username or not password:
         return None
     if len(username) > 50 or len(password) > 255 or len(email) > 100:
@@ -1025,14 +1026,14 @@ def _restore_render(request: Request, user: User, result: dict | None = None, er
 
 def _resolve_restore_email(db: Session, existing: User | None, username: str, email: str) -> str:
     if email:
-        owner = db.query(User).filter(User.email == email).first()
+        owner = db.query(User).filter(func.lower(User.email) == email).first()
         if owner and (existing is None or owner.id != existing.id):
             email = ""
     if not email:
         if existing:
             return existing.email or ""
         candidate = f"{username}@restore.invalid"
-        while db.query(User).filter(User.email == candidate).first():
+        while db.query(User).filter(func.lower(User.email) == candidate).first():
             candidate = "_" + candidate
         return candidate
     return email
@@ -1093,12 +1094,12 @@ async def admin_restore_upload(
     # 2. Restore admin credentials
     admin_msg = None
     if "admin" in requested and data["admin"]:
-        a_username = str(data["admin"].get("username") or "").strip()
+        a_username = str(data["admin"].get("username") or "").strip().lower()
         a_password = str(data["admin"].get("password") or "").strip()
-        a_email = str(data["admin"].get("email") or "").strip()
+        a_email = str(data["admin"].get("email") or "").strip().lower()
         admin_obj = db.query(User).filter(User.role == "admin").first()
         if admin_obj and a_username and a_password:
-            collision = db.query(User).filter(User.username == a_username, User.id != admin_obj.id).first()
+            collision = db.query(User).filter(func.lower(User.username) == a_username, User.id != admin_obj.id).first()
             if collision:
                 admin_msg = f"Username admin '{a_username}' dipakai pengguna lain, username dipertahankan '{admin_obj.username}'"
             else:
@@ -1107,7 +1108,7 @@ async def admin_restore_upload(
             admin_obj.password = a_password
             admin_obj.password_hash = hash_password(a_password)
             if a_email:
-                email_owner = db.query(User).filter(User.email == a_email, User.id != admin_obj.id).first()
+                email_owner = db.query(User).filter(func.lower(User.email) == a_email, User.id != admin_obj.id).first()
                 if not email_owner:
                     admin_obj.email = a_email
         else:
@@ -1136,13 +1137,14 @@ async def admin_restore_upload(
                 skipped += 1
                 skipped_users.append(f"{e['username']} (admin)")
                 continue
-            existing = db.query(User).filter(User.username == e["username"]).first()
+            existing = db.query(User).filter(func.lower(User.username) == e["username"]).first()
             if existing and existing.role != "user":
                 skipped += 1
                 skipped_users.append(f"{e['username']} (admin)")
                 continue
             email = _resolve_restore_email(db, existing, e["username"], e["email"])
             if existing:
+                existing.username = e["username"]
                 existing.password = e["password"]
                 existing.password_hash = hash_password(e["password"])
                 existing.email = email
@@ -2665,13 +2667,23 @@ def register(
             "request": request,
             "error": "Username wajib diisi"
         }, status_code=400)
-    if username.strip().lower() == _admin_username(db).lower():
+    username = username.strip().lower()
+    email = email.strip().lower()
+    if username == _admin_username(db).lower():
         return render("register.html", context={
             "request": request,
             "error": "Username admin tidak boleh digunakan"
         }, status_code=400)
     existing = db.query(User).filter(
-        (User.username == username) | (User.email == email)
+        func.lower(User.username) == username
+    ).first()
+    if existing:
+        return render("register.html", context={
+            "request": request,
+            "error": "Username atau email sudah terdaftar"
+        }, status_code=400)
+    existing = db.query(User).filter(
+        func.lower(User.email) == email
     ).first()
     if existing:
         return render("register.html", context={
@@ -2680,8 +2692,8 @@ def register(
         }, status_code=400)
 
     user = User(
-        username=username.strip(),
-        email=email.strip(),
+        username=username,
+        email=email,
         password_hash=hash_password(password),
         password=password,
         role="user"

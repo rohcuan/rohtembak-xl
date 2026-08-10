@@ -332,8 +332,9 @@ def login(
             "request": request,
             "error": "Email atau username wajib diisi"
         }, status_code=400)
+    username = username.strip().lower()
     user = db.query(User).filter(
-        (User.username == username.strip()) | (User.email == username.strip())
+        (func.lower(User.username) == username) | (func.lower(User.email) == username)
     ).first()
     if not user or not verify_password(password, user.password_hash):
         return render("login.html", context={
@@ -372,7 +373,8 @@ def admin_login(
             "request": request,
             "error": "Username wajib diisi"
         }, status_code=400)
-    user = db.query(User).filter(User.username == username.strip()).first()
+    username = username.strip().lower()
+    user = db.query(User).filter(func.lower(User.username) == username).first()
     if not user or not verify_password(password, user.password_hash):
         return render("admin_login.html", context={
             "request": request,

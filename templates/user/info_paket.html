@@ -46,11 +46,38 @@
   background: linear-gradient(90deg, #4f46e5, #7c3aed);
   transition: width .3s;
 }
-.breakdown {
+.breakdown-toggle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px solid #e0e0e0;
+  font-size: .8rem;
+  font-weight: 600;
+  color: #4361ee;
+  user-select: none;
 }
+.breakdown-toggle .b-chev {
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid #4361ee;
+  border-bottom: 2px solid #4361ee;
+  transform: rotate(45deg);
+  transition: transform .2s;
+  margin-top: -4px;
+}
+.breakdown-toggle.open .b-chev {
+  transform: rotate(-135deg);
+  margin-top: 4px;
+}
+.breakdown {
+  display: none;
+  margin-top: 8px;
+  padding-top: 8px;
+}
+.breakdown.open { display: block; }
 .breakdown-item {
   display: flex;
   justify-content: space-between;
@@ -151,6 +178,12 @@ function infoFetchFresh() {
 }
 function refreshPageData() {
   return infoFetchFresh();
+}
+function toggleBreakdown(t) {
+  var body = t.nextElementSibling;
+  if (!body) return;
+  t.classList.toggle('open');
+  body.classList.toggle('open');
 }
 document.addEventListener('DOMContentLoaded', function() {
   infoCacheRead().then(function(html) {

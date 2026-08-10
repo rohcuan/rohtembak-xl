@@ -40,6 +40,10 @@
         </div>
 
         {% if benefits %}
+        <div class="breakdown-toggle" onclick="toggleBreakdown(this)">
+          <span>Pembagian Kuota</span>
+          <span class="b-chev"></span>
+        </div>
         <div class="breakdown">
           {% for b in benefits %}
           {% set dt = b.data_type|upper %}

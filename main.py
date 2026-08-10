@@ -31,7 +31,7 @@ from app.type_dict import PaymentItem
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 templates_dir = os.path.join(BASE_DIR, "templates")
-jinja_env = Environment(loader=FileSystemLoader(templates_dir), auto_reload=True)
+jinja_env = Environment(loader=FileSystemLoader(templates_dir), auto_reload=True, autoescape=True)
 WIB = timezone(timedelta(hours=7))
 
 

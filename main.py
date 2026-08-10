@@ -1050,7 +1050,6 @@ def admin_restore_page(request: Request, user: User = Depends(get_current_user))
 async def admin_restore_upload(
     request: Request,
     backup_file: UploadFile = File(...),
-    section: list[str] = Form(default=[]),
     admin_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -1067,177 +1066,133 @@ async def admin_restore_upload(
     except ValueError as e:
         return _restore_render(request, admin_user, error=str(e))
 
-    if not section:
-        section = ["admin", "users", "fees", "xl_accounts"]
-    requested = set(section)
-    section_labels = {
-        "admin": "Akun admin",
-        "users": "Pengguna & saldo",
-        "xl_accounts": "Nomor XL",
-        "fees": "Fee paket",
-    }
-    result = {"sections": [section_labels[s] for s in section if s in section_labels]}
-
-    # 1. Restore fee settings
-    fee_restored = 0
-    if "fees" in requested and data["fees"]:
-        for key, fee in data["fees"].items():
-            if key in FAMILY_FEE_DEFAULTS and isinstance(fee, int) and not isinstance(fee, bool) and fee >= 0:
-                row = db.query(FamilyFee).filter(FamilyFee.family_key == key).first()
-                if row:
-                    row.fee = fee
-                else:
-                    db.add(FamilyFee(family_key=key, fee=fee))
-                fee_restored += 1
-        result["fee_restored"] = fee_restored
-
-    # 2. Restore admin credentials
-    admin_msg = None
-    if "admin" in requested and data["admin"]:
-        a_username = str(data["admin"].get("username") or "").strip().lower()
-        a_password = str(data["admin"].get("password") or "").strip()
-        a_email = str(data["admin"].get("email") or "").strip().lower()
-        admin_obj = db.query(User).filter(User.role == "admin").first()
-        if admin_obj and a_username and a_password:
-            collision = db.query(User).filter(func.lower(User.username) == a_username, User.id != admin_obj.id).first()
-            if collision:
-                admin_msg = f"Username admin '{a_username}' dipakai pengguna lain, username dipertahankan '{admin_obj.username}'"
-            else:
-                admin_obj.username = a_username
-                admin_msg = f"Username admin: '{a_username}'"
-            admin_obj.password = a_password
-            admin_obj.password_hash = hash_password(a_password)
-            if a_email:
-                email_owner = db.query(User).filter(func.lower(User.email) == a_email, User.id != admin_obj.id).first()
-                if not email_owner:
-                    admin_obj.email = a_email
-        else:
-            admin_msg = "Data admin tidak valid, dilewati."
-        result["admin"] = admin_msg
-
-    # 3. Restore users (create/update)
-    created = updated = skipped = 0
-    skipped_users = []
+    # 1. Validate everything BEFORE wiping so a bad file never destroys data
+    valid_users = []
     seen = set()
-    if "users" in requested:
-        if data["kind"] == "users" and not data["users"]:
-            return _restore_render(request, admin_user, error="Tidak ada data valid dalam file backup.")
-        for entry in data["users"]:
-            e = _validate_restore_entry(entry)
-            raw_username = str(entry.get("username") or "").strip()
-            username_lk = raw_username.lower()
-            if e is None or username_lk in seen:
-                skipped += 1
-                if raw_username and username_lk not in seen:
-                    skipped_users.append(raw_username)
-                continue
-            seen.add(username_lk)
-            admin_username = _admin_username(db)
-            if username_lk == admin_username.lower():
-                skipped += 1
-                skipped_users.append(f"{e['username']} (admin)")
-                continue
-            existing = db.query(User).filter(func.lower(User.username) == e["username"]).first()
-            if existing and existing.role != "user":
-                skipped += 1
-                skipped_users.append(f"{e['username']} (admin)")
-                continue
-            email = _resolve_restore_email(db, existing, e["username"], e["email"])
-            if existing:
-                existing.username = e["username"]
-                existing.password = e["password"]
-                existing.password_hash = hash_password(e["password"])
-                existing.email = email
-                bal = db.query(Balance).filter(Balance.user_id == existing.id).first()
-                if not bal:
-                    bal = Balance(user_id=existing.id, balance=0)
-                    db.add(bal)
-                if bal.balance != e["saldo"]:
-                    db.add(BalanceTransaction(
-                        user_id=existing.id,
-                        amount=e["saldo"] - bal.balance,
-                        type="set",
-                        description="Restore dari backup"
-                    ))
-                    bal.balance = e["saldo"]
-                updated += 1
-            else:
-                u = User(
-                    username=e["username"],
-                    email=email,
-                    password_hash=hash_password(e["password"]),
-                    password=e["password"],
-                    role="user",
-                )
-                db.add(u)
-                db.flush()
-                db.add(Balance(user_id=u.id, balance=e["saldo"]))
-                if e["saldo"] > 0:
-                    db.add(BalanceTransaction(
-                        user_id=u.id,
-                        amount=e["saldo"],
-                        type="set",
-                        description="Restore dari backup"
-                    ))
-                created += 1
-        result["created"] = created
-        result["updated"] = updated
-        result["skipped"] = skipped
-        result["skipped_users"] = skipped_users
+    for entry in data["users"] or []:
+        e = _validate_restore_entry(entry)
+        if e is None or e["username"] in seen:
+            continue
+        seen.add(e["username"])
+        valid_users.append(e)
+
+    valid_xl = []
+    xl_seen = set()
+    for a in data["xl_accounts"] or []:
+        if not isinstance(a, dict):
+            continue
+        username = str(a.get("username") or "").strip().lower()
+        phone = str(a.get("phone_number") or "").strip()
+        if not username or not phone or (username, phone) in xl_seen:
+            continue
+        xl_seen.add((username, phone))
+        valid_xl.append(a)
+
+    valid_fees = {}
+    for key, fee in (data["fees"] or {}).items():
+        if key in FAMILY_FEE_DEFAULTS and isinstance(fee, int) and not isinstance(fee, bool) and fee >= 0:
+            valid_fees[key] = fee
+
+    admin_section = data.get("admin")
+    a_username = str(admin_section.get("username") or "").strip().lower() if admin_section else ""
+    a_password = str(admin_section.get("password") or "").strip() if admin_section else ""
+    a_email = str(admin_section.get("email") or "").strip().lower() if admin_section else ""
+    has_admin = bool(a_username and a_password)
+
+    if not (has_admin or valid_users or valid_xl or valid_fees):
+        return _restore_render(request, admin_user, error="Tidak ada data valid dalam file backup.")
+
+    # 2. Wipe all existing data so the restore result is identical with the backup
+    db.query(BalanceTransaction).delete(synchronize_session=False)
+    db.query(Balance).delete(synchronize_session=False)
+    db.query(XLAccount).delete(synchronize_session=False)
+    db.query(User).delete(synchronize_session=False)
+    db.query(FamilyFee).delete(synchronize_session=False)
+    _XL_TOKEN_CACHE.clear()
+
+    # 3. Apply the backup exactly
+    users_by_name = {}
+    reserved = set()
+    if has_admin:
+        admin = User(username=a_username, email=a_email,
+                     password_hash=hash_password(a_password), password=a_password, role="admin")
+        db.add(admin)
+        users_by_name[a_username] = admin
+        reserved.add(a_username)
+        admin_msg = a_username
+    else:
+        admin = User(username="admin", email="",
+                     password_hash=hash_password("admin"), password="admin", role="admin")
+        db.add(admin)
+        users_by_name["admin"] = admin
+        reserved.add("admin")
+        admin_msg = "admin/admin (default)"
+    db.flush()
+
+    users_restored = 0
+    for e in valid_users:
+        if e["username"] in reserved:
+            continue
+        email = _resolve_restore_email(db, None, e["username"], e["email"])
+        u = User(username=e["username"], email=email,
+                 password_hash=hash_password(e["password"]), password=e["password"], role="user")
+        db.add(u)
+        db.flush()
+        users_by_name[u.username] = u
+        db.add(Balance(user_id=u.id, balance=e["saldo"]))
+        if e["saldo"] > 0:
+            db.add(BalanceTransaction(
+                user_id=u.id,
+                amount=e["saldo"],
+                type="set",
+                description="Restore dari backup"
+            ))
+        users_restored += 1
+
+    xl_restored = xl_skipped = 0
+    for a in valid_xl:
+        username = str(a.get("username") or "").strip().lower()
+        owner = users_by_name.get(username)
+        if not owner or owner.role != "user":
+            xl_skipped += 1
+            continue
+        db.add(XLAccount(
+            user_id=owner.id,
+            phone_number=str(a.get("phone_number") or "").strip(),
+            label=str(a.get("label") or "")[:50],
+            refresh_token=str(a.get("refresh_token") or ""),
+            refresh_expires_at=a.get("refresh_expires_at"),
+            subscriber_id=str(a.get("subscriber_id") or "")[:100],
+            subscription_type=str(a.get("subscription_type") or "PREPAID")[:20],
+            is_active=bool(a.get("is_active")),
+        ))
+        xl_restored += 1
+
+    fee_restored = 0
+    fee_source = valid_fees if valid_fees else FAMILY_FEE_DEFAULTS
+    for key, fee in fee_source.items():
+        db.add(FamilyFee(family_key=key, fee=fee))
+        fee_restored += 1
 
     # 3b. Restore device fingerprint (ax.fp) so restored refresh tokens match this device
-    if "xl_accounts" in requested and data.get("device_fp"):
-        if _write_ax_fp_file(data["device_fp"]):
-            result["device_fp_restored"] = True
-        else:
-            result["device_fp_restored"] = False
-            result["device_fp_error"] = "Gagal menulis ax.fp. Cek izin folder aplikasi."
-
-    # 4. Restore XL accounts (replace per user)
-    xl_restored = xl_skipped = 0
-    if "xl_accounts" in requested and data["xl_accounts"]:
-        by_user = {}
-        for a in data["xl_accounts"]:
-            if not isinstance(a, dict):
-                xl_skipped += 1
-                continue
-            username = str(a.get("username") or "").strip()
-            phone = str(a.get("phone_number") or "").strip()
-            if not username or not phone:
-                xl_skipped += 1
-                continue
-            by_user.setdefault(username, []).append(a)
-        for username, accs in by_user.items():
-            existing = db.query(User).filter(User.username == username).first()
-            if not existing or existing.role != "user":
-                xl_skipped += len(accs)
-                continue
-            uid = existing.id
-            old_xls = db.query(XLAccount).filter(XLAccount.user_id == uid).all()
-            for o in old_xls:
-                _XL_TOKEN_CACHE.pop(o.subscriber_id or o.id, None)
-            db.query(XLAccount).filter(XLAccount.user_id == uid).delete()
-            for a in accs:
-                db.add(XLAccount(
-                    user_id=uid,
-                    phone_number=str(a.get("phone_number") or "").strip(),
-                    label=str(a.get("label") or "")[:50],
-                    refresh_token=str(a.get("refresh_token") or ""),
-                    refresh_expires_at=a.get("refresh_expires_at"),
-                    subscriber_id=str(a.get("subscriber_id") or "")[:100],
-                    subscription_type=str(a.get("subscription_type") or "PREPAID")[:20],
-                    is_active=bool(a.get("is_active")),
-                ))
-                xl_restored += 1
-        result["xl_restored"] = xl_restored
-        result["xl_skipped"] = xl_skipped
-    elif "xl_accounts" in requested:
-        result["xl_restored"] = 0
-
-    if not fee_restored and not created and not updated and not xl_restored and "admin" not in result:
-        return _restore_render(request, admin_user, error="Tidak ada data valid untuk bagian yang dipilih dalam file backup.")
+    device_fp_ok = None
+    if data.get("device_fp"):
+        device_fp_ok = _write_ax_fp_file(data["device_fp"])
 
     db.commit()
+
+    result = {
+        "mode": "replace",
+        "admin": admin_msg,
+        "users_restored": users_restored,
+        "xl_restored": xl_restored,
+        "xl_skipped": xl_skipped,
+        "fees_restored": fee_restored,
+    }
+    if device_fp_ok is not None:
+        result["device_fp_restored"] = device_fp_ok
+        if not device_fp_ok:
+            result["device_fp_error"] = "Gagal menulis ax.fp. Cek izin folder aplikasi."
     return _restore_render(request, admin_user, result=result)
 
 

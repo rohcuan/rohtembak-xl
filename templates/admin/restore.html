@@ -35,6 +35,25 @@
 .restore-chk-all {
   background: #f1f5ff; border-style: dashed; font-weight: 600; color: #1a1a2e;
 }
+#restoreDoneModal .modal { max-width: 420px; }
+#restoreDoneModal .modal h3 { color: #047857; }
+#restoreDoneModal .modal-body { margin-bottom: 14px; }
+.restore-result-summary {
+  background: #f1f5ff; border: 1px solid #dbe3ff; border-radius: 8px;
+  padding: 6px 14px; margin: 0 0 16px; font-size: 13.5px; color: #374151;
+}
+.restore-result-summary > div {
+  padding: 7px 0; border-bottom: 1px solid #e2e8f0;
+}
+.restore-result-summary > div:last-child { border-bottom: none; }
+.restore-result-summary span {
+  display: block; font-size: 11px; text-transform: uppercase;
+  letter-spacing: .4px; color: #6b7280; font-weight: 600; margin-bottom: 2px;
+}
+.restore-result-summary .val {
+  display: block; font-size: 14px; font-weight: 600; color: #1a1a2e;
+  word-break: break-word;
+}
 </style>
 {% endblock %}
 {% block content %}
@@ -51,27 +70,33 @@
 {% endif %}
 
 {% if result %}
-<div class="restore-msg">
-    <strong>Restore selesai.</strong>
-    <div>Bagian dipulihkan: {{ result.sections | join(', ') }}.</div>
-    {% if result.admin %}<div>Admin: {{ result.admin }}</div>{% endif %}
-    {% if result.created is defined %}<div>Pengguna dibuat: <strong>{{ result.created }}</strong>, diperbarui: <strong>{{ result.updated }}</strong>, dilewati: <strong>{{ result.skipped }}</strong>.</div>{% endif %}
-    {% if result.xl_restored is defined %}<div>Nomor XL (refresh token): dipulihkan <strong>{{ result.xl_restored }}</strong>{% if result.xl_skipped %}, dilewati {{ result.xl_skipped }}{% endif %}.</div>{% endif %}
-    {% if result.device_fp_restored is defined %}
-    <div>Identitas perangkat (ax.fp): {% if result.device_fp_restored %}<strong>dipulihkan</strong>{% else %}<strong>gagal</strong>{% endif %}{% if result.device_fp_error %} — {{ result.device_fp_error }}{% endif %}.</div>
-    {% endif %}
-    {% if result.fee_restored is defined %}<div>Fee paket dipulihkan: <strong>{{ result.fee_restored }}</strong>.</div>{% endif %}
-    {% if result.skipped_users %}
-    <ul class="restore-list">
-        {% for u in result.skipped_users %}<li>{{ u }}</li>{% endfor %}
-    </ul>
-    {% endif %}
+<div class="modal-overlay" id="restoreDoneModal">
+    <div class="modal">
+        <h3>Backup Berhasil Dipulihkan</h3>
+        <p class="modal-body">
+            Seluruh data lama telah dihapus dan diganti sesuai isi file backup.
+            Akun admin ikut dikembalikan sesuai isi backup, sehingga sesi admin saat ini tidak lagi berlaku.
+            Silakan <strong>logout</strong> dan login ulang dengan kredensial admin dari file backup.
+        </p>
+        <div class="restore-result-summary">
+            <div><span>Username admin</span><div class="val">{{ result.admin }}</div></div>
+            <div><span>Pengguna dibuat</span><div class="val">{{ result.users_restored }}</div></div>
+            <div><span>Nomor XL</span><div class="val">dipulihkan <strong>{{ result.xl_restored }}</strong>{% if result.xl_skipped %} · dilewati {{ result.xl_skipped }}{% endif %}</div></div>
+            <div><span>Fee paket</span><div class="val">dipulihkan <strong>{{ result.fees_restored }}</strong></div></div>
+            {% if result.device_fp_restored is defined %}
+            <div><span>Identitas perangkat (ax.fp)</span><div class="val">{% if result.device_fp_restored %}dipulihkan{% else %}gagal{% endif %}{% if result.device_fp_error %} — {{ result.device_fp_error }}{% endif %}</div></div>
+            {% endif %}
+        </div>
+        <div class="modal-actions">
+            <button type="button" class="btn btn-primary" id="restoreLogoutBtn">Logout &amp; Clear Cache</button>
+        </div>
+    </div>
 </div>
 {% endif %}
 
 <div class="card" style="max-width:520px;">
     <h2>Restore Backup</h2>
-    <div class="page-subtitle">Unggah file backup ZIP untuk mengembalikan data ke posisi semula.</div>
+    <div class="page-subtitle">Hapus seluruh data saat ini, lalu pulihkan dari file backup sehingga identik dengan isi backup.</div>
 
     <form method="POST" action="/admin/restore" enctype="multipart/form-data" id="restoreForm">
         <div class="form-group">
@@ -84,23 +109,13 @@
             <input type="file" name="backup_file" id="backup_file" accept=".zip,.json,.txt,application/zip,application/json,text/plain" onchange="updateDropzone(this)" style="display:none;">
         </div>
 
-        <div class="form-group">
-            <label>Bagian yang Dipulihkan</label>
-            <label class="restore-chk"><input type="checkbox" name="section" value="admin" checked> Akun admin (username &amp; password)</label>
-            <label class="restore-chk"><input type="checkbox" name="section" value="users" checked> Pengguna &amp; saldo token</label>
-            <label class="restore-chk"><input type="checkbox" name="section" value="xl_accounts" checked> Nomor XL &amp; refresh token</label>
-            <label class="restore-chk"><input type="checkbox" name="section" value="fees" checked> Fee paket</label>
-            <label class="restore-chk restore-chk-all"><input type="checkbox" id="selectAll" checked> Pilih semua</label>
-        </div>
-        <p class="restore-hint">Default memulihkan seluruh isi backup. Kosongkan bagian yang tidak ingin dipulihkan.</p>
-
         <div class="restore-msg warn" style="margin:18px 0 16px;">
-            <strong>Perhatian:</strong> bagian yang dipilih akan menimpa data saat ini sesuai isi file backup (nomor XL aktif/logged-in ikut dipulihkan).
+            <strong>Perhatian!</strong> Seluruh data saat ini — pengguna, saldo, riwayat transaksi, nomor XL, dan fee paket — akan <strong>DIHAPUS</strong> lalu diganti dengan isi file backup. Tindakan ini tidak dapat dibatalkan. Backup admin akan dikembalikan sesuai file (jika file tidak memuat admin, dipakai admin/admin).
         </div>
 
         <div style="display:flex;gap:8px;">
             <a href="/admin/dashboard" class="btn btn-outline">Batal</a>
-            <button type="submit" class="btn btn-primary" id="submitBtn" disabled>Restore</button>
+            <button type="submit" class="btn btn-primary" id="submitBtn" disabled>Hapus &amp; Restore</button>
         </div>
     </form>
 </div>
@@ -114,19 +129,9 @@ function updateDropzone(input) {
     dz.querySelector('.dz-title').textContent = name ? name : 'Klik atau tarik file ke sini';
     btn.disabled = !name;
 }
-var selectAll = document.getElementById('selectAll');
-var sectionBoxes = Array.prototype.slice.call(document.querySelectorAll('input[name="section"]'));
-function syncSelectAll() {
-    selectAll.checked = sectionBoxes.every(function(b) { return b.checked; });
-}
-selectAll.addEventListener('change', function() {
-    sectionBoxes.forEach(function(b) { b.checked = selectAll.checked; });
-});
-sectionBoxes.forEach(function(b) { b.addEventListener('change', syncSelectAll); });
 document.getElementById('restoreForm').addEventListener('submit', function(e) {
-    if (!sectionBoxes.some(function(b) { return b.checked; })) {
+    if (!window.confirm('PERINGATAN: semua data saat ini akan DIHAPUS dan diganti isi backup.\n\nLanjutkan?')) {
         e.preventDefault();
-        alert('Pilih minimal satu bagian untuk dipulihkan.');
         return;
     }
 });
@@ -146,5 +151,18 @@ dz.addEventListener('drop', function(e) {
     input.files = dt.files;
     updateDropzone(input);
 });
+
+var restoreDoneModal = document.getElementById('restoreDoneModal');
+if (restoreDoneModal) restoreDoneModal.classList.add('show');
+var restoreLogoutBtn = document.getElementById('restoreLogoutBtn');
+if (restoreLogoutBtn) {
+    restoreLogoutBtn.addEventListener('click', function() {
+        var go = function() { location.href = '/logout'; };
+        if (!('caches' in window)) { go(); return; }
+        caches.keys().then(function(keys) {
+            return Promise.all(keys.map(function(k) { return caches.delete(k); }));
+        }).then(go).catch(go);
+    });
+}
 </script>
 {% endblock %}

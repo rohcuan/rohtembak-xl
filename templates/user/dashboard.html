@@ -183,6 +183,14 @@ function bannerLoad() {
     check();
   });
 }
+var xlListRoot = document.getElementById('xl-list');
+if (xlListRoot) {
+  xlListRoot.addEventListener('click', function(e) {
+    if (e.target.closest('.actions')) return;
+    var item = e.target.closest('.xl-item');
+    if (item) item.classList.toggle('open');
+  });
+}
 document.addEventListener('DOMContentLoaded', bannerLoad);
 </script>
 

@@ -324,15 +324,14 @@ tr:hover td { background: #f8f9ff; }
 
 /* XL List */
 .xl-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
     padding: 12px 16px;
     border: 1px solid #eee;
     border-radius: 8px;
     margin-bottom: 8px;
     transition: all 0.2s;
+    cursor: pointer;
 }
+.xl-item .xl-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .xl-item:hover { border-color: #4361ee; }
 .xl-item.active { border-color: #10b981; background: #f0fdf4; }
 .xl-item .info { display: flex; align-items: center; gap: 12px; }
@@ -345,7 +344,17 @@ tr:hover td { background: #f8f9ff; }
 }
 .badge-active { background: #d1fae5; color: #065f46; }
 .badge-inactive { background: #f3f4f6; color: #6b7280; }
-.xl-item .actions { display: flex; gap: 8px; }
+.xl-item .xl-caret { color: #999; font-size: 13px; transition: transform 0.2s; }
+.xl-item.open .xl-caret { transform: rotate(180deg); }
+.xl-item .actions {
+    display: none;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding-top: 10px;
+    margin-top: 10px;
+    border-top: 1px dashed #ddd;
+}
+.xl-item.open .actions { display: flex; }
 
 .header-section {
     display: flex;

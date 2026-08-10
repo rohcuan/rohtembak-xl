@@ -1,12 +1,15 @@
 {% for xl in xl_accounts %}
 <div class="xl-item {{ 'active' if xl.is_active }}">
-    <div class="info">
-        <div>
-            <div class="number">{{ xl.phone_number }}</div>
-            {% if xl.label %}
-            <div style="font-size:12px;color:#666;">{{ xl.label }}</div>
-            {% endif %}
+    <div class="xl-head">
+        <div class="info">
+            <div>
+                <div class="number">{{ xl.phone_number }}</div>
+                {% if xl.label %}
+                <div style="font-size:12px;color:#666;">{{ xl.label }}</div>
+                {% endif %}
+            </div>
         </div>
+        <span class="xl-caret">&#9662;</span>
     </div>
     <div class="actions">
         {% if not xl.is_active %}

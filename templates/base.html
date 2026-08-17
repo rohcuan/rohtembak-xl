@@ -79,7 +79,7 @@
                     <div class="dropdown-body">
                         {% if user.role != 'admin' %}
                         <div class="dropdown-row">
-                            <span class="dropdown-label">Saldo Token</span>
+                            <span class="dropdown-label">Saldo Panel</span>
                             <span class="dropdown-value">{{ (balance or 0)|rupiah }} IDR</span>
                         </div>
                         {% else %}
@@ -104,8 +104,8 @@
                         {% endif %}
                     </div>
                     <div class="dropdown-footer">
-                        {% if user.role != 'admin' %}<a href="javascript:void(0)" class="dropdown-item" onclick="openTopupModal()">Topup Saldo Token</a>{% endif %}
-                        {% if user.role != 'admin' %}<a href="/user/detail-saldo-token" class="dropdown-item">Riwayat Saldo Token</a>{% endif %}
+                        {% if user.role != 'admin' %}<a href="javascript:void(0)" class="dropdown-item" onclick="openTopupModal()">Topup Saldo Panel</a>{% endif %}
+                        {% if user.role != 'admin' %}<a href="/user/detail-saldo-token" class="dropdown-item">Riwayat Saldo Panel</a>{% endif %}
                         <a href="javascript:void(0)" class="dropdown-item clear-cache" onclick="openClearCacheModal()">Clear Cache</a>
                         <a href="/logout" class="dropdown-logout">Logout</a>
                     </div>
@@ -139,7 +139,7 @@
 </div>
 <div class="modal-overlay" id="topupModal" onclick="if(event.target===this)closeTopupModal()">
     <div class="modal">
-        <h3>Topup Saldo Token</h3>
+        <h3>Topup Saldo Panel</h3>
         <p class="modal-body">Saat ini topup saldo masih dilayani secara manual. Silakan chat via WhatsApp untuk memesan, nanti mimin bantu isi saldo kamu.</p>
         <div class="modal-actions">
             <button type="button" class="btn btn-outline" onclick="closeTopupModal()">Nanti saja</button>

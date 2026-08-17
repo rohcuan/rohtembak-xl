@@ -2580,7 +2580,7 @@ def _pay_response(user, detail, pay_error, pay_success, method, family_key, pay_
         new_balance = _deduct_token_balance(
             user,
             fee,
-            f"Konsumsi saldo token {FAMILY_LABELS.get(family_key, family_key)} via {PAY_METHOD_LABELS.get(method, method)}"
+            f"Konsumsi saldo panel {FAMILY_LABELS.get(family_key, family_key)} via {PAY_METHOD_LABELS.get(method, method)}"
         )
         resp = {"ok": True, "message": pay_success, "deducted": fee, "new_balance": new_balance}
         qris_b64 = (pay_extra or {}).get("qris_b64")

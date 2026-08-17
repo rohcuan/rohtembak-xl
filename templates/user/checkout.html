@@ -190,7 +190,7 @@ function closePendingModal() {
           <span class="v">{{ price|rupiah }} IDR</span>
         </div>
         <div class="saldo-row">
-          <span class="k">Biaya saldo token</span>
+          <span class="k">Biaya saldo panel</span>
           <span class="v">{{ fee|rupiah }} IDR</span>
         </div>
         <div class="saldo-row total">
@@ -198,7 +198,7 @@ function closePendingModal() {
           <span class="v">{{ (price + fee)|rupiah }} IDR</span>
         </div>
         {% if insufficient %}
-        <div class="saldo-warn">Saldo token tidak mencukupi untuk paket ini.</div>
+        <div class="saldo-warn">Saldo panel tidak mencukupi untuk paket ini.</div>
         {% endif %}
       </div>
 
@@ -207,7 +207,7 @@ function closePendingModal() {
       <a class="btn btn-outline btn-sm" href="/user/xl/beli-paket/{{ detail.url_id }}/detail">&larr; Kembali</a>
     </div>
     {% if insufficient %}
-    <div style="margin-top:8px;font-size:.78rem;color:#6b7280;">Hubungi admin untuk top-up saldo token.</div>
+    <div style="margin-top:8px;font-size:.78rem;color:#6b7280;">Hubungi admin untuk top-up saldo panel.</div>
     {% endif %}
 
     <div style="margin-top:18px;">

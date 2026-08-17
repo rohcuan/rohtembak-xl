@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Detail Saldo Token - RohTembak (XL){% endblock %}
+{% block title %}Detail Saldo Panel - RohTembak (XL){% endblock %}
 {% block head %}
 <style>
 .trx-table-wrap { overflow-x: auto; }
@@ -38,18 +38,18 @@
 
 <div class="header-section">
     <div>
-        <div class="page-title">Detail Saldo Token</div>
+        <div class="page-title">Detail Saldo Panel</div>
         <div class="page-subtitle">Saldo ini digunakan agar kamu bisa beli paket.<br>Merupakan biaya jasa yang dikenakan oleh penyedia layanan.</div>
     </div>
 </div>
 
 <div class="card">
-    <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:.5px;color:#888;margin-bottom:8px;">Saldo Token Saat Ini</div>
+    <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:.5px;color:#888;margin-bottom:8px;">Saldo Panel Saat Ini</div>
     <div style="font-size:1.4rem;font-weight:700;color:#059669;">{{ (balance or 0)|rupiah }} IDR</div>
 </div>
 
 <div class="card">
-    <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:.5px;color:#888;margin-bottom:12px;">Riwayat Top Up &amp; Penggunaan Saldo Token</div>
+    <div style="font-size:.75rem;text-transform:uppercase;letter-spacing:.5px;color:#888;margin-bottom:12px;">Riwayat Top Up &amp; Penggunaan Saldo Panel</div>
     {% if transactions %}
     <div class="trx-table-wrap">
         <table>

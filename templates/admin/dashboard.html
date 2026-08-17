@@ -112,7 +112,7 @@ document.addEventListener('click', function(e) {
 <div class="header-section">
     <div>
         <div class="page-title">Dashboard Admin</div>
-        <div class="page-subtitle">Kelola saldo token pengguna</div>
+        <div class="page-subtitle">Kelola saldo panel pengguna</div>
     </div>
     <div style="display:flex;gap:8px;">
         <button class="btn btn-sm btn-outline" onclick="openAddUser()">Add User</button>
@@ -156,7 +156,7 @@ document.addEventListener('click', function(e) {
 </div>
 
 <div class="card">
-    <h2 style="font-size:16px;margin-bottom:12px;">Saldo Token yang Terkonsumsi per Paket</h2>
+    <h2 style="font-size:16px;margin-bottom:12px;">Saldo Panel yang Terkonsumsi per Paket</h2>
     <table id="fees-table">
         <thead>
             <tr>
@@ -286,7 +286,7 @@ document.addEventListener('click', function(e) {
 
 <div class="modal-overlay" id="topupModal">
     <div class="modal">
-        <h3>Top Up Saldo Token</h3>
+        <h3>Top Up Saldo Panel</h3>
         <form method="POST" action="/admin/balance/add" id="topupForm">
             <input type="hidden" name="user_id" id="topup-user-id">
             <div class="form-group">

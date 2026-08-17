@@ -76,7 +76,21 @@ fi
 # --- 1. Stop service / uvicorn ------------------------------------------------
 if [[ "${IS_CONTAINER}" -eq 1 ]]; then
     log "Stopping uvicorn (container mode)..."
-    pkill -f 'uvicorn main:app' 2>/dev/null || true
+    # Kill whatever is listening on the app port. fuser is the most reliable
+    # way — avoids pkill -f accidentally matching the parent shell.
+    if command -v fuser >/dev/null 2>&1; then
+        fuser -k "${APP_PORT}"/tcp 2>/dev/null || true
+    elif command -v lsof >/dev/null 2>&1; then
+        kill $(lsof -ti :"${APP_PORT}") 2>/dev/null || true
+    else
+        # Fallback: find uvicorn python process by /proc
+        for pid in /proc/[0-9]*/cmdline; do
+            p=$(echo "$pid" | cut -d/ -f3)
+            if grep -qa 'uvicorn' "$pid" 2>/dev/null; then
+                kill "$p" 2>/dev/null || true
+            fi
+        done
+    fi
     sleep 2
 else
     if systemctl list-unit-files "${SERVICE_NAME}.service" >/dev/null 2>&1; then

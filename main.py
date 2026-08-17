@@ -24,7 +24,7 @@ from auth import (
 
 from datetime import datetime, timezone, timedelta
 from app.client.ciam import get_otp as xl_get_otp, submit_otp as xl_submit_otp, get_new_token as xl_refresh_token
-from app.client.encrypt import API_KEY, load_ax_fp, copy_shared_fp_to_user
+from app.client.encrypt import API_KEY, load_ax_fp, copy_shared_fp_to_user, remove_user_ax_fp
 from app.client.engsel import login_info as xl_login_info, get_balance as xl_get_balance, get_transaction_history as xl_get_transactions, get_tiering_info as xl_get_tiering, send_api_request, get_family as xl_get_family, get_package as xl_get_package, get_addons as xl_get_addons
 from app.menus.util import format_quota_byte
 from app.type_dict import PaymentItem
@@ -199,7 +199,7 @@ def _get_xl_tokens(active_xl):
         if entry and entry.get("expires_at", 0) > now:
             return entry["tokens"]
         _api_delay()
-        tokens = xl_refresh_token(API_KEY, active_xl.refresh_token, active_xl.subscriber_id, active_xl.user_id)
+        tokens = xl_refresh_token(API_KEY, active_xl.refresh_token, active_xl.subscriber_id, active_xl.user.username)
         if not tokens:
             _XL_TOKEN_CACHE.pop(key, None)
             return None
@@ -241,8 +241,16 @@ async def lifespan(app: FastAPI):
     db = next(get_db())
     seed_users(db)
     existing_users = db.query(User).filter(User.role == "user").all()
+    fp_dir = os.path.join(BASE_DIR, "data")
     for u in existing_users:
-        copy_shared_fp_to_user(u.id)
+        old_fp = os.path.join(fp_dir, f"ax.fp.{u.id}")
+        new_fp = os.path.join(fp_dir, f"ax.fp.{u.username}")
+        if os.path.exists(old_fp) and not os.path.exists(new_fp):
+            try:
+                os.rename(old_fp, new_fp)
+            except OSError:
+                pass
+        copy_shared_fp_to_user(u.username)
     db.close()
     yield
 
@@ -614,6 +622,7 @@ def admin_delete_user(
         raise HTTPException(status_code=404, detail="User tidak ditemukan")
 
     db.query(BalanceTransaction).filter(BalanceTransaction.user_id == u.id).delete()
+    remove_user_ax_fp(u.username)
     db.delete(u)
     db.commit()
     return RedirectResponse(url="/admin/dashboard", status_code=303)
@@ -818,7 +827,7 @@ def admin_backup(format: str = "zip", admin_user: User = Depends(get_current_use
             zf.writestr("device.fp", ax_fp)
         fp_dir = os.path.join(BASE_DIR, "data")
         for u in users:
-            fp_path = os.path.join(fp_dir, f"ax.fp.{u.id}")
+            fp_path = os.path.join(fp_dir, f"ax.fp.{u.username}")
             if os.path.exists(fp_path):
                 try:
                     with open(fp_path, "r", encoding="utf-8") as f:
@@ -1187,14 +1196,14 @@ async def admin_restore_upload(
         if fp_content:
             fp_dir = os.path.join(BASE_DIR, "data")
             os.makedirs(fp_dir, exist_ok=True)
-            fp_path = os.path.join(fp_dir, f"ax.fp.{u.id}")
+            fp_path = os.path.join(fp_dir, f"ax.fp.{u.username}")
             try:
                 with open(fp_path, "w", encoding="utf-8") as f:
                     f.write(fp_content)
             except OSError:
                 pass
         elif device_fp_ok:
-            copy_shared_fp_to_user(u.id)
+            copy_shared_fp_to_user(u.username)
         users_restored += 1
 
     xl_restored = xl_skipped = 0
@@ -1417,7 +1426,7 @@ def xl_otp_request(
 
     try:
         _api_delay()
-        subscriber_id = xl_get_otp(phone_number, user.id)
+        subscriber_id = xl_get_otp(phone_number, user.username)
     except Exception as e:
         ctx.update({"request": request, "error": f"Gagal mengirim OTP: {e}"})
         return render("user/otp_request.html", context=ctx, status_code=400)
@@ -1473,7 +1482,7 @@ def xl_otp_submit(
         return render("user/otp_submit.html", context=ctx, status_code=400)
 
     _api_delay()
-    tokens = xl_submit_otp(API_KEY, "SMS", phone_number, otp_code, user.id)
+    tokens = xl_submit_otp(API_KEY, "SMS", phone_number, otp_code, user.username)
     if tokens is None:
         ctx.update({"request": request, "phone_number": phone_number, "label": label,
             "error": "Kode OTP salah atau sudah kadaluarsa"})

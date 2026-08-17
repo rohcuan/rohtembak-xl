@@ -205,12 +205,12 @@ def get_x_signature_bounty_allotment(
         destination_msisdn,
     )
 
-def get_user_ax_fp(user_id: int) -> str:
-    """Load or generate a per-user device fingerprint. Stored in data/ax.fp.{user_id}."""
+def get_user_ax_fp(username: str) -> str:
+    """Load or generate a per-user device fingerprint. Stored in data/ax.fp.{username}."""
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     fp_dir = os.path.join(project_root, "data")
     os.makedirs(fp_dir, exist_ok=True)
-    fp_path = os.path.join(fp_dir, f"ax.fp.{user_id}")
+    fp_path = os.path.join(fp_dir, f"ax.fp.{username}")
     if os.path.exists(fp_path):
         with open(fp_path, "r", encoding="utf-8") as f:
             content = f.read().strip()
@@ -235,21 +235,31 @@ def get_user_ax_fp(user_id: int) -> str:
     return new_fp
 
 
-def copy_shared_fp_to_user(user_id: int) -> str:
+def copy_shared_fp_to_user(username: str) -> str:
     """Copy the shared ax.fp to a per-user file. Used for migrating existing users."""
     shared_fp = load_ax_fp()
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     fp_dir = os.path.join(project_root, "data")
     os.makedirs(fp_dir, exist_ok=True)
-    fp_path = os.path.join(fp_dir, f"ax.fp.{user_id}")
+    fp_path = os.path.join(fp_dir, f"ax.fp.{username}")
     if not os.path.exists(fp_path):
         with open(fp_path, "w", encoding="utf-8") as f:
             f.write(shared_fp)
     return shared_fp
 
 
-def get_user_ax_device_id(user_id: int) -> str:
-    fp = get_user_ax_fp(user_id)
+def remove_user_ax_fp(username: str) -> None:
+    """Remove a user's fingerprint file."""
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    fp_path = os.path.join(project_root, "data", f"ax.fp.{username}")
+    try:
+        os.remove(fp_path)
+    except OSError:
+        pass
+
+
+def get_user_ax_device_id(username: str) -> str:
+    fp = get_user_ax_fp(username)
     return hashlib.md5(fp.encode("utf-8")).hexdigest()
 
 def get_x_signature_loyalty(

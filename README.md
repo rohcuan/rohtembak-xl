@@ -66,7 +66,7 @@ cd /opt/rohtembak
 Yang TIDAK ikut di-commit:
 
 - `data/*.db` — database runtime berisi **refresh token / access token** akun XL tiap nomor. Instalasi baru = panel kosong, belum ada nomor yang login OTP.
-- `data/ax.fp.{user_id}` — device fingerprint per user; dibuat otomatis saat pertama kali user berjalan. Setiap user mendapat fingerprint terpisah (max 10 nomor XL per fingerprint).
+- `data/ax.fp.{username}` — device fingerprint per user; dibuat otomatis saat pertama kali user berjalan. Setiap user mendapat fingerprint terpisah (max 10 nomor XL per fingerprint).
 - `ax.fp` — shared device fingerprint (fallback untuk user baru sebelum per-user fp dibuat).
 
 ## Akun default

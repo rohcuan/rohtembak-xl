@@ -16,47 +16,53 @@ Web UI untuk mengelola akun XL / paket XL (beli paket, info paket, riwayat, pemb
 
 ```
 .
-├── main.py             # FastAPI app (routes, middleware, reconciliation)
-├── auth.py             # JWT auth + seed admin
-├── database.py         # SQLAlchemy engine + init
-├── models.py           # ORM models
-├── app/                # XL API client (engsel, ciam, purchase, crypto)
-├── templates/          # Jinja2 templates
-├── static/             # CSS / JS
+├── main.py               # FastAPI app (routes, middleware, reconciliation)
+├── auth.py               # JWT auth + seed admin
+├── database.py           # SQLAlchemy engine + init
+├── models.py             # ORM models
+├── app/                  # XL API client (engsel, ciam, purchase, crypto)
+├── templates/            # Jinja2 templates
+├── static/               # CSS / JS
 ├── requirements.txt
-├── install.sh          # one-command installer (Debian 12 + systemd)
-├── docker-compose.yml  # container Debian 12 dengan systemd
-├── .env                # konfigurasi kredensial XL API (sudah terisi)
-└── .env.example        # template konfigurasi
+├── install.sh            # dev/staging installer (apt + venv + uvicorn)
+├── reinstall-dev-staging.sh  # dev/staging clean reinstall (retain data)
+├── entrypoint.sh         # production Docker entrypoint (install + run)
+├── docker-compose.yml    # production container
+├── .env                  # konfigurasi kredensial XL API (sudah terisi)
+└── .env.example          # template konfigurasi
 ```
 
-## Quick start (Docker + systemd)
-
-Instalasi dilakukan di dalam container Debian 12 yang ber-systemd, sehingga `install.sh` bisa membuat service systemd sungguhan.
+## Quick start (Docker, production)
 
 ```bash
 git clone https://github.com/rohcuan/rohtembak-xl.git
 cd rohtembak-xl
 docker compose up -d
-
-docker exec -it rohtembak bash
-wget -O install.sh https://raw.githubusercontent.com/rohcuan/rohtembak-xl/main/install.sh
-chmod +x install.sh
-./install.sh
 ```
 
 Buka `http://localhost:8000` — login `admin` / `admin`.
 
 > Pada host cgroup v2, jika container gagal start, tambahkan `cgroupns: host` pada service di `docker-compose.yml`.
 
-## Manual (Debian 12 tanpa Docker)
+## Dev / Staging (bare metal, Debian 12)
+
+Install atau reinstall ke `/opt/rohtembak`, start uvicorn di port 8000:
 
 ```bash
-apt-get update
-apt-get install -y python3 python3-venv python3-pip git
-git clone https://github.com/rohcuan/rohtembak-xl.git /opt/rohtembak
-cd /opt/rohtembak
-./install.sh        # jalankan sebagai root
+wget -O install.sh https://raw.githubusercontent.com/rohcuan/rohtembak-xl/main/install.sh
+chmod +x install.sh
+sudo ./install.sh
+```
+
+## Update / reinstall (retain data)
+
+Untuk perubahan besar di repo: reinstall bersih tapi tetap menyimpan data
+(`.env`, `data/` termasuk fingerprint per user). **Dev/staging only** — untuk production, backup volume lalu recreate container.
+
+```bash
+wget -O reinstall-dev-staging.sh https://raw.githubusercontent.com/rohcuan/rohtembak-xl/main/reinstall-dev-staging.sh
+chmod +x reinstall-dev-staging.sh
+sudo ./reinstall-dev-staging.sh
 ```
 
 ## Konfigurasi
@@ -79,22 +85,18 @@ Yang TIDAK ikut di-commit:
 - Yang tetap dilindungi `gitignore`: `data/*.db` (token refresh/access XL per nomor), `data/ax.fp.*` (fingerprint per user), `ax.fp`, `venv/`, `__pycache__/`.
 - Login nomor XL dilakukan via menu panel (input nomor + OTP) dan tersimpan hanya di database lokal.
 
-## Update / reinstall (retain data)
-
-Untuk perubahan besar di repo: reinstall bersih (bukan git pull) tapi tetap menyimpan data
-(`.env`, `data/` termasuk fingerprint per user):
-
-```bash
-wget -O reinstall-dev-staging.sh https://raw.githubusercontent.com/rohcuan/rohtembak-xl/main/reinstall-dev-staging.sh
-chmod +x reinstall-dev-staging.sh
-./reinstall-dev-staging.sh
-```
-
 ## Troubleshooting
 
 ```bash
-docker exec -it rohtembak bash
-systemctl status rohtembak
-journalctl -u rohtembak -n 50 -f
-systemctl restart rohtembak
+# Check uvicorn logs
+tail -f /tmp/rohtembak.log
+
+# Stop app
+kill $(lsof -ti :8000)
+
+# Restart app
+cd /opt/rohtembak && setsid venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000 > /tmp/rohtembak.log 2>&1 &
+
+# Check which process owns port 8000
+lsof -i :8000
 ```

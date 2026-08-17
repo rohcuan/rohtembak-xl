@@ -2,10 +2,13 @@
 set -euo pipefail
 
 # =============================================================================
-# RohTembak (XL) - one-command installer for Debian 12
+# RohTembak (XL) - dev/staging installer
 # -----------------------------------------------------------------------------
-# Deploys the app into /opt/rohtembak, installs dependencies, and runs it as a
-# systemd service (rohtembak.service) on port 8000.
+# Installs the app into /opt/rohtembak, creates a venv, installs deps, and
+# starts uvicorn on port 8000.
+#
+# This script is for DEVELOPMENT ONLY.
+# Production containers use entrypoint.sh which handles install + restart.
 #
 # Usage:
 #   wget -O install.sh https://raw.githubusercontent.com/rohcuan/rohtembak-xl/main/install.sh
@@ -21,35 +24,20 @@ set -euo pipefail
 REPO_URL="https://github.com/rohcuan/rohtembak-xl"
 REPO_BRANCH="main"
 INSTALL_DIR="/opt/rohtembak"
-SERVICE_NAME="rohtembak"
 APP_PORT="${APP_PORT:-8000}"
 
 log() { echo -e "\033[1;32m[install]\033[0m $*"; }
 warn() { echo -e "\033[1;33m[warn]\033[0m $*"; }
 die()  { echo -e "\033[1;31m[error]\033[0m $*" >&2; exit 1; }
 
-# --- Detect container environment -----------------------------------------------
-IS_CONTAINER=0
-if [[ -f /.dockerenv ]] || [[ -f /run/.containerenv ]]; then
-    IS_CONTAINER=1
-elif grep -qE 'docker|podman|containerd|distrobox' /proc/1/cgroup 2>/dev/null; then
-    IS_CONTAINER=1
-fi
-
-# --no-systemd: install code + venv only, skip the systemd unit. Used by the
-# container entrypoint (entrypoint.sh) where the runtime handles restart/logs.
-# Auto-detected in containers (distrobox, docker, podman).
-INSTALL_SYSTEMD=1
-if [[ "${IS_CONTAINER}" -eq 1 ]]; then
-    INSTALL_SYSTEMD=0
-    log "Container detected — skipping systemd automatically."
-fi
+# --- Parse args ---------------------------------------------------------------
+START_APP=1
 for arg in "$@"; do
     case "${arg}" in
-        --no-systemd) INSTALL_SYSTEMD=0 ;;
+        --no-start) START_APP=0 ;;
         --help|-h)
-            echo "Usage: $0 [--no-systemd]"
-            echo "  --no-systemd  Skip systemd service creation (container entrypoint mode)."
+            echo "Usage: $0 [--no-start]"
+            echo "  --no-start  Install code + venv only, do not start uvicorn."
             exit 0
             ;;
         *) warn "Unknown argument: ${arg}" ;;
@@ -61,9 +49,7 @@ _cleanup_on_fail() {
     local exit_code=$?
     if [[ "${exit_code}" -ne 0 ]]; then
         warn "Install failed (exit ${exit_code}). Cleaning up partial state..."
-        # Remove broken venv so re-run recreates it from scratch
         rm -rf "${INSTALL_DIR}/venv" 2>/dev/null || true
-        # Remove incomplete clone if main.py never appeared
         if [[ ! -f "${INSTALL_DIR}/main.py" ]]; then
             rm -rf "${INSTALL_DIR}" 2>/dev/null || true
         fi
@@ -74,7 +60,7 @@ trap _cleanup_on_fail EXIT
 
 # --- 0. Checks -----------------------------------------------------------------
 if [[ "${EUID}" -ne 0 ]]; then
-    if [[ "${IS_CONTAINER}" -eq 1 ]] && command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+    if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
         warn "Not root — re-running with sudo..."
         exec sudo "$0" "$@"
     fi
@@ -87,8 +73,6 @@ command -v apt-get >/dev/null 2>&1 || die "apt-get not found. This installer tar
 log "Installing system dependencies..."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
-# Redundancy is intentional: every package the app/runtime may need is listed,
-# even those that usually come pre-installed on a Debian 12 image.
 apt-get install -y \
     python3 \
     python3-venv \
@@ -125,8 +109,6 @@ if [[ -f "${INSTALL_DIR}/.env" ]]; then
 else
     cp .env.example .env
 
-    # Secret keys that must be filled in. Non-secret keys already have sane
-    # defaults in .env.example.
     SECRET_KEYS=(
         BASE_API_URL
         BASE_CIAM_URL
@@ -172,45 +154,22 @@ else
     log "Wrote ${INSTALL_DIR}/.env"
 fi
 
-# --- 5. systemd service (skipped with --no-systemd or in containers) -----------
-if [[ "${INSTALL_SYSTEMD}" -eq 1 ]]; then
-    if ! command -v systemctl >/dev/null 2>&1; then
-        warn "systemctl not found — skipping systemd service."
-        INSTALL_SYSTEMD=0
-    fi
-fi
-if [[ "${INSTALL_SYSTEMD}" -eq 1 ]]; then
-    log "Installing systemd service..."
-    cat > "/etc/systemd/system/${SERVICE_NAME}.service" <<EOF
-[Unit]
-Description=RohTembak (XL) WebUI
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-WorkingDirectory=${INSTALL_DIR}
-ExecStart=${INSTALL_DIR}/venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port ${APP_PORT}
-Restart=always
-RestartSec=3
-Environment=PYTHONUNBUFFERED=1
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-    systemctl daemon-reload
-    systemctl enable "${SERVICE_NAME}" --now
-
-    sleep 2
-    if systemctl is-active --quiet "${SERVICE_NAME}"; then
-        log "Service ${SERVICE_NAME} is running."
-    else
-        warn "Service failed to start. Check: journalctl -u ${SERVICE_NAME} -n 50"
-    fi
-else
-    log "Starting uvicorn (--no-systemd mode)..."
+# --- 5. Start uvicorn ----------------------------------------------------------
+if [[ "${START_APP}" -eq 1 ]]; then
+    log "Starting uvicorn..."
     cd "${INSTALL_DIR}"
+
+    # Kill any existing uvicorn on this port
+    if command -v fuser >/dev/null 2>&1; then
+        old_pids=$(fuser "${APP_PORT}"/tcp 2>/dev/null | tr -s ' ' || true)
+        for pid in $old_pids; do
+            kill "$pid" 2>/dev/null || true
+        done
+    elif command -v lsof >/dev/null 2>&1; then
+        kill $(lsof -ti :"${APP_PORT}" 2>/dev/null) 2>/dev/null || true
+    fi
+    sleep 1
+
     setsid venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port "${APP_PORT}" > /tmp/rohtembak.log 2>&1 &
     UVICORN_PID=$!
     sleep 3
@@ -219,11 +178,11 @@ else
     else
         warn "Uvicorn may have failed to start. Check: tail /tmp/rohtembak.log"
     fi
+else
+    log "Skipping uvicorn start (--no-start)."
 fi
 
 # --- 6. Fix ownership ----------------------------------------------------------
-# When run via sudo, files are owned by root. Fix so the real user can write
-# data/, ax.fp, .env etc. without needing sudo every time.
 REAL_USER="${SUDO_USER:-$(whoami)}"
 if [[ "${REAL_USER}" != "root" ]]; then
     log "Fixing ownership → ${REAL_USER} ..."
@@ -235,13 +194,7 @@ IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 log "Done!"
 echo
 echo "  URL        : http://${IP:-localhost}:${APP_PORT}/"
-if [[ "${INSTALL_SYSTEMD}" -eq 1 ]]; then
-    echo "  Admin login: admin / admin"
-    echo "  Logs       : journalctl -u ${SERVICE_NAME} -f"
-    echo "  Restart    : systemctl restart ${SERVICE_NAME}"
-else
-    echo "  Admin login: admin / admin"
-    echo "  Logs       : tail -f /tmp/rohtembak.log"
-    echo "  Stop       : kill \$(lsof -ti :${APP_PORT})"
-    echo "  Restart    : cd ${INSTALL_DIR} && setsid venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port ${APP_PORT} > /tmp/rohtembak.log 2>&1 &"
-fi
+echo "  Admin login: admin / admin"
+echo "  Logs       : tail -f /tmp/rohtembak.log"
+echo "  Stop       : kill \$(lsof -ti :${APP_PORT})"
+echo "  Restart    : cd ${INSTALL_DIR} && setsid venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port ${APP_PORT} > /tmp/rohtembak.log 2>&1 &"

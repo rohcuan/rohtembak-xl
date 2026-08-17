@@ -140,6 +140,7 @@ log "Restoring runtime data..."
 if [[ "${IS_CONTAINER}" -eq 1 ]]; then
     log "Starting uvicorn (container mode)..."
     cd "${INSTALL_DIR}"
+    rm -f /tmp/rohtembak.log
     setsid venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port "${APP_PORT}" > /tmp/rohtembak.log 2>&1 &
     sleep 3
     if curl -s -o /dev/null -w '' http://localhost:"${APP_PORT}"/login 2>/dev/null; then

@@ -162,8 +162,8 @@ def submit_otp(
 
     print("Submitting OTP...")
     try:
-        device_id = get_user_ax_device_id(user_id)
-        fingerprint = get_user_ax_fp(user_id)
+        device_id = get_user_ax_device_id(username)
+        fingerprint = get_user_ax_fp(username)
 
         response = requests.post(url, data=payload, headers={
             "Accept-Encoding": "gzip, deflate, br",
@@ -230,7 +230,7 @@ def get_new_token(api_key: str, refresh_token: str, subscriber_id: str, username
         if subscriber_id == "":
             raise ValueError("Subscriber ID is missing")
         
-        exchange_code = extend_session(subscriber_id, user_id)
+        exchange_code = extend_session(subscriber_id, username)
         if exchange_code is None:
             raise ValueError("Failed to get exchange code")
         
@@ -239,7 +239,7 @@ def get_new_token(api_key: str, refresh_token: str, subscriber_id: str, username
             "DEVICEID",
             subscriber_id,
             exchange_code,
-            user_id,
+            username,
         )
         
         if extend_result is None:

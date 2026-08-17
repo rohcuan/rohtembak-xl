@@ -70,26 +70,21 @@ if [[ "${SCRIPT_DIR}" == "${INSTALL_DIR}"* ]]; then
     chmod +x "${TMP_SELF}"
     warn "Running from ${INSTALL_DIR} - relaunching from ${TMP_SELF}..."
     cd /
-    exec "${TMP_SELF}" "$@"
+    exec bash "${TMP_SELF}" "$@"
 fi
 
 # --- 1. Stop service / uvicorn ------------------------------------------------
 if [[ "${IS_CONTAINER}" -eq 1 ]]; then
     log "Stopping uvicorn (container mode)..."
-    # Kill whatever is listening on the app port. fuser is the most reliable
-    # way — avoids pkill -f accidentally matching the parent shell.
+    # Find and kill uvicorn by port. Use fuser to get PIDs, then kill
+    # individually — avoids fuser -k sending signals to our own process group.
     if command -v fuser >/dev/null 2>&1; then
-        fuser -k "${APP_PORT}"/tcp 2>/dev/null || true
+        uvicorn_pids=$(fuser "${APP_PORT}"/tcp 2>/dev/null | tr -s ' ')
+        for pid in $uvicorn_pids; do
+            kill "$pid" 2>/dev/null || true
+        done
     elif command -v lsof >/dev/null 2>&1; then
         kill $(lsof -ti :"${APP_PORT}") 2>/dev/null || true
-    else
-        # Fallback: find uvicorn python process by /proc
-        for pid in /proc/[0-9]*/cmdline; do
-            p=$(echo "$pid" | cut -d/ -f3)
-            if grep -qa 'uvicorn' "$pid" 2>/dev/null; then
-                kill "$p" 2>/dev/null || true
-            fi
-        done
     fi
     sleep 2
 else

@@ -1158,6 +1158,12 @@ async def admin_restore_upload(
         admin_msg = "admin/admin (default)"
     db.flush()
 
+    # 3b. Restore device fingerprint (ax.fp) so restored refresh tokens match this device.
+    #     Write shared fp FIRST so it's available as fallback for per-user copies.
+    device_fp_ok = None
+    if data.get("device_fp"):
+        device_fp_ok = _write_ax_fp_file(data["device_fp"])
+
     users_restored = 0
     user_fingerprints = data.get("user_fingerprints") or {}
     for e in valid_users:
@@ -1215,11 +1221,6 @@ async def admin_restore_upload(
     for key, fee in fee_source.items():
         db.add(FamilyFee(family_key=key, fee=fee))
         fee_restored += 1
-
-    # 3b. Restore device fingerprint (ax.fp) so restored refresh tokens match this device
-    device_fp_ok = None
-    if data.get("device_fp"):
-        device_fp_ok = _write_ax_fp_file(data["device_fp"])
 
     db.commit()
 

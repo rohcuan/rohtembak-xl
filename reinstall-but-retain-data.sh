@@ -59,18 +59,13 @@ if [[ "${EUID}" -ne 0 ]]; then
 fi
 command -v apt-get >/dev/null 2>&1 || die "apt-get not found. This script targets Debian/Ubuntu."
 
-# If run from inside the install dir, relaunch from a temp location so the
-# directory can be wiped safely while this script is still executing.
-# IMPORTANT: cd / first — Linux won't let you rm -rf a directory that is any
-# process's current working directory ("device or resource busy").
+# If run from inside the install dir, cd out first so the directory can be
+# wiped safely. Linux won't let you rm -rf a directory that is any process's
+# current working directory ("device or resource busy").
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ "${SCRIPT_DIR}" == "${INSTALL_DIR}"* ]]; then
-    TMP_SELF="$(mktemp /tmp/reinstall-self.XXXXXX.sh)"
-    cp "${BASH_SOURCE[0]}" "${TMP_SELF}"
-    chmod +x "${TMP_SELF}"
-    warn "Running from ${INSTALL_DIR} - relaunching from ${TMP_SELF}..."
+    warn "Running from ${INSTALL_DIR} - changing to / ..."
     cd /
-    exec bash "${TMP_SELF}" "$@"
 fi
 
 # --- 1. Stop service / uvicorn ------------------------------------------------

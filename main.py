@@ -2128,9 +2128,9 @@ def user_xl_banner_info(user: User = Depends(get_current_user)):
         return JSONResponse({"ok": False, "xl_info": None}, status_code=403)
     db = next(get_db())
     ctx = get_user_context(user, db)
-    db.close()
     active = ctx.get("active_xl")
     xl_info = _get_xl_info(active)
+    db.close()
     token_ok = xl_info is not None
     if not token_ok and active and active.refresh_token:
         cached = _XL_TOKEN_CACHE.get(active.subscriber_id or active.id)

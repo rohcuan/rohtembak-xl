@@ -252,11 +252,6 @@ def get_user_ax_device_id(user_id: int) -> str:
     fp = get_user_ax_fp(user_id)
     return hashlib.md5(fp.encode("utf-8")).hexdigest()
 
-
-def ax_device_id() -> str:
-    android_id = load_ax_fp()
-    return hashlib.md5(android_id.encode("utf-8")).hexdigest()
-
 def get_x_signature_loyalty(
         api_key: str,
         sig_time_sec: int,

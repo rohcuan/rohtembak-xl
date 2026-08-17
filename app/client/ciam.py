@@ -1,5 +1,4 @@
 import base64
-import hashlib
 import os
 import json
 import uuid
@@ -12,7 +11,6 @@ from app.client.encrypt import (
     java_like_timestamp,
     ts_gmt7_without_colon,
     ax_api_signature,
-    load_ax_fp,
     get_user_ax_fp,
     get_user_ax_device_id,
 )
@@ -30,7 +28,7 @@ def validate_contact(contact: str) -> bool:
         return False
     return True
 
-def get_otp(contact: str, user_id: int = 0) -> str:
+def get_otp(contact: str, user_id: int) -> str:
     if not validate_contact(contact):
         return None
     
@@ -46,8 +44,8 @@ def get_otp(contact: str, user_id: int = 0) -> str:
     ax_request_at = java_like_timestamp(now)
     ax_request_id = str(uuid.uuid4())
 
-    device_id = get_user_ax_device_id(user_id) if user_id else hashlib.md5(load_ax_fp().encode("utf-8")).hexdigest()
-    fingerprint = get_user_ax_fp(user_id) if user_id else load_ax_fp()
+    device_id = get_user_ax_device_id(user_id)
+    fingerprint = get_user_ax_fp(user_id)
 
     payload = ""
     headers = {
@@ -80,7 +78,7 @@ def get_otp(contact: str, user_id: int = 0) -> str:
         print(f"Error requesting OTP: {e}")
         return None
 
-def extend_session(subscriber_id: str, user_id: int = 0) -> str:
+def extend_session(subscriber_id: str, user_id: int) -> str:
     b64_subscriber_id = base64.b64encode(subscriber_id.encode()).decode()
     url = f"{BASE_CIAM_URL}/realms/xl-ciam/auth/extend-session"
 
@@ -93,8 +91,8 @@ def extend_session(subscriber_id: str, user_id: int = 0) -> str:
     ax_request_at = java_like_timestamp(now)
     ax_request_id = str(uuid.uuid4())
 
-    device_id = get_user_ax_device_id(user_id) if user_id else hashlib.md5(load_ax_fp().encode("utf-8")).hexdigest()
-    fingerprint = get_user_ax_fp(user_id) if user_id else load_ax_fp()
+    device_id = get_user_ax_device_id(user_id)
+    fingerprint = get_user_ax_fp(user_id)
     
     headers = {
         "Accept-Encoding": "gzip, deflate, br",
@@ -131,7 +129,7 @@ def submit_otp(
     contact_type: str,
     contact: str,
     code: str,
-    user_id: int = 0,
+    user_id: int,
 ):
     final_contact = ""
     final_code = ""
@@ -164,8 +162,8 @@ def submit_otp(
 
     print("Submitting OTP...")
     try:
-        device_id = get_user_ax_device_id(user_id) if user_id else hashlib.md5(load_ax_fp().encode("utf-8")).hexdigest()
-        fingerprint = get_user_ax_fp(user_id) if user_id else load_ax_fp()
+        device_id = get_user_ax_device_id(user_id)
+        fingerprint = get_user_ax_fp(user_id)
 
         response = requests.post(url, data=payload, headers={
             "Accept-Encoding": "gzip, deflate, br",
@@ -193,15 +191,15 @@ def submit_otp(
         print(f"[Error submit_otp]: {e}")
         return None
 
-def get_new_token(api_key: str, refresh_token: str, subscriber_id: str, user_id: int = 0) -> str:
+def get_new_token(api_key: str, refresh_token: str, subscriber_id: str, user_id: int) -> str:
     url = BASE_CIAM_URL + "/realms/xl-ciam/protocol/openid-connect/token"
 
     now = datetime.now(timezone(timedelta(hours=7)))
     ax_request_at = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "+0700"
     ax_request_id = str(uuid.uuid4())
 
-    device_id = get_user_ax_device_id(user_id) if user_id else hashlib.md5(load_ax_fp().encode("utf-8")).hexdigest()
-    fingerprint = get_user_ax_fp(user_id) if user_id else load_ax_fp()
+    device_id = get_user_ax_device_id(user_id)
+    fingerprint = get_user_ax_fp(user_id)
 
     headers = {
         "Host": BASE_CIAM_URL.replace("https://", ""),
@@ -263,7 +261,7 @@ def get_new_token(api_key: str, refresh_token: str, subscriber_id: str, user_id:
     
     return body
 
-def get_auth_code(tokens: dict, pin: str, msisdn: str, user_id: int = 0):
+def get_auth_code(tokens: dict, pin: str, msisdn: str, user_id: int):
     url = BASE_CIAM_URL + "/ciam/auth/authorization-token/generate"
 
     parsed = urlparse(BASE_CIAM_URL)
@@ -273,8 +271,8 @@ def get_auth_code(tokens: dict, pin: str, msisdn: str, user_id: int = 0):
     ax_request_at = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "+0700"
     ax_request_id = str(uuid.uuid4())
 
-    device_id = get_user_ax_device_id(user_id) if user_id else hashlib.md5(load_ax_fp().encode("utf-8")).hexdigest()
-    fingerprint = get_user_ax_fp(user_id) if user_id else load_ax_fp()
+    device_id = get_user_ax_device_id(user_id)
+    fingerprint = get_user_ax_fp(user_id)
 
     headers = {
         "Host": host_header,

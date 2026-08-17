@@ -66,7 +66,8 @@ cd /opt/rohtembak
 Yang TIDAK ikut di-commit:
 
 - `data/*.db` — database runtime berisi **refresh token / access token** akun XL tiap nomor. Instalasi baru = panel kosong, belum ada nomor yang login OTP.
-- `ax.fp` — device fingerprint; dibuat ulang otomatis dari `AX_FP_KEY` saat pertama kali app berjalan.
+- `data/ax.fp.{user_id}` — device fingerprint per user; dibuat otomatis saat pertama kali user berjalan. Setiap user mendapat fingerprint terpisah (max 10 nomor XL per fingerprint).
+- `ax.fp` — shared device fingerprint (fallback untuk user baru sebelum per-user fp dibuat).
 
 ## Akun default
 
@@ -75,13 +76,13 @@ Yang TIDAK ikut di-commit:
 ## Keamanan
 
 - Kredensial API di `.env` sengaja dipublish karena sudah tersebar publik (didapat dari pencarian Google).
-- Yang tetap dilindungi `gitignore`: `data/*.db` (token refresh/access XL per nomor), `ax.fp`, `venv/`, `__pycache__/`.
+- Yang tetap dilindungi `gitignore`: `data/*.db` (token refresh/access XL per nomor), `data/ax.fp.*` (fingerprint per user), `ax.fp`, `venv/`, `__pycache__/`.
 - Login nomor XL dilakukan via menu panel (input nomor + OTP) dan tersimpan hanya di database lokal.
 
 ## Update / reinstall (retain data)
 
 Untuk perubahan besar di repo: reinstall bersih (bukan git pull) tapi tetap menyimpan data
-(`.env`, `data/*.db`, `ax.fp`):
+(`.env`, `data/` termasuk fingerprint per user):
 
 ```bash
 wget -O reinstall-but-retain-data.sh https://raw.githubusercontent.com/rohcuan/rohtembak-xl/main/reinstall-but-retain-data.sh

@@ -9,8 +9,7 @@ set -euo pipefail
 # runtime data so nothing is lost:
 #   - .env              (configuration)
 #   - data/             (SQLite DB: users, balances, XL accounts, refresh
-#                       tokens, transactions, fees)
-#   - ax.fp / *.fp      (device fingerprint - tied to XL refresh tokens)
+#                       tokens, transactions, fees, per-user fingerprints)
 #
 # This is NOT a git pull - it is a clean reinstall.
 #
@@ -30,7 +29,7 @@ REPO_BRANCH="main"
 INSTALL_DIR="/opt/rohtembak"
 SERVICE_NAME="rohtembak"
 INSTALL_SH_URL="https://raw.githubusercontent.com/rohcuan/rohtembak-xl/main/install.sh"
-RETAIN_ITEMS=(.env data ax.fp "*.fp")
+RETAIN_ITEMS=(.env data ax.fp)
 BACKUP_DIR="$(mktemp -d /tmp/rohtembak-backup.XXXXXX)"
 
 log() { echo -e "\033[1;32m[reinstall]\033[0m $*"; }

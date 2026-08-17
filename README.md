@@ -24,7 +24,7 @@ Web UI untuk mengelola akun XL / paket XL (beli paket, info paket, riwayat, pemb
 ├── templates/            # Jinja2 templates
 ├── static/               # CSS / JS
 ├── requirements.txt
-├── install.sh            # dev/staging installer (apt + venv + uvicorn)
+├── install-dev-staging.sh    # dev/staging installer (apt + venv + uvicorn)
 ├── reinstall-dev-staging.sh  # dev/staging clean reinstall (retain data)
 ├── entrypoint.sh         # production Docker entrypoint (install + run)
 ├── docker-compose.yml    # production container
@@ -49,9 +49,9 @@ Buka `http://localhost:8000` — login `admin` / `admin`.
 Install atau reinstall ke `/opt/rohtembak`, start uvicorn di port 8000:
 
 ```bash
-wget -O install.sh https://raw.githubusercontent.com/rohcuan/rohtembak-xl/main/install.sh
-chmod +x install.sh
-sudo ./install.sh
+wget -O install-dev-staging.sh https://raw.githubusercontent.com/rohcuan/rohtembak-xl/main/install-dev-staging.sh
+chmod +x install-dev-staging.sh
+sudo ./install-dev-staging.sh
 ```
 
 ## Update / reinstall (retain data)

@@ -87,7 +87,7 @@ log "Installing fresh from repo..."
 
 # Find install.sh: check SCRIPT_DIR, then /tmp, then download from GitHub
 INSTALL_SH=""
-for candidate in "${SCRIPT_DIR}/install.sh" /tmp/install.sh; do
+for candidate in "${SCRIPT_DIR}/install-dev-staging.sh" /tmp/install-dev-staging.sh; do
     if [[ -f "${candidate}" ]] && grep -q "RohTembak" "${candidate}" 2>/dev/null; then
         INSTALL_SH="${candidate}"
         break
@@ -96,21 +96,21 @@ done
 
 if [[ -z "${INSTALL_SH}" ]]; then
     cd /tmp
-    rm -f install.sh
+    rm -f install-dev-staging.sh
     if command -v curl >/dev/null 2>&1; then
-        curl -fsSL -o install.sh "https://raw.githubusercontent.com/rohcuan/rohtembak-xl/main/install.sh" || die "Failed to download install.sh"
+        curl -fsSL -o install-dev-staging.sh "https://raw.githubusercontent.com/rohcuan/rohtembak-xl/main/install-dev-staging.sh" || die "Failed to download install-dev-staging.sh"
     elif command -v wget >/dev/null 2>&1; then
-        wget -q -O install.sh "https://raw.githubusercontent.com/rohcuan/rohtembak-xl/main/install.sh" || die "Failed to download install.sh"
+        wget -q -O install-dev-staging.sh "https://raw.githubusercontent.com/rohcuan/rohtembak-xl/main/install-dev-staging.sh" || die "Failed to download install-dev-staging.sh"
     else
         die "Neither curl nor wget available."
     fi
-    INSTALL_SH="/tmp/install.sh"
+    INSTALL_SH="/tmp/install-dev-staging.sh"
 fi
 
-log "Using install.sh from ${INSTALL_SH}"
+log "Using install-dev-staging.sh from ${INSTALL_SH}"
 chmod +x "${INSTALL_SH}"
 "${INSTALL_SH}" --no-start
-rm -f /tmp/install.sh
+rm -f /tmp/install-dev-staging.sh
 
 # --- 5. Restore runtime data --------------------------------------------------
 log "Restoring runtime data..."

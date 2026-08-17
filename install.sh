@@ -28,9 +28,22 @@ log() { echo -e "\033[1;32m[install]\033[0m $*"; }
 warn() { echo -e "\033[1;33m[warn]\033[0m $*"; }
 die()  { echo -e "\033[1;31m[error]\033[0m $*" >&2; exit 1; }
 
+# --- Detect container environment -----------------------------------------------
+IS_CONTAINER=0
+if [[ -f /.dockerenv ]] || [[ -f /run/.containerenv ]]; then
+    IS_CONTAINER=1
+elif grep -qE 'docker|podman|containerd|distrobox' /proc/1/cgroup 2>/dev/null; then
+    IS_CONTAINER=1
+fi
+
 # --no-systemd: install code + venv only, skip the systemd unit. Used by the
 # container entrypoint (entrypoint.sh) where the runtime handles restart/logs.
+# Auto-detected in containers (distrobox, docker, podman).
 INSTALL_SYSTEMD=1
+if [[ "${IS_CONTAINER}" -eq 1 ]]; then
+    INSTALL_SYSTEMD=0
+    log "Container detected — skipping systemd automatically."
+fi
 for arg in "$@"; do
     case "${arg}" in
         --no-systemd) INSTALL_SYSTEMD=0 ;;
@@ -61,6 +74,10 @@ trap _cleanup_on_fail EXIT
 
 # --- 0. Checks -----------------------------------------------------------------
 if [[ "${EUID}" -ne 0 ]]; then
+    if [[ "${IS_CONTAINER}" -eq 1 ]] && command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+        warn "Not root — re-running with sudo..."
+        exec sudo "$0" "$@"
+    fi
     die "Run as root (sudo)."
 fi
 
@@ -155,7 +172,13 @@ else
     log "Wrote ${INSTALL_DIR}/.env"
 fi
 
-# --- 5. systemd service (skipped with --no-systemd) ---------------------------
+# --- 5. systemd service (skipped with --no-systemd or in containers) -----------
+if [[ "${INSTALL_SYSTEMD}" -eq 1 ]]; then
+    if ! command -v systemctl >/dev/null 2>&1; then
+        warn "systemctl not found — skipping systemd service."
+        INSTALL_SYSTEMD=0
+    fi
+fi
 if [[ "${INSTALL_SYSTEMD}" -eq 1 ]]; then
     log "Installing systemd service..."
     cat > "/etc/systemd/system/${SERVICE_NAME}.service" <<EOF

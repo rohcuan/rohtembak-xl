@@ -13,6 +13,8 @@ from app.client.encrypt import (
     ts_gmt7_without_colon,
     ax_api_signature,
     load_ax_fp,
+    get_user_ax_fp,
+    get_user_ax_device_id,
 )
 
 BASE_CIAM_URL = os.getenv("BASE_CIAM_URL")
@@ -22,17 +24,13 @@ if not BASE_CIAM_URL:
 BASIC_AUTH = os.getenv("BASIC_AUTH")
 UA = os.getenv("UA")
 
-def _ax_device_id_and_fp():
-    fp = load_ax_fp()
-    return hashlib.md5(fp.encode("utf-8")).hexdigest(), fp
-
 def validate_contact(contact: str) -> bool:
     if not contact.startswith("628") or len(contact) > 14:
         print("Invalid number")
         return False
     return True
 
-def get_otp(contact: str) -> str:
+def get_otp(contact: str, user_id: int = 0) -> str:
     if not validate_contact(contact):
         return None
     
@@ -48,12 +46,15 @@ def get_otp(contact: str) -> str:
     ax_request_at = java_like_timestamp(now)
     ax_request_id = str(uuid.uuid4())
 
+    device_id = get_user_ax_device_id(user_id) if user_id else hashlib.md5(load_ax_fp().encode("utf-8")).hexdigest()
+    fingerprint = get_user_ax_fp(user_id) if user_id else load_ax_fp()
+
     payload = ""
     headers = {
         "Accept-Encoding": "gzip, deflate, br",
         "Authorization": f"Basic {BASIC_AUTH}",
-        "Ax-Device-Id": _ax_device_id_and_fp()[0],
-        "Ax-Fingerprint": _ax_device_id_and_fp()[1],
+        "Ax-Device-Id": device_id,
+        "Ax-Fingerprint": fingerprint,
         "Ax-Request-At": ax_request_at,
         "Ax-Request-Device": "samsung",
         "Ax-Request-Device-Model": "SM-N935F",
@@ -79,7 +80,7 @@ def get_otp(contact: str) -> str:
         print(f"Error requesting OTP: {e}")
         return None
 
-def extend_session(subscriber_id: str) -> str:
+def extend_session(subscriber_id: str, user_id: int = 0) -> str:
     b64_subscriber_id = base64.b64encode(subscriber_id.encode()).decode()
     url = f"{BASE_CIAM_URL}/realms/xl-ciam/auth/extend-session"
 
@@ -91,12 +92,15 @@ def extend_session(subscriber_id: str) -> str:
     now = datetime.now(timezone(timedelta(hours=7)))
     ax_request_at = java_like_timestamp(now)
     ax_request_id = str(uuid.uuid4())
+
+    device_id = get_user_ax_device_id(user_id) if user_id else hashlib.md5(load_ax_fp().encode("utf-8")).hexdigest()
+    fingerprint = get_user_ax_fp(user_id) if user_id else load_ax_fp()
     
     headers = {
         "Accept-Encoding": "gzip, deflate, br",
         "Authorization": f"Basic {BASIC_AUTH}",
-        "Ax-Device-Id": _ax_device_id_and_fp()[0],
-        "Ax-Fingerprint": _ax_device_id_and_fp()[1],
+        "Ax-Device-Id": device_id,
+        "Ax-Fingerprint": fingerprint,
         "Ax-Request-At": ax_request_at,
         "Ax-Request-Device": "samsung",
         "Ax-Request-Device-Model": "SM-N935F",
@@ -126,7 +130,8 @@ def submit_otp(
     api_key: str,
     contact_type: str,
     contact: str,
-    code: str
+    code: str,
+    user_id: int = 0,
 ):
     final_contact = ""
     final_code = ""
@@ -157,24 +162,25 @@ def submit_otp(
 
     payload = f"contactType={contact_type}&code={final_code}&grant_type=password&contact={final_contact}&scope=openid"
 
-    headers = {
-        "Accept-Encoding": "gzip, deflate, br",
-        "Authorization": f"Basic {BASIC_AUTH}",
-        "Ax-Api-Signature": signature,
-        "Ax-Device-Id": _ax_device_id_and_fp()[0],
-        "Ax-Fingerprint": _ax_device_id_and_fp()[1],
-        "Ax-Request-At": ts_header,
-        "Ax-Request-Device": "samsung",
-        "Ax-Request-Device-Model": "SM-N935F",
-        "Ax-Request-Id": str(uuid.uuid4()),
-        "Ax-Substype": "PREPAID",
-        "Content-Type": "application/x-www-form-urlencoded",
-        "User-Agent": UA,
-    }
-
     print("Submitting OTP...")
     try:
-        response = requests.post(url, data=payload, headers=headers, timeout=20)
+        device_id = get_user_ax_device_id(user_id) if user_id else hashlib.md5(load_ax_fp().encode("utf-8")).hexdigest()
+        fingerprint = get_user_ax_fp(user_id) if user_id else load_ax_fp()
+
+        response = requests.post(url, data=payload, headers={
+            "Accept-Encoding": "gzip, deflate, br",
+            "Authorization": f"Basic {BASIC_AUTH}",
+            "Ax-Api-Signature": signature,
+            "Ax-Device-Id": device_id,
+            "Ax-Fingerprint": fingerprint,
+            "Ax-Request-At": ts_header,
+            "Ax-Request-Device": "samsung",
+            "Ax-Request-Device-Model": "SM-N935F",
+            "Ax-Request-Id": str(uuid.uuid4()),
+            "Ax-Substype": "PREPAID",
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": UA,
+        }, timeout=20)
         json_body = json.loads(response.text)
                 
         if "error" in json_body:
@@ -187,21 +193,24 @@ def submit_otp(
         print(f"[Error submit_otp]: {e}")
         return None
 
-def get_new_token(api_key: str, refresh_token: str, subscriber_id: str) -> str:
+def get_new_token(api_key: str, refresh_token: str, subscriber_id: str, user_id: int = 0) -> str:
     url = BASE_CIAM_URL + "/realms/xl-ciam/protocol/openid-connect/token"
 
     now = datetime.now(timezone(timedelta(hours=7)))
     ax_request_at = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "+0700"
     ax_request_id = str(uuid.uuid4())
 
+    device_id = get_user_ax_device_id(user_id) if user_id else hashlib.md5(load_ax_fp().encode("utf-8")).hexdigest()
+    fingerprint = get_user_ax_fp(user_id) if user_id else load_ax_fp()
+
     headers = {
         "Host": BASE_CIAM_URL.replace("https://", ""),
         "ax-request-at": ax_request_at,
-        "ax-device-id": _ax_device_id_and_fp()[0],
+        "ax-device-id": device_id,
         "ax-request-id": ax_request_id,
         "ax-request-device": "samsung",
         "ax-request-device-model": "SM-N935F",
-        "ax-fingerprint": _ax_device_id_and_fp()[1],
+        "ax-fingerprint": fingerprint,
         "authorization": f"Basic {BASIC_AUTH}",
         "user-agent": UA,
         "ax-substype": "PREPAID",
@@ -223,7 +232,7 @@ def get_new_token(api_key: str, refresh_token: str, subscriber_id: str) -> str:
         if subscriber_id == "":
             raise ValueError("Subscriber ID is missing")
         
-        exchange_code = extend_session(subscriber_id)
+        exchange_code = extend_session(subscriber_id, user_id)
         if exchange_code is None:
             raise ValueError("Failed to get exchange code")
         
@@ -231,7 +240,8 @@ def get_new_token(api_key: str, refresh_token: str, subscriber_id: str) -> str:
             api_key,
             "DEVICEID",
             subscriber_id,
-            exchange_code
+            exchange_code,
+            user_id,
         )
         
         if extend_result is None:
@@ -253,7 +263,7 @@ def get_new_token(api_key: str, refresh_token: str, subscriber_id: str) -> str:
     
     return body
 
-def get_auth_code(tokens: dict, pin: str, msisdn: str):
+def get_auth_code(tokens: dict, pin: str, msisdn: str, user_id: int = 0):
     url = BASE_CIAM_URL + "/ciam/auth/authorization-token/generate"
 
     parsed = urlparse(BASE_CIAM_URL)
@@ -263,14 +273,17 @@ def get_auth_code(tokens: dict, pin: str, msisdn: str):
     ax_request_at = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "+0700"
     ax_request_id = str(uuid.uuid4())
 
+    device_id = get_user_ax_device_id(user_id) if user_id else hashlib.md5(load_ax_fp().encode("utf-8")).hexdigest()
+    fingerprint = get_user_ax_fp(user_id) if user_id else load_ax_fp()
+
     headers = {
         "Host": host_header,
         "Ax-Request-At": ax_request_at,
-        "Ax-Device-Id": _ax_device_id_and_fp()[0],
+        "Ax-Device-Id": device_id,
         "Ax-Request-Id": ax_request_id,
         "Ax-Request-Device": "samsung",
         "Ax-Request-Device-Model": "SM-N935F",
-        "Ax-Fingerprint": _ax_device_id_and_fp()[1],
+        "Ax-Fingerprint": fingerprint,
         "Authorization": f"Bearer {tokens['access_token']}",
         "User-Agent": UA,
         "Ax-Substype": "PREPAID",

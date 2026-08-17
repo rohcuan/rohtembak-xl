@@ -24,7 +24,7 @@ from auth import (
 
 from datetime import datetime, timezone, timedelta
 from app.client.ciam import get_otp as xl_get_otp, submit_otp as xl_submit_otp, get_new_token as xl_refresh_token
-from app.client.encrypt import API_KEY, load_ax_fp
+from app.client.encrypt import API_KEY, load_ax_fp, copy_shared_fp_to_user
 from app.client.engsel import login_info as xl_login_info, get_balance as xl_get_balance, get_transaction_history as xl_get_transactions, get_tiering_info as xl_get_tiering, send_api_request, get_family as xl_get_family, get_package as xl_get_package, get_addons as xl_get_addons
 from app.menus.util import format_quota_byte
 from app.type_dict import PaymentItem
@@ -199,7 +199,7 @@ def _get_xl_tokens(active_xl):
         if entry and entry.get("expires_at", 0) > now:
             return entry["tokens"]
         _api_delay()
-        tokens = xl_refresh_token(API_KEY, active_xl.refresh_token, active_xl.subscriber_id)
+        tokens = xl_refresh_token(API_KEY, active_xl.refresh_token, active_xl.subscriber_id, active_xl.user_id)
         if not tokens:
             _XL_TOKEN_CACHE.pop(key, None)
             return None
@@ -240,6 +240,9 @@ async def lifespan(app: FastAPI):
     init_db()
     db = next(get_db())
     seed_users(db)
+    existing_users = db.query(User).filter(User.role == "user").all()
+    for u in existing_users:
+        copy_shared_fp_to_user(u.id)
     db.close()
     yield
 
@@ -287,6 +290,7 @@ def get_user_context(user: User, db: Session) -> dict:
         "xl_accounts": xl_accounts,
         "active_xl": active_xl,
         "refresh_warning": refresh_warning,
+        "xl_count": len(xl_accounts),
     }
 
 
@@ -812,6 +816,17 @@ def admin_backup(format: str = "zip", admin_user: User = Depends(get_current_use
         zf.writestr("fees.json", json.dumps(fees, indent=2, ensure_ascii=False))
         if ax_fp:
             zf.writestr("device.fp", ax_fp)
+        fp_dir = os.path.join(BASE_DIR, "data")
+        for u in users:
+            fp_path = os.path.join(fp_dir, f"ax.fp.{u.id}")
+            if os.path.exists(fp_path):
+                try:
+                    with open(fp_path, "r", encoding="utf-8") as f:
+                        fp_content = f.read().strip()
+                    if fp_content:
+                        zf.writestr(f"fingerprints/{u.username}.fp", fp_content)
+                except (OSError, UnicodeDecodeError):
+                    pass
     buf.seek(0)
     resp = Response(content=buf.getvalue(), media_type="application/zip")
     resp.headers["Content-Disposition"] = 'attachment; filename="backup.zip"'
@@ -930,6 +945,17 @@ def _load_backup_v3(zf) -> dict | None:
     except (UnicodeDecodeError, RuntimeError):
         raise ValueError("File device.fp di dalam ZIP tidak valid.")
 
+    user_fingerprints = {}
+    for name in zf.namelist():
+        if name.startswith("fingerprints/") and name.endswith(".fp"):
+            username = name[len("fingerprints/"):-3]
+            try:
+                fp_content = zf.read(name).decode("utf-8").strip()
+                if fp_content:
+                    user_fingerprints[username] = fp_content
+            except (UnicodeDecodeError, RuntimeError):
+                pass
+
     data = _norm_backup({
         "version": 3,
         "admin": read("admin.json"),
@@ -938,6 +964,7 @@ def _load_backup_v3(zf) -> dict | None:
         "fees": read("fees.json"),
     })
     data["device_fp"] = device_fp
+    data["user_fingerprints"] = user_fingerprints
     return data
 
 
@@ -1132,6 +1159,7 @@ async def admin_restore_upload(
     db.flush()
 
     users_restored = 0
+    user_fingerprints = data.get("user_fingerprints") or {}
     for e in valid_users:
         if e["username"] in reserved:
             continue
@@ -1149,6 +1177,18 @@ async def admin_restore_upload(
                 type="set",
                 description="Restore dari backup"
             ))
+        fp_content = user_fingerprints.get(e["username"])
+        if fp_content:
+            fp_dir = os.path.join(BASE_DIR, "data")
+            os.makedirs(fp_dir, exist_ok=True)
+            fp_path = os.path.join(fp_dir, f"ax.fp.{u.id}")
+            try:
+                with open(fp_path, "w", encoding="utf-8") as f:
+                    f.write(fp_content)
+            except OSError:
+                pass
+        elif device_fp_ok:
+            copy_shared_fp_to_user(u.id)
         users_restored += 1
 
     xl_restored = xl_skipped = 0
@@ -1246,6 +1286,12 @@ def add_xl(
     if not phone_number.startswith("628") or len(phone_number) < 10 or len(phone_number) > 15:
         ctx = get_user_context(user, db)
         ctx.update({"request": request, "error": "Nomor tidak valid. Harus diawali 628 dan 10-15 digit"})
+        return render("user/dashboard.html", context=ctx, status_code=400)
+
+    xl_count = db.query(XLAccount).filter(XLAccount.user_id == user.id).count()
+    if xl_count >= 10:
+        ctx = get_user_context(user, db)
+        ctx.update({"request": request, "error": "Maksimal 10 nomor XL per akun. Hapus nomor lama terlebih dahulu."})
         return render("user/dashboard.html", context=ctx, status_code=400)
 
     existing = db.query(XLAccount).filter(
@@ -1355,6 +1401,11 @@ def xl_otp_request(
             ctx.update({"request": request, "error": "Nomor tidak cocok dengan catatan. Gunakan nomor sesuai daftar."})
             return render("user/otp_request.html", context=ctx, status_code=400)
     else:
+        xl_count = db.query(XLAccount).filter(XLAccount.user_id == user.id).count()
+        if xl_count >= 10:
+            ctx.update({"request": request, "error": "Maksimal 10 nomor XL per akun. Hapus nomor lama terlebih dahulu."})
+            return render("user/otp_request.html", context=ctx, status_code=400)
+
         existing = db.query(XLAccount).filter(
             XLAccount.user_id == user.id,
             XLAccount.phone_number == phone_number
@@ -1365,7 +1416,7 @@ def xl_otp_request(
 
     try:
         _api_delay()
-        subscriber_id = xl_get_otp(phone_number)
+        subscriber_id = xl_get_otp(phone_number, user.id)
     except Exception as e:
         ctx.update({"request": request, "error": f"Gagal mengirim OTP: {e}"})
         return render("user/otp_request.html", context=ctx, status_code=400)
@@ -1421,7 +1472,7 @@ def xl_otp_submit(
         return render("user/otp_submit.html", context=ctx, status_code=400)
 
     _api_delay()
-    tokens = xl_submit_otp(API_KEY, "SMS", phone_number, otp_code)
+    tokens = xl_submit_otp(API_KEY, "SMS", phone_number, otp_code, user.id)
     if tokens is None:
         ctx.update({"request": request, "phone_number": phone_number, "label": label,
             "error": "Kode OTP salah atau sudah kadaluarsa"})

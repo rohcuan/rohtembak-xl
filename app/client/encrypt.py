@@ -205,6 +205,54 @@ def get_x_signature_bounty_allotment(
         destination_msisdn,
     )
 
+def get_user_ax_fp(user_id: int) -> str:
+    """Load or generate a per-user device fingerprint. Stored in data/ax.fp.{user_id}."""
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    fp_dir = os.path.join(project_root, "data")
+    os.makedirs(fp_dir, exist_ok=True)
+    fp_path = os.path.join(fp_dir, f"ax.fp.{user_id}")
+    if os.path.exists(fp_path):
+        with open(fp_path, "r", encoding="utf-8") as f:
+            content = f.read().strip()
+            if content:
+                return content
+
+    dev = DeviceInfo(
+        manufacturer="samsung" + str(randint(1000, 9999)),
+        model="SM-N93" + str(randint(1000, 9999)),
+        lang="en",
+        resolution="720x1540",
+        tz_short="GMT07:00",
+        ip="192.169.69.69",
+        font_scale=1.0,
+        android_release="13",
+        msisdn="6281398370564"
+    )
+
+    new_fp = ax_fingerprint(dev, AX_FP_KEY)
+    with open(fp_path, "w", encoding="utf-8") as f:
+        f.write(new_fp)
+    return new_fp
+
+
+def copy_shared_fp_to_user(user_id: int) -> str:
+    """Copy the shared ax.fp to a per-user file. Used for migrating existing users."""
+    shared_fp = load_ax_fp()
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    fp_dir = os.path.join(project_root, "data")
+    os.makedirs(fp_dir, exist_ok=True)
+    fp_path = os.path.join(fp_dir, f"ax.fp.{user_id}")
+    if not os.path.exists(fp_path):
+        with open(fp_path, "w", encoding="utf-8") as f:
+            f.write(shared_fp)
+    return shared_fp
+
+
+def get_user_ax_device_id(user_id: int) -> str:
+    fp = get_user_ax_fp(user_id)
+    return hashlib.md5(fp.encode("utf-8")).hexdigest()
+
+
 def ax_device_id() -> str:
     android_id = load_ax_fp()
     return hashlib.md5(android_id.encode("utf-8")).hexdigest()

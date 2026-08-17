@@ -209,7 +209,16 @@ EOF
         warn "Service failed to start. Check: journalctl -u ${SERVICE_NAME} -n 50"
     fi
 else
-    log "Skipping systemd service (--no-systemd). The container entrypoint will run the app."
+    log "Starting uvicorn (--no-systemd mode)..."
+    cd "${INSTALL_DIR}"
+    setsid venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port "${APP_PORT}" > /tmp/rohtembak.log 2>&1 &
+    UVICORN_PID=$!
+    sleep 3
+    if kill -0 "${UVICORN_PID}" 2>/dev/null; then
+        log "Uvicorn running (PID ${UVICORN_PID}) on port ${APP_PORT}."
+    else
+        warn "Uvicorn may have failed to start. Check: tail /tmp/rohtembak.log"
+    fi
 fi
 
 # --- 6. Fix ownership ----------------------------------------------------------
@@ -231,6 +240,8 @@ if [[ "${INSTALL_SYSTEMD}" -eq 1 ]]; then
     echo "  Logs       : journalctl -u ${SERVICE_NAME} -f"
     echo "  Restart    : systemctl restart ${SERVICE_NAME}"
 else
-    echo "  Logs       : podman logs <container>  (or docker logs)"
-    echo "  Restart    : podman restart <container>"
+    echo "  Admin login: admin / admin"
+    echo "  Logs       : tail -f /tmp/rohtembak.log"
+    echo "  Stop       : kill \$(lsof -ti :${APP_PORT})"
+    echo "  Restart    : cd ${INSTALL_DIR} && setsid venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port ${APP_PORT} > /tmp/rohtembak.log 2>&1 &"
 fi

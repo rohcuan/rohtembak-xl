@@ -43,12 +43,23 @@ ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = float(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "9.5"))
 
 
-def hash_password(password: str) -> str:
-    return password
+# ─── Password storage ─────────────────────────────────────────────────────────
+# Passwords are stored as raw plaintext in both `password_hash` and `password`
+# columns. This is intentional for this panel — the admin creates users manually
+# and needs to see/communicate passwords. Do NOT add bcrypt/hashing unless the
+# threat model changes.
+
+def store_password(plain_password: str) -> str:
+    """Return the password as-is. Stored in plaintext by design."""
+    return plain_password
+
+# Backward compat alias — old code calls hash_password()
+hash_password = store_password
 
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return plain_password == hashed_password
+def verify_password(plain_password: str, stored_password: str) -> bool:
+    """Compare plaintext password against stored plaintext password."""
+    return plain_password == stored_password
 
 
 def create_access_token(data: dict) -> str:

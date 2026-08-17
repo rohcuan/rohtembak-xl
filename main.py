@@ -2,6 +2,8 @@ import os
 import io
 import time
 import json
+import asyncio
+import threading
 import zipfile
 from contextlib import asynccontextmanager, redirect_stdout
 from dotenv import load_dotenv
@@ -1884,7 +1886,7 @@ def _sse_event(event, obj):
     return "event: %s\ndata: %s\n\n" % (event, json.dumps(obj, ensure_ascii=False))
 
 
-def _stream_beli_paket_events(active_xl, want):
+def _stream_beli_paket_events(active_xl, want, disconnected=None):
     error = False
     fetched_at = None
     xl_info = None
@@ -1893,6 +1895,8 @@ def _stream_beli_paket_events(active_xl, want):
 
     tokens = None
     if active_xl and active_xl.refresh_token and need_tokens:
+        if disconnected and disconnected.is_set():
+            return
         try:
             _api_delay()
             tokens = _get_xl_tokens(active_xl)
@@ -1922,6 +1926,8 @@ def _stream_beli_paket_events(active_xl, want):
 
     if tokens:
         for f in fam_want:
+            if disconnected and disconnected.is_set():
+                return
             fam_code, builder, entry_key = _FAMILY_FETCHERS[f]
             is_ent, mig = _family_api_params(fam_code)
             _api_delay()
@@ -1945,18 +1951,28 @@ def _stream_beli_paket_events(active_xl, want):
 
 
 @app.get("/user/xl/beli-paket/stream")
-def user_xl_beli_paket_stream(request: Request, user: User = Depends(get_current_user)):
+async def user_xl_beli_paket_stream(request: Request, user: User = Depends(get_current_user)):
     if user.role != "user":
         return JSONResponse({"error": True}, status_code=403)
     db = next(get_db())
     ctx = get_user_context(user, db)
     db.close()
     want = {x for x in (request.query_params.get("families") or "").split(",") if x in ("meta", "xcp", "addon10", "addon15", "xtraconf")}
-    return StreamingResponse(
-        _stream_beli_paket_events(ctx.get("active_xl"), want),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
-    )
+    disconnected = threading.Event()
+    async def _watch():
+        try:
+            await request.is_disconnected()
+        finally:
+            disconnected.set()
+    task = asyncio.create_task(_watch())
+    try:
+        return StreamingResponse(
+            _stream_beli_paket_events(ctx.get("active_xl"), want, disconnected),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+        )
+    finally:
+        task.cancel()
 
 
 _FAMILY_FETCHERS = {
@@ -2072,7 +2088,7 @@ def user_xl_detail_xtraconf(request: Request, option_number: int, via: str = "",
     return render("user/detail_paket.html", context=ctx)
 
 
-def _stream_detail_events(family, option_number, active_xl, want):
+def _stream_detail_events(family, option_number, active_xl, want, disconnected=None):
     """Single refresh-token stream for detail page: meta (banner) -> delay -> detail."""
     error = False
     want_meta = "meta" in want
@@ -2082,6 +2098,8 @@ def _stream_detail_events(family, option_number, active_xl, want):
 
     tokens = None
     if active_xl and active_xl.refresh_token and (want_meta or want_detail):
+        if disconnected and disconnected.is_set():
+            return
         try:
             _api_delay()
             tokens = _get_xl_tokens(active_xl)
@@ -2110,7 +2128,7 @@ def _stream_detail_events(family, option_number, active_xl, want):
     yield _sse_event("meta", {"xl_info": xl_info})
 
     if want_detail:
-        if tokens:
+        if tokens and not (disconnected and disconnected.is_set()):
             _api_delay()
             try:
                 if family == "xcp":
@@ -2129,18 +2147,28 @@ def _stream_detail_events(family, option_number, active_xl, want):
 
 
 @app.get("/user/xl/beli-paket/detail-stream")
-def user_xl_detail_stream(request: Request, family: str, n: int, user: User = Depends(get_current_user)):
+async def user_xl_detail_stream(request: Request, family: str, n: int, user: User = Depends(get_current_user)):
     if user.role != "user":
         return JSONResponse({"ok": False, "error": "forbidden"}, status_code=403)
     db = next(get_db())
     ctx = get_user_context(user, db)
     db.close()
     want = {x for x in (request.query_params.get("families") or "meta,detail").split(",") if x in ("meta", "detail")}
-    return StreamingResponse(
-        _stream_detail_events(family, n, ctx.get("active_xl"), want),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
-    )
+    disconnected = threading.Event()
+    async def _watch():
+        try:
+            await request.is_disconnected()
+        finally:
+            disconnected.set()
+    task = asyncio.create_task(_watch())
+    try:
+        return StreamingResponse(
+            _stream_detail_events(family, n, ctx.get("active_xl"), want, disconnected),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+        )
+    finally:
+        task.cancel()
 
 
 @app.get("/user/xl/banner-info")

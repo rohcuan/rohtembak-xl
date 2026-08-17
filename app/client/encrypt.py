@@ -1,4 +1,5 @@
 import os
+import re
 import hashlib
 import requests
 import base64
@@ -205,12 +206,18 @@ def get_x_signature_bounty_allotment(
         destination_msisdn,
     )
 
+def _safe_username(username: str) -> str:
+    """Strip anything that isn't alphanumeric, dot, dash, or underscore.
+    Prevents path traversal like '../../etc/passwd' from escaping data/."""
+    return re.sub(r"[^a-zA-Z0-9._-]", "", username)
+
+
 def get_user_ax_fp(username: str) -> str:
     """Load or generate a per-user device fingerprint. Stored in data/ax.fp.{username}."""
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     fp_dir = os.path.join(project_root, "data")
     os.makedirs(fp_dir, exist_ok=True)
-    fp_path = os.path.join(fp_dir, f"ax.fp.{username}")
+    fp_path = os.path.join(fp_dir, f"ax.fp.{_safe_username(username)}")
     if os.path.exists(fp_path):
         with open(fp_path, "r", encoding="utf-8") as f:
             content = f.read().strip()
@@ -241,7 +248,7 @@ def copy_shared_fp_to_user(username: str) -> str:
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     fp_dir = os.path.join(project_root, "data")
     os.makedirs(fp_dir, exist_ok=True)
-    fp_path = os.path.join(fp_dir, f"ax.fp.{username}")
+    fp_path = os.path.join(fp_dir, f"ax.fp.{_safe_username(username)}")
     if not os.path.exists(fp_path):
         with open(fp_path, "w", encoding="utf-8") as f:
             f.write(shared_fp)
@@ -251,7 +258,7 @@ def copy_shared_fp_to_user(username: str) -> str:
 def remove_user_ax_fp(username: str) -> None:
     """Remove a user's fingerprint file."""
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    fp_path = os.path.join(project_root, "data", f"ax.fp.{username}")
+    fp_path = os.path.join(project_root, "data", f"ax.fp.{_safe_username(username)}")
     try:
         os.remove(fp_path)
     except OSError:

@@ -11,6 +11,7 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(50), unique=True, nullable=False, index=True)
     email = Column(String(100), unique=True, nullable=False)
+    # NOTE: passwords stored as raw plaintext by design — see auth.py
     password_hash = Column(String(255), nullable=False)
     password = Column(String(255), default="")
     role = Column(String(10), default="user")

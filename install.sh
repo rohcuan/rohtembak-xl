@@ -173,7 +173,16 @@ else
     log "Skipping systemd service (--no-systemd). The container entrypoint will run the app."
 fi
 
-# --- 6. Summary ----------------------------------------------------------------
+# --- 6. Fix ownership ----------------------------------------------------------
+# When run via sudo, files are owned by root. Fix so the real user can write
+# data/, ax.fp, .env etc. without needing sudo every time.
+REAL_USER="${SUDO_USER:-$(whoami)}"
+if [[ "${REAL_USER}" != "root" ]]; then
+    log "Fixing ownership → ${REAL_USER} ..."
+    chown -R "${REAL_USER}:" "${INSTALL_DIR}"
+fi
+
+# --- 7. Summary ----------------------------------------------------------------
 IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 log "Done!"
 echo

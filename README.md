@@ -85,9 +85,9 @@ Untuk perubahan besar di repo: reinstall bersih (bukan git pull) tapi tetap meny
 (`.env`, `data/` termasuk fingerprint per user):
 
 ```bash
-wget -O reinstall-dev.sh https://raw.githubusercontent.com/rohcuan/rohtembak-xl/main/reinstall-dev.sh
-chmod +x reinstall-dev.sh
-./reinstall-dev.sh
+wget -O reinstall-dev-staging.sh https://raw.githubusercontent.com/rohcuan/rohtembak-xl/main/reinstall-dev-staging.sh
+chmod +x reinstall-dev-staging.sh
+./reinstall-dev-staging.sh
 ```
 
 ## Troubleshooting

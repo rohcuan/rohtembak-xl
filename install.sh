@@ -43,6 +43,22 @@ log() { echo -e "\033[1;32m[install]\033[0m $*"; }
 warn() { echo -e "\033[1;33m[warn]\033[0m $*"; }
 die()  { echo -e "\033[1;31m[error]\033[0m $*" >&2; exit 1; }
 
+# --- Rollback helper: clean up broken state so a re-run starts fresh. --------
+_cleanup_on_fail() {
+    local exit_code=$?
+    if [[ "${exit_code}" -ne 0 ]]; then
+        warn "Install failed (exit ${exit_code}). Cleaning up partial state..."
+        # Remove broken venv so re-run recreates it from scratch
+        rm -rf "${INSTALL_DIR}/venv" 2>/dev/null || true
+        # Remove incomplete clone if main.py never appeared
+        if [[ ! -f "${INSTALL_DIR}/main.py" ]]; then
+            rm -rf "${INSTALL_DIR}" 2>/dev/null || true
+        fi
+        warn "Partial state cleaned. You can safely re-run install.sh."
+    fi
+}
+trap _cleanup_on_fail EXIT
+
 # --- 0. Checks -----------------------------------------------------------------
 if [[ "${EUID}" -ne 0 ]]; then
     die "Run as root (sudo)."

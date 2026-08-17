@@ -243,10 +243,11 @@ def get_new_token(api_key: str, refresh_token: str, subscriber_id: str, username
         )
         
         if extend_result is None:
-            if "Invalid refresh token" in resp.text:
-                raise ValueError("Refresh token is invalid or expired. Please login again.")
-
             raise ValueError("Failed to submit OTP after extending session")
+        
+        if "id_token" not in extend_result:
+            print(f"extend_session: no id_token in response: {extend_result}")
+            return None
         
         return extend_result
 

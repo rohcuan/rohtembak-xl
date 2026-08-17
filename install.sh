@@ -24,6 +24,10 @@ INSTALL_DIR="/opt/rohtembak"
 SERVICE_NAME="rohtembak"
 APP_PORT="${APP_PORT:-8000}"
 
+log() { echo -e "\033[1;32m[install]\033[0m $*"; }
+warn() { echo -e "\033[1;33m[warn]\033[0m $*"; }
+die()  { echo -e "\033[1;31m[error]\033[0m $*" >&2; exit 1; }
+
 # --no-systemd: install code + venv only, skip the systemd unit. Used by the
 # container entrypoint (entrypoint.sh) where the runtime handles restart/logs.
 INSTALL_SYSTEMD=1
@@ -38,10 +42,6 @@ for arg in "$@"; do
         *) warn "Unknown argument: ${arg}" ;;
     esac
 done
-
-log() { echo -e "\033[1;32m[install]\033[0m $*"; }
-warn() { echo -e "\033[1;33m[warn]\033[0m $*"; }
-die()  { echo -e "\033[1;31m[error]\033[0m $*" >&2; exit 1; }
 
 # --- Rollback helper: clean up broken state so a re-run starts fresh. --------
 _cleanup_on_fail() {

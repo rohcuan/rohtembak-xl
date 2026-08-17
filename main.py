@@ -12,7 +12,7 @@ from fastapi import FastAPI, Request, Depends, Form, File, UploadFile, HTTPExcep
 from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse, Response
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from jinja2 import Environment, FileSystemLoader
 
 from database import init_db, get_db
@@ -177,7 +177,7 @@ def _persist_refresh_token(account_id, refresh_token, refresh_expires_at):
             pass
 
 
-def _get_xl_tokens(active_xl):
+def _get_xl_tokens(active_xl, username=""):
     """Return cached XL access tokens; refresh once per token lifetime (~10 min).
 
     Access token expires_in is ~599s, refresh token ~88 days. Tokens are cached
@@ -199,9 +199,29 @@ def _get_xl_tokens(active_xl):
         if entry and entry.get("expires_at", 0) > now:
             return entry["tokens"]
         _api_delay()
-        tokens = xl_refresh_token(API_KEY, active_xl.refresh_token, active_xl.subscriber_id, active_xl.user.username)
+        xl_username = username or ""
+        if not xl_username:
+            try:
+                xl_username = active_xl.user.username
+            except Exception:
+                print("[_get_xl_tokens] Could not load username from active_xl.user")
+                return None
+        tokens = xl_refresh_token(API_KEY, active_xl.refresh_token, active_xl.subscriber_id, xl_username)
         if not tokens:
             _XL_TOKEN_CACHE.pop(key, None)
+            try:
+                db2 = next(get_db())
+                acct = db2.query(XLAccount).filter(XLAccount.id == active_xl.id).first()
+                if acct:
+                    acct.refresh_token = ""
+                    db2.commit()
+            except Exception as e:
+                print(f"[clear_refresh] Error: {e}")
+            finally:
+                try:
+                    db2.close()
+                except Exception:
+                    pass
             return None
         try:
             ttl = int(tokens.get("expires_in", 0)) - 30
@@ -284,7 +304,7 @@ async def server_error(request: Request, exc):
 
 def get_user_context(user: User, db: Session) -> dict:
     bal = db.query(Balance).filter(Balance.user_id == user.id).first()
-    xl_accounts = db.query(XLAccount).filter(XLAccount.user_id == user.id).all()
+    xl_accounts = db.query(XLAccount).options(joinedload(XLAccount.user)).filter(XLAccount.user_id == user.id).all()
     active_xl = next((x for x in xl_accounts if x.is_active), None)
     refresh_warning = None
     if active_xl and active_xl.refresh_expires_at:
@@ -1146,7 +1166,8 @@ async def admin_restore_upload(
     db.query(XLAccount).delete(synchronize_session=False)
     db.query(User).delete(synchronize_session=False)
     db.query(FamilyFee).delete(synchronize_session=False)
-    _XL_TOKEN_CACHE.clear()
+    with _token_lock:
+        _XL_TOKEN_CACHE.clear()
 
     # 3. Apply the backup exactly
     users_by_name = {}
@@ -2269,11 +2290,15 @@ def _process_payment(active_xl, option_number, addon_spec, method):
     _stdout_buf = io.StringIO()
     with redirect_stdout(_stdout_buf):
         if active_xl and active_xl.refresh_token:
-            if addon_spec:
-                items, detail = _get_addon_items_and_detail(option_number, addon_spec, active_xl)
-            else:
-                items, detail = _get_payment_items_and_detail(option_number, active_xl)
-            if items:
+            try:
+                if addon_spec:
+                    items, detail = _get_addon_items_and_detail(option_number, addon_spec, active_xl)
+                else:
+                    items, detail = _get_payment_items_and_detail(option_number, active_xl)
+            except Exception as e:
+                pay_error = f"Error fetching package: {e}"
+                items = None
+            if items and not pay_error:
                 try:
                     _api_delay()
                     tokens = _get_xl_tokens(active_xl)

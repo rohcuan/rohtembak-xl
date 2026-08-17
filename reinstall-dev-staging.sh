@@ -28,6 +28,7 @@ APP_PORT="${APP_PORT:-8000}"
 INSTALL_SH_URL="https://raw.githubusercontent.com/rohcuan/rohtembak-xl/main/install.sh"
 RETAIN_ITEMS=(.env data ax.fp)
 BACKUP_DIR="$(mktemp -d /tmp/rohtembak-backup.XXXXXX)"
+trap 'rm -rf "${BACKUP_DIR}"' EXIT
 
 # --- Detect container environment -----------------------------------------------
 # In containers (docker, podman, distrobox) there is no systemd. The script must
@@ -70,12 +71,12 @@ if [[ "${IS_CONTAINER}" -eq 1 ]]; then
     # Find and kill uvicorn by port. Use fuser to get PIDs, then kill
     # individually — avoids fuser -k sending signals to our own process group.
     if command -v fuser >/dev/null 2>&1; then
-        uvicorn_pids=$(fuser "${APP_PORT}"/tcp 2>/dev/null | tr -s ' ')
+        uvicorn_pids=$(fuser "${APP_PORT}"/tcp 2>/dev/null | tr -s ' ' || true)
         for pid in $uvicorn_pids; do
             kill "$pid" 2>/dev/null || true
         done
     elif command -v lsof >/dev/null 2>&1; then
-        kill $(lsof -ti :"${APP_PORT}") 2>/dev/null || true
+        kill $(lsof -ti :"${APP_PORT}" 2>/dev/null) 2>/dev/null || true
     fi
     sleep 2
 else
@@ -165,4 +166,4 @@ fi
 rm -rf "${BACKUP_DIR}"
 IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 echo
-log "Done! App: http://${IP:-localhost}:8000/"
+log "Done! App: http://${IP:-localhost}:${APP_PORT}/"

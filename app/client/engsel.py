@@ -55,14 +55,18 @@ def send_api_request(
     }
 
     url = f"{BASE_API_URL}/{path}"
-    resp = requests.post(url, headers=headers, data=json.dumps(body), timeout=20)
+    try:
+        resp = requests.post(url, headers=headers, data=json.dumps(body), timeout=20)
+    except requests.RequestException as e:
+        print(f"[send_api_request] Network error: {e}")
+        return None
     
     try:
         decrypted_body = decrypt_xdata(api_key, json.loads(resp.text))
         return decrypted_body
     except Exception as e:
         print("[decrypt err]", e)
-        return resp.text
+        return None
 
 def get_profile(api_key: str, access_token: str, id_token: str) -> dict:
     path = "api/v8/profile"
@@ -77,6 +81,9 @@ def get_profile(api_key: str, access_token: str, id_token: str) -> dict:
     print("Fetching profile...")
     res = send_api_request(api_key, path, raw_payload, id_token, "POST")
 
+    if not isinstance(res, dict):
+        print("Error fetching profile: no response")
+        return None
     return res.get("data")
 
 def get_balance(api_key: str, id_token: str) -> dict:
@@ -90,6 +97,9 @@ def get_balance(api_key: str, id_token: str) -> dict:
     print("Fetching balance...")
     res = send_api_request(api_key, path, raw_payload, id_token, "POST")
     
+    if not isinstance(res, dict):
+        print("Error fetching balance: no response")
+        return None
     if "data" in res:
         if "balance" in res["data"]:
             return res["data"]["balance"]
@@ -155,7 +165,7 @@ def get_family(
         
             res = send_api_request(api_key, path, payload_dict, id_token, "POST")
 
-            if res.get("status") != "SUCCESS":
+            if not isinstance(res, dict) or res.get("status") != "SUCCESS":
                 continue
             
             family_name = res["data"]["package_family"].get("name", "")
@@ -184,10 +194,10 @@ def get_families(api_key: str, tokens: dict, package_category_code: str) -> dict
     }
     
     res = send_api_request(api_key, path, payload_dict, tokens["id_token"], "POST")
-    if res.get("status") != "SUCCESS":
+    if not isinstance(res, dict) or res.get("status") != "SUCCESS":
         print(f"Failed to get families for category {package_category_code}")
-        print(f"Res:{json.dumps(res, indent=2)}")
-        input("Press Enter to continue...")
+        if isinstance(res, dict):
+            print(f"Res:{json.dumps(res, indent=2)}")
         return None
     return res["data"]
 
@@ -218,7 +228,7 @@ def get_package(
     print("Fetching package...")
     res = send_api_request(api_key, path, raw_payload, tokens["id_token"], "POST")
     
-    if "data" not in res:
+    if not isinstance(res, dict) or "data" not in res:
         print(json.dumps(res, indent=2))
         print("Error getting package:", res.get("error", "Unknown error"))
         return None
@@ -237,7 +247,7 @@ def get_addons(api_key: str, tokens: dict, package_option_code: str) -> dict:
     print("Fetching addons...")
     res = send_api_request(api_key, path, raw_payload, tokens["id_token"], "POST")
     
-    if "data" not in res:
+    if not isinstance(res, dict) or "data" not in res:
         print("Error getting addons:", res.get("error", "Unknown error"))
         return None
         
@@ -260,7 +270,7 @@ def intercept_page(
     print("Fetching intercept page...")
     res = send_api_request(api_key, path, raw_payload, tokens["id_token"], "POST")
     
-    if "status" in res:
+    if isinstance(res, dict) and "status" in res:
         print(f"Intercept status: {res['status']}")
     else:
         print("Intercept error")
@@ -280,7 +290,7 @@ def login_info(
 
     res = send_api_request(api_key, path, raw_payload, tokens["id_token"], "POST")
     
-    if "data" not in res:
+    if not isinstance(res, dict) or "data" not in res:
         print(json.dumps(res, indent=2))
         print("Error getting package:", res.get("error", "Unknown error"))
         return None
@@ -377,6 +387,8 @@ def get_pending_transaction(api_key: str, tokens: dict) -> dict:
     print("Fetching pending transactions...")
     res = send_api_request(api_key, path, raw_payload, tokens["id_token"], "POST")
 
+    if not isinstance(res, dict):
+        return None
     return res.get("data")
 
 def get_transaction_history(api_key: str, tokens: dict) -> dict:
@@ -390,6 +402,8 @@ def get_transaction_history(api_key: str, tokens: dict) -> dict:
     print("Fetching transaction history...")
     res = send_api_request(api_key, path, raw_payload, tokens["id_token"], "POST")
 
+    if not isinstance(res, dict):
+        return None
     return res.get("data")
 
 def get_tiering_info(api_key: str, tokens: dict) -> dict:
@@ -403,7 +417,7 @@ def get_tiering_info(api_key: str, tokens: dict) -> dict:
     print("Fetching tiering info...")
     res = send_api_request(api_key, path, raw_payload, tokens["id_token"], "POST")
     
-    if res:
+    if isinstance(res, dict):
         return res.get("data", {})
     return {}
 
@@ -428,12 +442,10 @@ def unsubscribe(
 
     try:
         res = send_api_request(api_key, path, raw_payload, tokens["id_token"], "POST")
-        print(json.dumps(res, indent=4))
-
-        if res and res.get("code") == "000":
-            return True
-        else:
-            return False
+        if isinstance(res, dict):
+            print(json.dumps(res, indent=4))
+            return res.get("code") == "000"
+        return False
     except Exception as e:
         return False
 
@@ -449,4 +461,6 @@ def dashboard_segments(
 
     res = send_api_request(api_key, path, raw_payload, tokens["id_token"], "POST")
 
+    if not isinstance(res, dict):
+        return {}
     return res

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # =============================================================================
-# RohTembak (XL) - reinstall that RETAINS runtime data
+# RohTembak (XL) - dev/staging reinstall (RETAINS runtime data)
 # -----------------------------------------------------------------------------
 # For big repo changes: wipes /opt/rohtembak completely (code + venv + old
 # systemd unit), reinstalls from the repo from scratch, then restores your
@@ -13,15 +13,11 @@ set -euo pipefail
 #
 # This is NOT a git pull - it is a clean reinstall.
 #
-# Can be run from any working directory (e.g. your home dir) - no need to
-# cd into the app folder first:
-#
-#   wget -O reinstall.sh https://raw.githubusercontent.com/rohcuan/rohtembak-xl/main/reinstall-but-retain-data.sh
-#   chmod +x reinstall.sh
-#   bash reinstall.sh
-#
-# (If you run it from inside the app directory it relaunches itself from
-# /tmp automatically so the folder can be wiped safely.)
+# *** DEV/STAGING ONLY ***
+# For production Docker containers, do NOT run this script inside the container.
+# Instead, backup the volume and recreate the container — the entrypoint.sh
+# handles fresh installs automatically.
+# =============================================================================
 # =============================================================================
 
 REPO_URL="https://github.com/rohcuan/rohtembak-xl"

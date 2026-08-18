@@ -26,7 +26,7 @@ fi
 # --- 2. Fresh install? Bootstrap via install-dev-staging.sh --no-start. --------
 if [ ! -x "${INSTALL_DIR}/venv/bin/python" ] || [ ! -f "${INSTALL_DIR}/main.py" ]; then
     echo "[entrypoint] fresh install detected - running install-dev-staging.sh --no-start"
-    curl -fsSL https://raw.githubusercontent.com/rohcuan/rohtembak-xl/dev/install-dev-staging.sh -o /tmp/install-dev-staging.sh
+    curl -fsSL https://raw.githubusercontent.com/rohcuan/rohtembak-xl/main/install-dev-staging.sh -o /tmp/install-dev-staging.sh
     chmod +x /tmp/install-dev-staging.sh
     INSTALL_DIR="${INSTALL_DIR}" APP_PORT="${APP_PORT}" bash /tmp/install-dev-staging.sh --no-start
     rm -f /tmp/install-dev-staging.sh

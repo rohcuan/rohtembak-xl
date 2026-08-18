@@ -58,12 +58,15 @@
 
 <div class="card">
     <div class="header-section">
-        <h2>Nomor XL Saya <span class="badge">{{ xl_accounts|length }}/10</span></h2>
-        {% if xl_accounts|length < 10 %}
-        <a href="/user/xl/otp/request" class="btn btn-success btn-sm">+ Tambah</a>
-        {% else %}
-        <span class="btn btn-success btn-sm" style="opacity:0.5;cursor:not-allowed;" title="Maksimal 10 nomor per akun">+ Tambah</span>
-        {% endif %}
+        <h2>Nomor XL</h2>
+        <div style="display:flex;align-items:center;gap:8px;">
+            <span class="badge">{{ xl_accounts|length }}/10</span>
+            {% if xl_accounts|length < 10 %}
+            <a href="/user/xl/otp/request" class="btn btn-success btn-sm">+ Tambah</a>
+            {% else %}
+            <span class="btn btn-success btn-sm" style="opacity:0.5;cursor:not-allowed;" title="Maksimal 10 nomor per akun">+ Tambah</span>
+            {% endif %}
+        </div>
     </div>
 
     {% if xl_accounts|length >= 10 %}

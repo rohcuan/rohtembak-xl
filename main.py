@@ -1172,6 +1172,7 @@ async def admin_restore_upload(
     db.query(XLAccount).delete(synchronize_session=False)
     db.query(User).delete(synchronize_session=False)
     db.query(FamilyFee).delete(synchronize_session=False)
+    db.expire_all()
     with _token_lock:
         _XL_TOKEN_CACHE.clear()
 

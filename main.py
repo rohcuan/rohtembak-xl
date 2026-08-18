@@ -523,6 +523,9 @@ def admin_credentials_update(
             return RedirectResponse(url="/admin/credentials?error=username_kosong", status_code=303)
         if db.query(User).filter(User.username.ilike(new_username), User.id != user.id).first():
             return RedirectResponse(url="/admin/credentials?error=username_dipakai", status_code=303)
+        # NOTE: Not renaming ax.fp.{old_username} here is intentional.
+        # The admin does not login as a user and does not use XL API directly,
+        # so the per-user fingerprint is irrelevant for the admin role.
         user.username = new_username
     db.add(user)
     db.commit()
@@ -625,6 +628,7 @@ def admin_add_user(
             description="Saldo awal dari admin"
         ))
     db.commit()
+    copy_shared_fp_to_user(user.username)
     return RedirectResponse(url="/admin/dashboard", status_code=303)
 
 
@@ -2773,6 +2777,7 @@ def register(
     db.flush()
     db.add(Balance(user_id=user.id, balance=0))
     db.commit()
+    copy_shared_fp_to_user(user.username)
 
     token = create_access_token({"sub": str(user.id), "role": "user"})
     resp = RedirectResponse(url="/user/dashboard", status_code=303)

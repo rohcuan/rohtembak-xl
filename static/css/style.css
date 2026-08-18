@@ -384,3 +384,15 @@ tr:hover td { background: #f8f9ff; }
 .form-inline .form-group { margin-bottom: 0; }
 .form-inline .form-group input { width: 120px; }
 
+.badge {
+    display: inline-block;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 500;
+    background: #e5e7eb;
+    color: #374151;
+    vertical-align: middle;
+    margin-left: 4px;
+}
+

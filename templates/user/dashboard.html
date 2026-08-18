@@ -58,9 +58,19 @@
 
 <div class="card">
     <div class="header-section">
-        <h2>Nomor XL Saya</h2>
+        <h2>Nomor XL Saya <span class="badge">{{ xl_accounts|length }}/10</span></h2>
+        {% if xl_accounts|length < 10 %}
         <a href="/user/xl/otp/request" class="btn btn-success btn-sm">+ Tambah</a>
+        {% else %}
+        <span class="btn btn-success btn-sm" style="opacity:0.5;cursor:not-allowed;" title="Maksimal 10 nomor per akun">+ Tambah</span>
+        {% endif %}
     </div>
+
+    {% if xl_accounts|length >= 10 %}
+    <div style="padding:12px 20px;background:#fff3cd;color:#856404;font-size:13px;border-bottom:1px solid #ffc107;">
+        ⚠️ Batas maksimal 10 nomor XL tercapai. Hapus nomor yang tidak dipakai untuk menambah baru.
+    </div>
+    {% endif %}
 
     {% if xl_accounts %}
     <div id="xl-list">

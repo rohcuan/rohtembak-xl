@@ -2,10 +2,10 @@
 set -euo pipefail
 
 # =============================================================================
-# RohTembak (XL) - container entrypoint (systemd-less)
+# RohTembak (XL) - container entrypoint
 # -----------------------------------------------------------------------------
 # Runs the app as PID 1. If nothing is installed yet (fresh container), it
-# bootstraps a full install via install.sh --no-systemd, then starts uvicorn.
+# bootstraps a full install via install-dev-staging.sh --no-start, then starts uvicorn.
 # On subsequent starts it just pulls the latest code and runs.
 #
 # Persist /opt/rohtembak (code, venv, .env, data/, ax.fp) in a named volume so
@@ -23,13 +23,13 @@ if ! command -v curl >/dev/null 2>&1; then
     apt-get install -y curl >/dev/null
 fi
 
-# --- 2. Fresh install? Bootstrap via install.sh --no-systemd. ------------------
+# --- 2. Fresh install? Bootstrap via install-dev-staging.sh --no-start. --------
 if [ ! -x "${INSTALL_DIR}/venv/bin/python" ] || [ ! -f "${INSTALL_DIR}/main.py" ]; then
-    echo "[entrypoint] fresh install detected - running install.sh --no-systemd"
-    curl -fsSL https://raw.githubusercontent.com/rohcuan/rohtembak-xl/main/install.sh -o /tmp/install.sh
-    chmod +x /tmp/install.sh
-    INSTALL_DIR="${INSTALL_DIR}" APP_PORT="${APP_PORT}" bash /tmp/install.sh --no-systemd
-    rm -f /tmp/install.sh
+    echo "[entrypoint] fresh install detected - running install-dev-staging.sh --no-start"
+    curl -fsSL https://raw.githubusercontent.com/rohcuan/rohtembak-xl/dev/install-dev-staging.sh -o /tmp/install-dev-staging.sh
+    chmod +x /tmp/install-dev-staging.sh
+    INSTALL_DIR="${INSTALL_DIR}" APP_PORT="${APP_PORT}" bash /tmp/install-dev-staging.sh --no-start
+    rm -f /tmp/install-dev-staging.sh
 else
     echo "[entrypoint] app already installed - pulling latest code..."
     git -C "${INSTALL_DIR}" pull --ff-only 2>/dev/null || echo "[entrypoint] git pull failed; starting with existing code."

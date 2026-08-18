@@ -11,14 +11,14 @@ set -euo pipefail
 # Production containers use entrypoint.sh which handles install + restart.
 #
 # Usage:
-#   wget -O install.sh https://raw.githubusercontent.com/rohcuan/rohtembak-xl/main/install.sh
-#   chmod +x install.sh
-#   ./install.sh
+#   wget -O install-dev-staging.sh https://raw.githubusercontent.com/rohcuan/rohtembak-xl/main/install-dev-staging.sh
+#   chmod +x install-dev-staging.sh
+#   ./install-dev-staging.sh
 #
 # Secrets: pass them as environment variables to run non-interactively, e.g.
-#   API_KEY=... AES_KEY_ASCII=... ./install.sh
+#   API_KEY=... AES_KEY_ASCII=... ./install-dev-staging.sh
 # or provide a ready-made env file:
-#   ROHTEMBAK_ENV_FILE=/path/to/env ./install.sh
+#   ROHTEMBAK_ENV_FILE=/path/to/env ./install-dev-staging.sh
 # =============================================================================
 
 REPO_URL="https://github.com/rohcuan/rohtembak-xl"
@@ -53,7 +53,7 @@ _cleanup_on_fail() {
         if [[ ! -f "${INSTALL_DIR}/main.py" ]]; then
             rm -rf "${INSTALL_DIR}" 2>/dev/null || true
         fi
-        warn "Partial state cleaned. You can safely re-run install.sh."
+        warn "Partial state cleaned. You can safely re-run install-dev-staging.sh."
     fi
 }
 trap _cleanup_on_fail EXIT

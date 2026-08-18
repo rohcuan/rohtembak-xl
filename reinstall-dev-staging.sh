@@ -85,7 +85,7 @@ fi
 # --- 4. Reinstall from repo ---------------------------------------------------
 log "Installing fresh from repo..."
 
-# Find install.sh: check SCRIPT_DIR, then /tmp, then download from GitHub
+# Find install-dev-staging.sh: check SCRIPT_DIR, then /tmp, then download from GitHub
 INSTALL_SH=""
 for candidate in "${SCRIPT_DIR}/install-dev-staging.sh" /tmp/install-dev-staging.sh; do
     if [[ -f "${candidate}" ]] && grep -q "RohTembak" "${candidate}" 2>/dev/null; then

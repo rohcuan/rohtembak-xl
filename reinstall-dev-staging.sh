@@ -19,7 +19,7 @@ set -euo pipefail
 # =============================================================================
 
 REPO_URL="https://github.com/rohcuan/rohtembak-xl"
-REPO_BRANCH="main"
+REPO_BRANCH="dev"
 INSTALL_DIR="/opt/rohtembak"
 APP_PORT="${APP_PORT:-8000}"
 RETAIN_ITEMS=(.env data ax.fp)
@@ -98,9 +98,9 @@ if [[ -z "${INSTALL_SH}" ]]; then
     cd /tmp
     rm -f install-dev-staging.sh
     if command -v curl >/dev/null 2>&1; then
-        curl -fsSL -o install-dev-staging.sh "https://raw.githubusercontent.com/rohcuan/rohtembak-xl/main/install-dev-staging.sh" || die "Failed to download install-dev-staging.sh"
+        curl -fsSL -o install-dev-staging.sh "https://raw.githubusercontent.com/rohcuan/rohtembak-xl/dev/install-dev-staging.sh" || die "Failed to download install-dev-staging.sh"
     elif command -v wget >/dev/null 2>&1; then
-        wget -q -O install-dev-staging.sh "https://raw.githubusercontent.com/rohcuan/rohtembak-xl/main/install-dev-staging.sh" || die "Failed to download install-dev-staging.sh"
+        wget -q -O install-dev-staging.sh "https://raw.githubusercontent.com/rohcuan/rohtembak-xl/dev/install-dev-staging.sh" || die "Failed to download install-dev-staging.sh"
     else
         die "Neither curl nor wget available."
     fi

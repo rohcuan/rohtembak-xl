@@ -11,7 +11,7 @@ set -euo pipefail
 # Production containers use entrypoint.sh which handles install + restart.
 #
 # Usage:
-#   wget -O install-dev-staging.sh https://raw.githubusercontent.com/rohcuan/rohtembak-xl/main/install-dev-staging.sh
+#   wget -O install-dev-staging.sh https://raw.githubusercontent.com/rohcuan/rohtembak-xl/dev/install-dev-staging.sh
 #   chmod +x install-dev-staging.sh
 #   ./install-dev-staging.sh
 #
@@ -22,7 +22,7 @@ set -euo pipefail
 # =============================================================================
 
 REPO_URL="https://github.com/rohcuan/rohtembak-xl"
-REPO_BRANCH="main"
+REPO_BRANCH="dev"
 INSTALL_DIR="/opt/rohtembak"
 APP_PORT="${APP_PORT:-8000}"
 
@@ -157,7 +157,12 @@ fi
 # --- 5. Start uvicorn ----------------------------------------------------------
 if [[ "${START_APP}" -eq 1 ]]; then
     log "Starting uvicorn..."
-    cd "${INSTALL_DIR}"
+cd "${INSTALL_DIR}"
+
+# --- 2b. Patch branch references from main → dev ------------------------------
+log "Patching branch references to dev..."
+find . -type f \( -name "*.sh" -o -name "*.py" -o -name "*.yml" -o -name "*.yaml" -o -name "*.md" \) \
+    -exec sed -i 's|rohtembak-xl/main/|rohtembak-xl/dev/|g' {} + 2>/dev/null || true
 
     # Kill any existing uvicorn on this port
     if command -v fuser >/dev/null 2>&1; then

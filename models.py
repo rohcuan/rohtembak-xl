@@ -60,6 +60,23 @@ class BalanceTransaction(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
+class TopupTransaction(Base):
+    __tablename__ = "topup_transactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    amount = Column(Integer, nullable=False)
+    fee = Column(Integer, default=0)
+    total = Column(Integer, nullable=False)
+    trx_id = Column(String(50), unique=True, nullable=False)
+    qris_id = Column(String(100), default="")
+    qris_code = Column(Text, default="")
+    status = Column(String(20), default="pending", index=True)
+    expires_at = Column(DateTime, nullable=False)
+    paid_at = Column(DateTime, default=None)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
 class FamilyFee(Base):
     __tablename__ = "family_fees"
 

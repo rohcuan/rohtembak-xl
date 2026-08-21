@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session, joinedload
 from jinja2 import Environment, FileSystemLoader
 
 from database import init_db, get_db
-from models import User, XLAccount, Balance, BalanceTransaction, FamilyFee
+from models import User, XLAccount, Balance, BalanceTransaction, FamilyFee, TopupTransaction
 from auth import (
     verify_password, create_access_token, decode_token,
     get_current_user, seed_users, hash_password, ACCESS_TOKEN_EXPIRE_MINUTES
@@ -30,6 +30,7 @@ from app.client.encrypt import API_KEY, load_ax_fp, copy_shared_fp_to_user, remo
 from app.client.engsel import login_info as xl_login_info, get_balance as xl_get_balance, get_transaction_history as xl_get_transactions, get_tiering_info as xl_get_tiering, send_api_request, get_family as xl_get_family, get_package as xl_get_package, get_addons as xl_get_addons
 from app.menus.util import format_quota_byte
 from app.type_dict import PaymentItem
+from app.client import gopay
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 templates_dir = os.path.join(BASE_DIR, "templates")
@@ -127,6 +128,14 @@ jinja_env.filters["rupiah"] = lambda n: _fmt_idr(n)
 
 API_DELAY = float(os.getenv("API_DELAY", "2.0"))
 _XL_CALL_LIMIT = max(1, int(os.getenv("XL_CALL_LIMIT", "6")))
+
+TOPUP_MIN_AMOUNT = int(os.getenv("TOPUP_MIN_AMOUNT", "5000"))
+TOPUP_MAX_AMOUNT = int(os.getenv("TOPUP_MAX_AMOUNT", "1000000"))
+TOPUP_ADMIN_FEE = int(os.getenv("TOPUP_ADMIN_FEE", "250"))
+TOPUP_QR_TTL_SECONDS = 5 * 60
+TOPUP_EXPIRE_GRACE_SECONDS = int(os.getenv("TOPUP_EXPIRE_GRACE_SECONDS", "60"))
+TOPUP_CHECK_INTERVAL = int(os.getenv("TOPUP_CHECK_INTERVAL", "20"))
+TOPUP_MAX_PENDING_PER_USER = 3
 
 import app.client.engsel as _engsel
 
@@ -274,6 +283,7 @@ async def lifespan(app: FastAPI):
                 pass
         copy_shared_fp_to_user(u.username)
     db.close()
+    asyncio.create_task(_topup_reconcile_watch())
     yield
 
 
@@ -2716,6 +2726,249 @@ def _pay_response(user, detail, pay_error, pay_success, method, family_key, pay_
     if terminal_output:
         resp["terminal_output"] = terminal_output
     return JSONResponse(resp)
+
+
+# ─── Topup Saldo (QRIS via GoPay gateway) ──────────────────────────────────
+
+
+def _qris_text_png_data_uri(text):
+    import base64 as _b64
+    import io as _io
+    import qrcode as _qrcode
+    try:
+        qr = _qrcode.QRCode(error_correction=_qrcode.constants.ERROR_CORRECT_M)
+        qr.add_data(text)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white")
+        buf = _io.BytesIO()
+        img.save(buf, format="PNG")
+        return "data:image/png;base64," + _b64.b64encode(buf.getvalue()).decode()
+    except Exception:
+        return None
+
+
+def _topup_expiry_epoch(topup) -> int:
+    dt = topup.expires_at
+    if dt is None:
+        return 0
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return int(dt.timestamp())
+
+
+_topup_credit_lock = threading.Lock()
+
+
+def _credit_topup(db: Session, topup: TopupTransaction):
+    """Credit a paid topup exactly once (guarded by pending→paid transition)."""
+    with _topup_credit_lock:
+        row = db.query(TopupTransaction).filter(TopupTransaction.id == topup.id).first()
+        if not row or row.status != "pending":
+            return None
+        row.status = "paid"
+        row.paid_at = datetime.now(timezone.utc)
+        bal = db.query(Balance).filter(Balance.user_id == row.user_id).first()
+        if not bal:
+            bal = Balance(user_id=row.user_id, balance=0)
+            db.add(bal)
+        bal.balance += row.amount
+        db.add(BalanceTransaction(
+            user_id=row.user_id,
+            amount=row.amount,
+            type="topup",
+            description=f"Topup saldo via QRIS ({_fmt_idr(row.total)} IDR, termasuk biaya admin {_fmt_idr(row.fee)} IDR)"
+        ))
+        db.commit()
+        return bal.balance
+
+
+def _check_and_settle_topup(db: Session, topup: TopupTransaction) -> dict:
+    """Ask the gateway about one topup; settle (credit/mark expired) accordingly."""
+    res = gopay.check_payment(topup.total, topup.trx_id)
+    if res.get("success") and res.get("paid"):
+        new_balance = _credit_topup(db, topup)
+        if new_balance is not None:
+            return {"ok": True, "status": "paid", "new_balance": new_balance,
+                    "message": "Pembayaran diterima! Saldo sudah ditambahkan."}
+        return {"ok": True, "status": "paid",
+                "message": "Pembayaran sudah dikonfirmasi sebelumnya."}
+    now_ts = time.time()
+    exp_ts = _topup_expiry_epoch(topup)
+    if now_ts > exp_ts + TOPUP_EXPIRE_GRACE_SECONDS:
+        if topup.status == "pending":
+            topup.status = "expired"
+            db.commit()
+        return {"ok": True, "status": "expired",
+                "message": "QRIS kedaluwarsa dan tidak ada pembayaran masuk."}
+    return {"ok": True, "status": "pending",
+            "message": "Belum ada pembayaran yang terdeteksi."}
+
+
+def _reconcile_pending_topups():
+    """Background sweep: settle paid topups and expire stale ones."""
+    if not gopay.is_configured():
+        return
+    db = next(get_db())
+    try:
+        rows = db.query(TopupTransaction).filter(TopupTransaction.status == "pending").all()
+        for row in rows:
+            try:
+                _check_and_settle_topup(db, row)
+            except Exception as e:
+                print(f"[topup-reconcile] id={row.id} Error: {e}")
+    finally:
+        db.close()
+
+
+async def _topup_reconcile_watch():
+    while True:
+        await asyncio.sleep(TOPUP_CHECK_INTERVAL)
+        try:
+            await asyncio.to_thread(_reconcile_pending_topups)
+        except Exception as e:
+            print(f"[topup-reconcile] Error: {e}")
+
+
+@app.get("/user/topup")
+def topup_page(request: Request, user: User = Depends(get_current_user)):
+    if user.role != "user":
+        return RedirectResponse(url="/admin/dashboard", status_code=303)
+    db = next(get_db())
+    ctx = get_user_context(user, db)
+    rows = (
+        db.query(TopupTransaction)
+        .filter(TopupTransaction.user_id == user.id)
+        .order_by(TopupTransaction.id.desc())
+        .limit(10)
+        .all()
+    )
+    status_labels = {"pending": "Menunggu Pembayaran", "paid": "Berhasil", "expired": "Kedaluwarsa"}
+    topups = [{
+        "id": t.id,
+        "amount": t.amount,
+        "fee": t.fee,
+        "total": t.total,
+        "status": t.status,
+        "status_label": status_labels.get(t.status, t.status),
+        "created_fmt": _fmt_wib(t.created_at),
+        "is_pending": t.status == "pending" and time.time() <= _topup_expiry_epoch(t) + TOPUP_EXPIRE_GRACE_SECONDS,
+    } for t in rows]
+    ctx.update({
+        "request": request,
+        "topups": topups,
+        "topup_min": TOPUP_MIN_AMOUNT,
+        "topup_max": TOPUP_MAX_AMOUNT,
+        "topup_fee": TOPUP_ADMIN_FEE,
+        "gopay_ready": gopay.is_configured(),
+    })
+    db.close()
+    return render("user/topup.html", context=ctx)
+
+
+@app.post("/user/topup/create")
+def topup_create(amount: int = Form(...), user: User = Depends(get_current_user)):
+    if user.role != "user":
+        return JSONResponse({"ok": False, "message": "Akses ditolak"}, status_code=403)
+    if not gopay.is_configured():
+        return JSONResponse({"ok": False, "message": "Topup QRIS belum tersedia. Coba lagi nanti."}, status_code=503)
+    if amount < TOPUP_MIN_AMOUNT or amount > TOPUP_MAX_AMOUNT:
+        return JSONResponse({
+            "ok": False,
+            "message": f"Nominal topup harus antara {_fmt_idr(TOPUP_MIN_AMOUNT)} dan {_fmt_idr(TOPUP_MAX_AMOUNT)} IDR."
+        }, status_code=400)
+
+    db = next(get_db())
+    try:
+        pending_count = db.query(TopupTransaction).filter(
+            TopupTransaction.user_id == user.id,
+            TopupTransaction.status == "pending"
+        ).count()
+        if pending_count >= TOPUP_MAX_PENDING_PER_USER:
+            return JSONResponse({
+                "ok": False,
+                "message": f"Kamu masih punya {pending_count} topup menunggu pembayaran. Selesaikan atau tunggu kedaluwarsa dulu."
+            }, status_code=429)
+
+        total = amount + TOPUP_ADMIN_FEE
+        res = gopay.create_qris(total)
+        if not res.get("success"):
+            return JSONResponse({
+                "ok": False,
+                "message": res.get("error") or "Gagal membuat QRIS. Coba lagi."
+            }, status_code=502)
+
+        data = res.get("data") or {}
+        trx_id = data.get("trx_id") or ""
+        qris_code = data.get("qris_code") or ""
+        if not trx_id or not qris_code:
+            return JSONResponse({
+                "ok": False,
+                "message": "Respon gateway tidak lengkap. Coba lagi."
+            }, status_code=502)
+
+        expires_ts = int(time.time()) + TOPUP_QR_TTL_SECONDS
+        try:
+            parsed = datetime.fromisoformat(str(data.get("expires_at")).replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            expires_ts = int(parsed.timestamp())
+        except (ValueError, TypeError, AttributeError):
+            pass
+
+        row = TopupTransaction(
+            user_id=user.id,
+            amount=amount,
+            fee=TOPUP_ADMIN_FEE,
+            total=total,
+            trx_id=trx_id,
+            qris_id=str(data.get("qris_id") or ""),
+            qris_code=qris_code,
+            status="pending",
+            expires_at=datetime.fromtimestamp(expires_ts, tz=timezone.utc),
+        )
+        db.add(row)
+        db.commit()
+
+        return JSONResponse({
+            "ok": True,
+            "id": row.id,
+            "qr_img": _qris_text_png_data_uri(qris_code),
+            "expires_ts": expires_ts,
+            "amount": amount,
+            "fee": TOPUP_ADMIN_FEE,
+            "total": total,
+        })
+    finally:
+        db.close()
+
+
+@app.post("/user/topup/check")
+def topup_check(topup_id: int = Form(...), user: User = Depends(get_current_user)):
+    if user.role != "user":
+        return JSONResponse({"ok": False, "message": "Akses ditolak"}, status_code=403)
+    if not gopay.is_configured():
+        return JSONResponse({"ok": False, "message": "Topup QRIS belum tersedia."}, status_code=503)
+
+    db = next(get_db())
+    try:
+        row = db.query(TopupTransaction).filter(
+            TopupTransaction.id == topup_id,
+            TopupTransaction.user_id == user.id
+        ).first()
+        if not row:
+            return JSONResponse({"ok": False, "message": "Transaksi topup tidak ditemukan."}, status_code=404)
+        if row.status == "paid":
+            bal = db.query(Balance).filter(Balance.user_id == user.id).first()
+            return JSONResponse({
+                "ok": True, "status": "paid",
+                "new_balance": bal.balance if bal else 0,
+                "message": "Pembayaran sudah dikonfirmasi sebelumnya."
+            })
+        if row.status == "expired":
+            return JSONResponse({"ok": True, "status": "expired", "message": "QRIS ini sudah kedaluwarsa."})
+        return JSONResponse(_check_and_settle_topup(db, row))
+    finally:
+        db.close()
 
 
 # ─── Register ───────────────────────────────────────────────────────────────

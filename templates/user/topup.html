@@ -1,0 +1,345 @@
+{% extends "base.html" %}
+{% block title %}Topup Saldo Panel - RohTembak (XL){% endblock %}
+{% block head %}
+<style>
+.saldo-box { background: #f8f9fa; border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px; }
+.saldo-box h3 { margin: 0 0 12px; font-size: .85rem; text-transform: uppercase; letter-spacing: .5px; color: #6b7280; }
+.saldo-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; font-size: .9rem; }
+.saldo-row .k { color: #6b7280; }
+.saldo-row .v { font-weight: 600; color: #111; }
+.saldo-row.total { border-top: 1px solid #e5e7eb; margin-top: 8px; padding-top: 12px; }
+.saldo-row.total .k { color: #111; font-weight: 600; }
+.saldo-row.total .v { color: #059669; font-size: 1.05rem; }
+
+.amount-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
+.amount-btn {
+  border: 1px solid #e5e7eb; background: #fff; border-radius: 8px;
+  padding: 10px 6px; font-size: .88rem; font-weight: 600; color: #374151;
+  cursor: pointer; transition: all .15s ease; text-align: center;
+}
+.amount-btn:hover { border-color: #9ca3af; }
+.amount-btn.active { border-color: #059669; background: #ecfdf5; color: #047857; }
+@media (max-width: 480px) { .amount-grid { grid-template-columns: repeat(2, 1fr); } }
+
+.topup-note {
+  margin-top: 12px; padding: 10px 12px; border-radius: 8px;
+  background: #fffbeb; border: 1px solid #fde68a; color: #92400e; font-size: .8rem; line-height: 1.5;
+}
+
+.qr-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0,0,0,.55); display: none;
+  align-items: center; justify-content: center; padding: 20px;
+}
+.qr-overlay.show { display: flex; }
+.qr-window {
+  background: #fff; border-radius: 14px; padding: 24px;
+  max-width: 360px; width: 100%; text-align: center;
+  box-shadow: 0 20px 50px rgba(0,0,0,.35); position: relative;
+}
+.qr-window .qr-close {
+  position: absolute; top: 10px; right: 14px;
+  background: none; border: none; font-size: 1.4rem;
+  color: #6b7280; cursor: pointer; line-height: 1;
+}
+.qr-window .qr-close:hover { color: #111; }
+.qr-window h3 { margin: 0 0 4px; font-size: 1rem; color: #111; }
+.qr-window p { margin: 0 0 14px; font-size: .8rem; color: #6b7280; }
+.qr-window img.qr-img {
+  width: 240px; height: 240px; border-radius: 8px;
+  border: 1px solid #e5e7eb; background: #fff;
+}
+.qr-window .qr-total { margin-top: 12px; font-size: .95rem; color: #111; }
+.qr-window .qr-total strong { color: #059669; font-size: 1.1rem; }
+.qr-hint { margin-top: 14px; font-size: .72rem; color: #9ca3af; line-height: 1.5; }
+.qr-success-icon { font-size: 2.6rem; margin: 6px 0 2px; }
+
+.status-badge {
+  display: inline-block; padding: 3px 10px; border-radius: 999px;
+  font-size: .72rem; font-weight: 600; white-space: nowrap;
+}
+.status-badge.pending { background: #fef3c7; color: #92400e; }
+.status-badge.paid { background: #d1fae5; color: #065f46; }
+.status-badge.expired { background: #f3f4f6; color: #6b7280; }
+
+.topup-table { width: 100%; border-collapse: collapse; font-size: .84rem; }
+.topup-table th {
+  text-align: left; padding: 8px 10px; color: #6b7280; font-weight: 600;
+  font-size: .72rem; text-transform: uppercase; letter-spacing: .4px;
+  border-bottom: 1px solid #e5e7eb;
+}
+.topup-table td { padding: 10px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
+.topup-table tr:last-child td { border-bottom: none; }
+</style>
+<script>
+var currentTopupId = null;
+var qrExpires = 0;
+var qrTimerInt = null;
+
+function fmtIdr(n) {
+  return Number(n || 0).toLocaleString('id-ID');
+}
+
+function selectAmountBtn(val) {
+  var input = document.getElementById('topup-amount');
+  input.value = val;
+  document.querySelectorAll('.amount-btn').forEach(function(b) {
+    b.classList.toggle('active', Number(b.dataset.value) === val);
+  });
+  updateSummary();
+}
+
+function updateSummary() {
+  var raw = document.getElementById('topup-amount').value.trim();
+  var amount = parseInt(raw, 10);
+  if (!raw || isNaN(amount) || amount <= 0) amount = 0;
+  var fee = {{ topup_fee }};
+  document.getElementById('sum-nominal').textContent = fmtIdr(amount) + ' IDR';
+  document.getElementById('sum-fee').textContent = fmtIdr(fee) + ' IDR';
+  document.getElementById('sum-total').textContent = fmtIdr(amount > 0 ? amount + fee : 0) + ' IDR';
+}
+
+function createTopup() {
+  var btn = document.getElementById('create-btn');
+  var msgEl = document.getElementById('form-msg');
+  if (btn.disabled) return;
+  var amount = parseInt(document.getElementById('topup-amount').value.trim(), 10);
+  if (!amount || amount < {{ topup_min }} || amount > {{ topup_max }}) {
+    msgEl.textContent = 'Nominal harus antara {{ topup_min|rupiah }} dan {{ topup_max|rupiah }} IDR.';
+    msgEl.style.display = 'block';
+    return;
+  }
+  msgEl.style.display = 'none';
+  btn.disabled = true;
+  btn.textContent = 'Membuat QRIS...';
+
+  var fd = new FormData();
+  fd.append('amount', amount);
+  fetch('/user/topup/create', { method: 'POST', body: fd, credentials: 'same-origin' })
+    .then(function(r) { return r.json(); })
+    .then(function(res) {
+      btn.disabled = false;
+      btn.textContent = 'Buat Kode QRIS';
+      if (res.ok) {
+        currentTopupId = res.id;
+        showQr(res.qr_img, res.expires_ts, res.amount, res.fee, res.total);
+      } else {
+        msgEl.textContent = res.message || 'Gagal membuat QRIS.';
+        msgEl.style.display = 'block';
+      }
+    })
+    .catch(function(e) {
+      btn.disabled = false;
+      btn.textContent = 'Buat Kode QRIS';
+      msgEl.textContent = 'Terjadi kesalahan: ' + e.message;
+      msgEl.style.display = 'block';
+    });
+}
+
+function showQr(src, expires, amount, fee, total) {
+  qrExpires = parseInt(expires, 10) || 0;
+  document.getElementById('qr-img').src = src || '';
+  document.getElementById('qr-img').style.display = src ? '' : 'none';
+  document.getElementById('qr-nominal').textContent = fmtIdr(amount) + ' IDR';
+  document.getElementById('qr-fee').textContent = fmtIdr(fee) + ' IDR';
+  document.getElementById('qr-total').textContent = fmtIdr(total) + ' IDR';
+  setQrViewState('pay');
+  var ov = document.getElementById('qr-overlay');
+  ov.classList.add('show');
+  tickQrTimer();
+  if (qrTimerInt) clearInterval(qrTimerInt);
+  qrTimerInt = setInterval(tickQrTimer, 1000);
+}
+
+function setQrViewState(state) {
+  document.getElementById('qr-view-pay').style.display = state === 'pay' ? '' : 'none';
+  document.getElementById('qr-view-success').style.display = state === 'success' ? '' : 'none';
+}
+
+function tickQrTimer() {
+  var el = document.getElementById('qr-timer');
+  if (!el) return;
+  if (!qrExpires) { el.textContent = '—'; return; }
+  var left = qrExpires - Math.floor(Date.now() / 1000);
+  if (left <= 0) {
+    el.textContent = 'Expired';
+    if (qrTimerInt) { clearInterval(qrTimerInt); qrTimerInt = null; }
+    return;
+  }
+  var m = Math.floor(left / 60), s = left % 60;
+  el.textContent = (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+}
+
+function checkStatus(silent) {
+  var btn = document.getElementById('check-btn');
+  if (!currentTopupId) return;
+  if (btn && !silent) {
+    btn.disabled = true;
+    btn.textContent = 'Mengecek...';
+  }
+  var fd = new FormData();
+  fd.append('topup_id', currentTopupId);
+  fetch('/user/topup/check', { method: 'POST', body: fd, credentials: 'same-origin' })
+    .then(function(r) { return r.json(); })
+    .then(function(res) {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Cek Status Pembayaran';
+      }
+      if (!res.ok) {
+        if (!silent) alert(res.message || 'Gagal mengecek status.');
+        return;
+      }
+      if (res.status === 'paid') {
+        if (qrTimerInt) { clearInterval(qrTimerInt); qrTimerInt = null; }
+        document.getElementById('success-balance').textContent = fmtIdr(res.new_balance) + ' IDR';
+        setQrViewState('success');
+      } else if (!silent) {
+        alert(res.message || 'Belum ada pembayaran terdeteksi.');
+      } else if (res.status === 'expired') {
+        if (qrTimerInt) { clearInterval(qrTimerInt); qrTimerInt = null; }
+      }
+    })
+    .catch(function() {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Cek Status Pembayaran';
+      }
+    });
+}
+
+function closeQr(reload) {
+  var ov = document.getElementById('qr-overlay');
+  var wasPaid = document.getElementById('qr-view-success').style.display !== 'none';
+  ov.classList.remove('show');
+  if (qrTimerInt) { clearInterval(qrTimerInt); qrTimerInt = null; }
+  if (reload && wasPaid) location.reload();
+}
+</script>
+{% endblock %}
+{% block content %}
+
+<div class="page-title">Topup Saldo Panel</div>
+<div class="page-subtitle" style="margin-bottom:34px;">Isi saldo panel secara otomatis lewat QRIS. Saldo masuk begitu pembayaran terkonfirmasi.</div>
+
+{% if gopay_ready %}
+<div class="card" style="padding:0;overflow:hidden;">
+  <div style="padding:20px 24px;">
+    <div class="saldo-box" style="max-width:480px;margin-bottom:18px;">
+      <h3>Saldo Panel Saat Ini</h3>
+      <div style="font-size:1.5rem;font-weight:700;color:#059669;">{{ (balance or 0)|rupiah }} IDR</div>
+    </div>
+
+    <div style="max-width:480px;">
+      <div class="form-group">
+        <label style="font-size:.82rem;font-weight:600;color:#374151;display:block;margin-bottom:8px;">Pilih nominal topup</label>
+        <div class="amount-grid">
+          {% for v in [10000, 20000, 50000, 100000, 200000, 500000] %}
+          <button type="button" class="amount-btn" data-value="{{ v }}" onclick="selectAmountBtn({{ v }})">{{ v|rupiah }}</button>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="topup-amount" style="font-size:.82rem;font-weight:600;color:#374151;">Atau ketik nominal sendiri</label>
+        <input type="number" id="topup-amount" class="form-control" min="{{ topup_min }}" max="{{ topup_max }}" step="1000"
+               placeholder="Contoh: 25000" oninput="updateSummary()" style="margin-top:6px;">
+        <div style="font-size:.72rem;color:#9ca3af;margin-top:4px;">Min {{ topup_min|rupiah }} &middot; Maks {{ topup_max|rupiah }} IDR</div>
+      </div>
+
+      <div class="saldo-box" style="margin-top:14px;">
+        <h3>Ringkasan</h3>
+        <div class="saldo-row">
+          <span class="k">Nominal topup</span>
+          <span class="v" id="sum-nominal">0 IDR</span>
+        </div>
+        <div class="saldo-row">
+          <span class="k">Biaya admin QRIS</span>
+          <span class="v" id="sum-fee">{{ topup_fee|rupiah }} IDR</span>
+        </div>
+        <div class="saldo-row total">
+          <span class="k">Total yang dibayarkan</span>
+          <span class="v" id="sum-total">0 IDR</span>
+        </div>
+      </div>
+
+      <div id="form-msg" style="display:none;margin-top:12px;padding:10px 12px;border-radius:8px;background:#fef2f2;color:#991b1b;font-size:.82rem;"></div>
+
+      <div style="margin-top:16px;">
+        <button class="btn btn-success" id="create-btn" onclick="createTopup()">Buat Kode QRIS</button>
+      </div>
+
+      <div class="topup-note">
+        Scan QRIS dengan aplikasi GoPay / bank / e-wallet apa pun. Setelah membayar, klik <strong>&ldquo;Cek Status Pembayaran&rdquo;</strong> di halaman QR. Sistem juga mengecek otomatis di belakang layar, jadi saldo tetap masuk walau halaman sudah ditutup.
+      </div>
+    </div>
+  </div>
+</div>
+{% else %}
+<div class="card">
+  <div class="empty-state">Topup QRIS sedang tidak tersedia. Silakan hubungi admin untuk topup manual.</div>
+</div>
+{% endif %}
+
+<div class="card" style="margin-top:24px;">
+  <div style="font-size:.85rem;text-transform:uppercase;letter-spacing:.5px;color:#6b7280;font-weight:600;margin-bottom:14px;">Riwayat Topup Terakhir</div>
+  {% if topups %}
+  <div style="overflow-x:auto;">
+    <table class="topup-table">
+      <thead>
+        <tr><th>Waktu</th><th>Nominal</th><th>Total Bayar</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        {% for t in topups %}
+        <tr>
+          <td>{{ t.created_fmt }}</td>
+          <td><strong>{{ t.amount|rupiah }}</strong> IDR</td>
+          <td>{{ t.total|rupiah }} IDR</td>
+          <td><span class="status-badge {{ t.status }}">{{ t.status_label }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">Belum ada transaksi topup.</div>
+  {% endif %}
+</div>
+
+<div class="qr-overlay" id="qr-overlay" onclick="if(event.target===this)closeQr(true)">
+  <div class="qr-window">
+    <button class="qr-close" onclick="closeQr(true)">&times;</button>
+
+    <div id="qr-view-pay">
+      <h3>Scan QRIS</h3>
+      <p>Selesaikan pembayaran sebelum waktu habis.</p>
+      <img class="qr-img" id="qr-img" alt="QRIS" src="">
+      <div class="qr-total">
+        Nominal: <span id="qr-nominal">—</span> &middot; Admin: <span id="qr-fee">—</span><br>
+        Total: <strong id="qr-total">—</strong>
+      </div>
+      <div style="margin-top:10px;font-size:.85rem;color:#374151;">
+        Sisa waktu: <strong id="qr-timer" style="font-family:ui-monospace,monospace;">—</strong>
+      </div>
+      <div style="margin-top:14px;">
+        <button class="btn btn-primary" id="check-btn" onclick="checkStatus(false)" style="width:100%;">Cek Status Pembayaran</button>
+      </div>
+      <div class="qr-hint">Sudah bayar tapi status belum berubah? Tunggu sebentar lalu cek lagi. Sistem juga memeriksa otomatis setiap saat meski kamu menutup halaman ini.</div>
+    </div>
+
+    <div id="qr-view-success" style="display:none;">
+      <div class="qr-success-icon">&#9989;</div>
+      <h3>Topup Berhasil!</h3>
+      <p>Pembayaran terkonfirmasi dan saldo sudah ditambahkan ke akunmu.</p>
+      <div class="saldo-box" style="text-align:left;">
+        <h3>Saldo Panel Sekarang</h3>
+        <div style="font-size:1.4rem;font-weight:700;color:#059669;" id="success-balance">—</div>
+      </div>
+      <div style="margin-top:16px;">
+        <button class="btn btn-primary" onclick="closeQr(true)" style="width:100%;">Selesai</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

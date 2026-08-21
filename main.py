@@ -7,6 +7,7 @@ import uuid
 import asyncio
 import threading
 import zipfile
+import requests
 from contextlib import asynccontextmanager, redirect_stdout
 from dotenv import load_dotenv
 
@@ -331,6 +332,7 @@ async def lifespan(app: FastAPI):
     # unreferenced sleeping task can be garbage-collected mid-loop.
     global _reconcile_task
     _reconcile_task = asyncio.create_task(_topup_reconcile_watch())
+    threading.Thread(target=_autobackup_loop, daemon=True, name="autobackup").start()
     yield
 
 
@@ -1153,6 +1155,201 @@ def admin_backup(format: str = "zip", admin_user: User = Depends(get_current_use
     resp = Response(content=buf.getvalue(), media_type="application/zip")
     resp.headers["Content-Disposition"] = 'attachment; filename="backup.zip"'
     return resp
+
+
+# =============================================================================
+# Auto Backup (Telegram Bot)
+# -----------------------------------------------------------------------------
+# Backup otomatis harian: seluruh data panel (.env, database, fingerprint)
+# dikemas jadi zip lalu dikirim ke chat Telegram via bot (sendDocument).
+# Konfigurasi minimal: Chat ID + API Key bot, disimpan di data/autobackup.json.
+# =============================================================================
+
+AUTOBACKUP_TIME = "03:00"  # WIB
+TG_MAX_BYTES = 50 * 1024 * 1024  # batas upload dokumen Bot API
+
+_AUTOBACKUP_LOCK = threading.Lock()
+
+
+def _ab_state_path() -> str:
+    return os.path.join(BASE_DIR, "data", "autobackup.json")
+
+
+def _ab_read_state() -> dict:
+    state = {
+        "chat_id": "",
+        "token": "",
+        "last_run_at": "",
+        "last_run_ok": None,
+        "last_output": "",
+        "last_run_date": "",
+    }
+    try:
+        with open(_ab_state_path(), "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            state.update({k: v for k, v in data.items() if k in state})
+    except (OSError, ValueError):
+        pass
+    return state
+
+
+def _ab_write_state(state: dict) -> None:
+    os.makedirs(os.path.dirname(_ab_state_path()), exist_ok=True)
+    with open(_ab_state_path(), "w", encoding="utf-8") as f:
+        json.dump(state, f, indent=2, ensure_ascii=False)
+
+
+def _autobackup_zip_bytes() -> bytes:
+    """Bangun zip backup: .env, ax.fp, dan seluruh isi folder data/."""
+    exported_at = datetime.now(WIB).strftime("%Y-%m-%d %H:%M:%S WIB")
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("manifest.json", json.dumps({
+            "version": 1,
+            "app": "RohTembak (XL) auto-backup",
+            "exported_at": exported_at,
+        }, indent=2, ensure_ascii=False))
+        env_path = os.path.join(BASE_DIR, ".env")
+        if os.path.exists(env_path):
+            try:
+                zf.write(env_path, ".env")
+            except OSError:
+                pass
+        fp_shared = _read_ax_fp_file()
+        if fp_shared:
+            zf.writestr("ax.fp", fp_shared)
+        data_dir = os.path.join(BASE_DIR, "data")
+        if os.path.isdir(data_dir):
+            for root, _dirs, files in os.walk(data_dir):
+                for fn in files:
+                    full = os.path.join(root, fn)
+                    rel = os.path.relpath(full, BASE_DIR)
+                    if rel.replace(os.sep, "/") == "data/autobackup.json":
+                        continue
+                    try:
+                        zf.write(full, rel)
+                    except OSError:
+                        pass
+    buf.seek(0)
+    return buf.getvalue()
+
+
+def _telegram_send_backup(trigger: str) -> tuple[bool, str]:
+    cfg = _ab_read_state()
+    chat_id = (cfg.get("chat_id") or "").strip()
+    token = (cfg.get("token") or "").strip()
+    if not chat_id or not token:
+        return False, "Chat ID / API key bot belum lengkap. Isi dulu di halaman ini."
+
+    ts = datetime.now(WIB).strftime("%Y%m%d-%H%M%S")
+    fname = f"rohtembak-backup-{ts}.zip"
+    tmp_zip = os.path.join(BASE_DIR, "data", fname)
+    ok, out = False, ""
+    try:
+        with open(tmp_zip, "wb") as f:
+            f.write(_autobackup_zip_bytes())
+        size = os.path.getsize(tmp_zip)
+        if size > TG_MAX_BYTES:
+            ok, out = False, f"Ukuran backup {size / 1048576:.1f} MB melebihi batas 50 MB Bot Telegram."
+        else:
+            try:
+                with open(tmp_zip, "rb") as f:
+                    r = requests.post(
+                        f"https://api.telegram.org/bot{token}/sendDocument",
+                        data={"chat_id": chat_id},
+                        files={"document": (fname, f)},
+                        timeout=600,
+                    )
+                try:
+                    body = r.json()
+                except ValueError:
+                    body = {}
+                if r.status_code == 200 and body.get("ok"):
+                    ok = True
+                    out = f"Backup terkirim ke Telegram: {fname} ({size / 1048576:.2f} MB)."
+                else:
+                    out = body.get("description") or f"HTTP {r.status_code} dari Telegram API."
+            except requests.RequestException as e:
+                out = f"Gagal menghubungi Telegram: {e}"
+    finally:
+        try:
+            os.remove(tmp_zip)
+        except OSError:
+            pass
+
+    now_str = datetime.now(WIB).strftime("%Y-%m-%d %H:%M:%S WIB")
+    cfg = _ab_read_state()
+    cfg["last_run_at"] = now_str
+    cfg["last_run_ok"] = ok
+    cfg["last_output"] = out[-2000:]
+    if trigger == "auto":
+        cfg["last_run_date"] = datetime.now(WIB).strftime("%Y-%m-%d")
+    _ab_write_state(cfg)
+    return ok, out
+
+
+def _autobackup_loop():
+    while True:
+        try:
+            cfg = _ab_read_state()
+            if (cfg.get("chat_id") or "").strip() and (cfg.get("token") or "").strip():
+                now = datetime.now(WIB)
+                today = now.strftime("%Y-%m-%d")
+                hh, mm = AUTOBACKUP_TIME.split(":")
+                if (now.hour, now.minute) >= (int(hh), int(mm)) and cfg.get("last_run_date") != today:
+                    if _AUTOBACKUP_LOCK.acquire(blocking=False):
+                        try:
+                            _telegram_send_backup("auto")
+                        finally:
+                            _AUTOBACKUP_LOCK.release()
+        except Exception:
+            pass
+        time.sleep(60)
+
+
+@app.get("/admin/autobackup", response_class=HTMLResponse)
+def admin_autobackup_page(request: Request, admin_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if admin_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden")
+    st = _ab_read_state()
+    configured = bool((st.get("chat_id") or "").strip() and (st.get("token") or "").strip())
+    return render("admin/autobackup.html", context={
+        "request": request, "user": admin_user,
+        "st": st, "configured": configured,
+        "saved": request.query_params.get("saved") == "1",
+        "ab_time": AUTOBACKUP_TIME,
+    })
+
+
+@app.post("/admin/autobackup/settings")
+def admin_autobackup_settings(
+    request: Request,
+    chat_id: str = Form(""),
+    token: str = Form(""),
+    admin_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if admin_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden")
+    st = _ab_read_state()
+    st["chat_id"] = chat_id.strip()
+    st["token"] = token.strip()
+    _ab_write_state(st)
+    return RedirectResponse("/admin/autobackup?saved=1", status_code=303)
+
+
+@app.post("/admin/autobackup/run")
+def admin_autobackup_run(request: Request, admin_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if admin_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if not _AUTOBACKUP_LOCK.acquire(blocking=False):
+        return JSONResponse({"ok": False, "output": "Backup lain sedang berjalan. Coba lagi nanti."})
+    try:
+        ok, out = _telegram_send_backup("manual")
+    finally:
+        _AUTOBACKUP_LOCK.release()
+    return JSONResponse({"ok": ok, "output": out[-4000:]})
 
 
 MAX_BACKUP_RESTORE_SIZE = 1 * 1024 * 1024

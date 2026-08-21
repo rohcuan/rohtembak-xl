@@ -1253,7 +1253,7 @@ def _telegram_send_backup(trigger: str) -> tuple[bool, str]:
         return False, "Chat ID / API key bot belum lengkap. Isi dulu di halaman ini."
 
     ts = datetime.now(WIB).strftime("%Y%m%d-%H%M%S")
-    fname = f"rohtembak-backup-{ts}.zip"
+    fname = f"rohtembak-xl-backup-{ts}.zip"
     tmp_zip = os.path.join(BASE_DIR, "data", fname)
     ok, out = False, ""
     try:

@@ -5,39 +5,20 @@
 <div class="header-section">
     <div>
         <div class="page-title">Dashboard Admin</div>
-        <div class="page-subtitle">Pusat kendali panel RohTembak (XL)</div>
+        <div class="page-subtitle">Atur semuanya disini</div>
     </div>
 </div>
 
-<div class="admin-menu">
-    <a href="/admin/users" class="admin-menu-item">
-        <div>
-            <div class="admin-menu-title">Kelola User</div>
-            <div class="admin-menu-desc">Tambah, hapus, dan atur saldo panel pengguna</div>
-        </div>
-        <svg class="admin-menu-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
-    </a>
-    <a href="/admin/fees" class="admin-menu-item">
-        <div>
-            <div class="admin-menu-title">Atur Fee Paket</div>
-            <div class="admin-menu-desc">Fee saldo panel per paket, dipisah per metode pembayaran</div>
-        </div>
-        <svg class="admin-menu-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
-    </a>
-    <a href="/admin/payment" class="admin-menu-item">
-        <div>
-            <div class="admin-menu-title">Atur QRIS API</div>
-            <div class="admin-menu-desc">Endpoint &amp; API key gateway QRIS, plus tes koneksi</div>
-        </div>
-        <svg class="admin-menu-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
-    </a>
-    <a href="/admin/penghasilan" class="admin-menu-item">
-        <div>
-            <div class="admin-menu-title">Penghasilan</div>
-            <div class="admin-menu-desc">Rekap pemasukan &amp; pemakaian saldo panel</div>
-        </div>
-        <svg class="admin-menu-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
-    </a>
+<div class="card">
+    <div class="header-section">
+        <h2>Menu</h2>
+    </div>
+    <div class="menu-grid">
+        <a href="/admin/users" class="btn btn-outline" style="justify-content:center;">Kelola User</a>
+        <a href="/admin/fees" class="btn btn-outline" style="justify-content:center;">Atur Fee Paket</a>
+        <a href="/admin/payment" class="btn btn-outline" style="justify-content:center;">Atur QRIS API</a>
+        <a href="/admin/penghasilan" class="btn btn-outline" style="justify-content:center;">Penghasilan</a>
+    </div>
 </div>
 
 {% endblock %}

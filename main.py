@@ -140,6 +140,46 @@ TOPUP_EXPIRE_GRACE_SECONDS = int(os.getenv("TOPUP_EXPIRE_GRACE_SECONDS", "60"))
 TOPUP_CHECK_INTERVAL = int(os.getenv("TOPUP_CHECK_INTERVAL", "20"))
 TOPUP_MAX_PENDING_PER_USER = 3
 _APP_START_TS = time.time()
+_reconcile_task = None
+
+# Serializes every Balance read-modify-write in this process so concurrent
+# requests cannot lose updates or drive a balance negative.
+_balance_lock = threading.Lock()
+
+# Simple in-memory brute-force throttle for login/register endpoints.
+_login_failures = {}
+_LOGIN_WINDOW_SECONDS = 300
+_LOGIN_MAX_FAILURES = 5
+
+
+def _client_key(request: Request, extra: str = "") -> str:
+    ip = request.client.host if request.client else "?"
+    return f"{ip}:{extra}" if extra else ip
+
+
+def _login_blocked(key: str) -> bool:
+    rec = _login_failures.get(key)
+    if not rec:
+        return False
+    if time.time() - rec[1] > _LOGIN_WINDOW_SECONDS:
+        _login_failures.pop(key, None)
+        return False
+    return rec[0] >= _LOGIN_MAX_FAILURES
+
+
+def _login_record_failure(key: str) -> None:
+    now = time.time()
+    rec = _login_failures.get(key)
+    if not rec or now - rec[1] > _LOGIN_WINDOW_SECONDS:
+        if len(_login_failures) > 10000:
+            _login_failures.clear()
+        _login_failures[key] = [1, now]
+    else:
+        rec[0] += 1
+
+
+def _login_reset(key: str) -> None:
+    _login_failures.pop(key, None)
 
 import app.client.engsel as _engsel
 
@@ -287,7 +327,10 @@ async def lifespan(app: FastAPI):
                 pass
         copy_shared_fp_to_user(u.username)
     db.close()
-    asyncio.create_task(_topup_reconcile_watch())
+    # Keep a strong reference: asyncio only weakly references tasks, so an
+    # unreferenced sleeping task can be garbage-collected mid-loop.
+    global _reconcile_task
+    _reconcile_task = asyncio.create_task(_topup_reconcile_watch())
     yield
 
 
@@ -381,10 +424,17 @@ def login(
             "error": "Email atau username wajib diisi"
         }, status_code=400)
     username = username.strip().lower()
+    attempt_key = _client_key(request, username)
+    if _login_blocked(attempt_key):
+        return render("login.html", context={
+            "request": request,
+            "error": "Terlalu banyak percobaan gagal. Coba lagi dalam beberapa menit."
+        }, status_code=429)
     user = db.query(User).filter(
         (func.lower(User.username) == username) | (func.lower(User.email) == username)
     ).first()
     if not user or not verify_password(password, user.password_hash):
+        _login_record_failure(attempt_key)
         return render("login.html", context={
             "request": request,
             "error": "Email/Username atau password salah"
@@ -395,6 +445,7 @@ def login(
             "error": "Akun admin tidak bisa login sebagai pengguna biasa"
         }, status_code=403)
 
+    _login_reset(attempt_key)
     token = create_access_token({"sub": str(user.id), "role": user.role})
     resp = RedirectResponse(url="/user/dashboard", status_code=303)
     resp.set_cookie(key="access_token", value=token, httponly=True, samesite="lax", max_age=int(ACCESS_TOKEN_EXPIRE_MINUTES * 60))
@@ -422,8 +473,15 @@ def admin_login(
             "error": "Username wajib diisi"
         }, status_code=400)
     username = username.strip().lower()
+    attempt_key = _client_key(request, username)
+    if _login_blocked(attempt_key):
+        return render("admin_login.html", context={
+            "request": request,
+            "error": "Terlalu banyak percobaan gagal. Coba lagi dalam beberapa menit."
+        }, status_code=429)
     user = db.query(User).filter(func.lower(User.username) == username).first()
     if not user or not verify_password(password, user.password_hash):
+        _login_record_failure(attempt_key)
         return render("admin_login.html", context={
             "request": request,
             "error": "Username atau password salah"
@@ -434,6 +492,7 @@ def admin_login(
             "error": "Akun ini tidak memiliki akses admin"
         }, status_code=403)
 
+    _login_reset(attempt_key)
     token = create_access_token({"sub": str(user.id), "role": user.role})
     resp = RedirectResponse(url="/admin/dashboard", status_code=303)
     resp.set_cookie(key="access_token", value=token, httponly=True, samesite="lax", max_age=int(ACCESS_TOKEN_EXPIRE_MINUTES * 60))
@@ -639,21 +698,24 @@ def admin_add_balance(
         raise HTTPException(status_code=403, detail="Forbidden")
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Jumlah harus positif")
+    if not db.query(User).filter(User.id == user_id, User.role == "user").first():
+        raise HTTPException(status_code=404, detail="User tidak ditemukan")
 
-    bal = db.query(Balance).filter(Balance.user_id == user_id).first()
-    if not bal:
-        bal = Balance(user_id=user_id, balance=0)
-        db.add(bal)
-    bal.balance += amount
+    with _balance_lock:
+        bal = db.query(Balance).filter(Balance.user_id == user_id).first()
+        if not bal:
+            bal = Balance(user_id=user_id, balance=0)
+            db.add(bal)
+        bal.balance += amount
 
-    trx = BalanceTransaction(
-        user_id=user_id,
-        amount=amount,
-        type="topup",
-        description=description or "Topup dari admin"
-    )
-    db.add(trx)
-    db.commit()
+        trx = BalanceTransaction(
+            user_id=user_id,
+            amount=amount,
+            type="topup",
+            description=description or "Topup dari admin"
+        )
+        db.add(trx)
+        db.commit()
     return RedirectResponse(url="/admin/users", status_code=303)
 
 
@@ -725,7 +787,20 @@ def admin_delete_user(
     u = db.query(User).filter(User.id == user_id).first()
     if not u:
         raise HTTPException(status_code=404, detail="User tidak ditemukan")
+    if u.role != "user":
+        raise HTTPException(status_code=400, detail="Hanya akun pengguna biasa yang bisa dihapus")
+    pending_topups = db.query(TopupTransaction).filter(
+        TopupTransaction.user_id == u.id,
+        TopupTransaction.status == "pending"
+    ).count()
+    if pending_topups:
+        raise HTTPException(
+            status_code=400,
+            detail="User masih punya topup QRIS menunggu pembayaran. Tunggu kedaluwarsa dulu (maks ~6 menit)."
+        )
 
+    for acc in db.query(XLAccount).filter(XLAccount.user_id == u.id).all():
+        _XL_TOKEN_CACHE.pop(acc.subscriber_id or acc.id, None)
     db.query(BalanceTransaction).filter(BalanceTransaction.user_id == u.id).delete()
     db.query(TopupTransaction).filter(TopupTransaction.user_id == u.id).delete()
     remove_user_ax_fp(u.username)
@@ -746,21 +821,24 @@ def admin_decrease_balance(
         raise HTTPException(status_code=403, detail="Forbidden")
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Jumlah harus positif")
+    if not db.query(User).filter(User.id == user_id, User.role == "user").first():
+        raise HTTPException(status_code=404, detail="User tidak ditemukan")
 
-    bal = db.query(Balance).filter(Balance.user_id == user_id).first()
-    if not bal or bal.balance <= 0:
-        raise HTTPException(status_code=400, detail="Saldo tidak cukup")
-    if amount > bal.balance:
-        raise HTTPException(status_code=400, detail="Saldo tidak cukup")
+    with _balance_lock:
+        bal = db.query(Balance).filter(Balance.user_id == user_id).first()
+        if not bal or bal.balance <= 0:
+            raise HTTPException(status_code=400, detail="Saldo tidak cukup")
+        if amount > bal.balance:
+            raise HTTPException(status_code=400, detail="Saldo tidak cukup")
 
-    bal.balance -= amount
-    db.add(BalanceTransaction(
-        user_id=user_id,
-        amount=-amount,
-        type="decrease",
-        description=description or "Kurangi oleh admin"
-    ))
-    db.commit()
+        bal.balance -= amount
+        db.add(BalanceTransaction(
+            user_id=user_id,
+            amount=-amount,
+            type="decrease",
+            description=description or "Kurangi oleh admin"
+        ))
+        db.commit()
     return RedirectResponse(url="/admin/users", status_code=303)
 
 
@@ -776,21 +854,24 @@ def admin_set_balance(
         raise HTTPException(status_code=403, detail="Forbidden")
     if amount < 0:
         raise HTTPException(status_code=400, detail="Jumlah tidak boleh negatif")
+    if not db.query(User).filter(User.id == user_id, User.role == "user").first():
+        raise HTTPException(status_code=404, detail="User tidak ditemukan")
 
-    bal = db.query(Balance).filter(Balance.user_id == user_id).first()
-    if not bal:
-        bal = Balance(user_id=user_id, balance=0)
-        db.add(bal)
-    delta = amount - bal.balance
-    bal.balance = amount
-    if delta != 0:
-        db.add(BalanceTransaction(
-            user_id=user_id,
-            amount=delta,
-            type="set",
-            description=description or "Penyesuaian saldo oleh admin"
-        ))
-    db.commit()
+    with _balance_lock:
+        bal = db.query(Balance).filter(Balance.user_id == user_id).first()
+        if not bal:
+            bal = Balance(user_id=user_id, balance=0)
+            db.add(bal)
+        delta = amount - bal.balance
+        bal.balance = amount
+        if delta != 0:
+            db.add(BalanceTransaction(
+                user_id=user_id,
+                amount=delta,
+                type="set",
+                description=description or "Penyesuaian saldo oleh admin"
+            ))
+        db.commit()
     return RedirectResponse(url="/admin/users", status_code=303)
 
 
@@ -2543,15 +2624,17 @@ def _process_payment(active_xl, option_number, addon_spec, method):
 
 
 def _deduct_token_balance(user, amount, description):
+    """Deduct the panel-saldo consumption fee; returns new balance or None when insufficient."""
     db = next(get_db())
     try:
-        bal = db.query(Balance).filter(Balance.user_id == user.id).first()
-        if not bal:
-            return None
-        bal.balance = max(0, bal.balance - amount)
-        db.add(BalanceTransaction(user_id=user.id, amount=-amount, type="purchase", description=description))
-        db.commit()
-        return bal.balance
+        with _balance_lock:
+            bal = db.query(Balance).filter(Balance.user_id == user.id).first()
+            if not bal or bal.balance < amount:
+                return None
+            bal.balance -= amount
+            db.add(BalanceTransaction(user_id=user.id, amount=-amount, type="purchase", description=description))
+            db.commit()
+            return bal.balance
     finally:
         db.close()
 
@@ -2736,12 +2819,35 @@ def checkout_xtraconf(request: Request, option_number: int, method: str, user: U
     return render("user/checkout.html", context=ctx)
 
 
+def _panel_fee_precheck(user, family_key: str, method: str):
+    """Return an error response when panel saldo cannot cover the fee; else None.
+
+    Called before the XL API call so an underfunded user never reaches purchase.
+    The authoritative re-check happens in _deduct_token_balance at settle time.
+    """
+    fee = _get_family_fee(_fee_key(family_key, method))
+    db = next(get_db())
+    try:
+        bal = db.query(Balance).filter(Balance.user_id == user.id).first()
+        if not bal or bal.balance < fee:
+            return JSONResponse({
+                "ok": False,
+                "message": f"Saldo panel tidak cukup. Butuh {_fmt_idr(fee)} IDR, saldo kamu {_fmt_idr(bal.balance if bal else 0)} IDR."
+            }, status_code=400)
+        return None
+    finally:
+        db.close()
+
+
 @app.post("/user/xl/beli-paket/xcp-{option_number}/pay/{method}")
 def pay_paket(request: Request, option_number: int, method: str, user: User = Depends(get_current_user)):
     if user.role != "user":
         return JSONResponse({"ok": False, "message": "Akses ditolak"}, status_code=403)
     if method not in PAY_METHOD_LABELS:
         return JSONResponse({"ok": False, "message": "Metode pembayaran tidak tersedia."}, status_code=400)
+    blocked = _panel_fee_precheck(user, "xcp", method)
+    if blocked:
+        return blocked
     db = next(get_db())
     ctx = get_user_context(user, db)
     db.close()
@@ -2755,6 +2861,9 @@ def pay_addon(request: Request, option_number: int, method: str, user: User = De
         return JSONResponse({"ok": False, "message": "Akses ditolak"}, status_code=403)
     if method not in PAY_METHOD_LABELS:
         return JSONResponse({"ok": False, "message": "Metode pembayaran tidak tersedia."}, status_code=400)
+    blocked = _panel_fee_precheck(user, "addon10", method)
+    if blocked:
+        return blocked
     db = next(get_db())
     ctx = get_user_context(user, db)
     db.close()
@@ -2768,6 +2877,9 @@ def pay_addon15(request: Request, option_number: int, method: str, user: User = 
         return JSONResponse({"ok": False, "message": "Akses ditolak"}, status_code=403)
     if method not in PAY_METHOD_LABELS:
         return JSONResponse({"ok": False, "message": "Metode pembayaran tidak tersedia."}, status_code=400)
+    blocked = _panel_fee_precheck(user, "addon15", method)
+    if blocked:
+        return blocked
     db = next(get_db())
     ctx = get_user_context(user, db)
     db.close()
@@ -2781,6 +2893,9 @@ def pay_xtraconf(request: Request, option_number: int, method: str, user: User =
         return JSONResponse({"ok": False, "message": "Akses ditolak"}, status_code=403)
     if method not in PAY_METHOD_LABELS:
         return JSONResponse({"ok": False, "message": "Metode pembayaran tidak tersedia."}, status_code=400)
+    blocked = _panel_fee_precheck(user, "xtraconf", method)
+    if blocked:
+        return blocked
     db = next(get_db())
     ctx = get_user_context(user, db)
     db.close()
@@ -2872,6 +2987,11 @@ def _pay_response(user, detail, pay_error, pay_success, method, family_key, pay_
             fee,
             f"Konsumsi saldo panel {FAMILY_LABELS.get(family_key, family_key)} via {PAY_METHOD_LABELS.get(method, method)}"
         )
+        if new_balance is None:
+            return JSONResponse({
+                "ok": False,
+                "message": f"Saldo panel tidak cukup untuk biaya konsumsi ({_fmt_idr(fee)} IDR). Topup dulu ya."
+            })
         resp = {"ok": True, "message": pay_success, "deducted": fee, "new_balance": new_balance}
         qris_b64 = (pay_extra or {}).get("qris_b64")
         if qris_b64:
@@ -2924,22 +3044,25 @@ def _credit_topup(db: Session, topup: TopupTransaction):
     """Credit a paid topup exactly once (guarded by pending→paid transition)."""
     with _topup_credit_lock:
         row = db.query(TopupTransaction).filter(TopupTransaction.id == topup.id).first()
-        if not row or row.status != "pending":
+        # pending = normal flow; expired = late payment that landed at the
+        # expiry boundary. Both must credit exactly once; paid must never.
+        if not row or row.status not in ("pending", "expired"):
             return None
         row.status = "paid"
         row.paid_at = datetime.now(timezone.utc)
-        bal = db.query(Balance).filter(Balance.user_id == row.user_id).first()
-        if not bal:
-            bal = Balance(user_id=row.user_id, balance=0)
-            db.add(bal)
-        bal.balance += row.amount
-        db.add(BalanceTransaction(
-            user_id=row.user_id,
-            amount=row.amount,
-            type="topup",
-            description=f"Topup saldo via QRIS ({_fmt_idr(row.total)} IDR, termasuk biaya admin {_fmt_idr(row.fee)} IDR)"
-        ))
-        db.commit()
+        with _balance_lock:
+            bal = db.query(Balance).filter(Balance.user_id == row.user_id).first()
+            if not bal:
+                bal = Balance(user_id=row.user_id, balance=0)
+                db.add(bal)
+            bal.balance += row.amount
+            db.add(BalanceTransaction(
+                user_id=row.user_id,
+                amount=row.amount,
+                type="topup",
+                description=f"Topup saldo via QRIS ({_fmt_idr(row.total)} IDR, termasuk biaya admin {_fmt_idr(row.fee)} IDR)"
+            ))
+            db.commit()
         return bal.balance
 
 
@@ -3166,8 +3289,8 @@ def topup_check(topup_id: int = Form(...), user: User = Depends(get_current_user
                 "credited": row.amount,
                 "message": "Pembayaran sudah dikonfirmasi sebelumnya."
             })
-        if row.status == "expired":
-            return JSONResponse({"ok": True, "status": "expired", "message": "QRIS ini sudah kedaluwarsa."})
+        # Expired rows still get one gateway ask: a payment that landed right
+        # at the expiry boundary must still credit, never silently vanish.
         return JSONResponse(_check_and_settle_topup(db, row))
     finally:
         db.close()
@@ -3198,8 +3321,29 @@ def register(
             "request": request,
             "error": "Username wajib diisi"
         }, status_code=400)
+    if len(password) < 6:
+        return render("register.html", context={
+            "request": request,
+            "error": "Password minimal 6 karakter"
+        }, status_code=400)
+    if "@" not in email or len(email) > 100:
+        return render("register.html", context={
+            "request": request,
+            "error": "Format email tidak valid"
+        }, status_code=400)
     username = username.strip().lower()
     email = email.strip().lower()
+    if len(username) < 3 or len(username) > 50:
+        return render("register.html", context={
+            "request": request,
+            "error": "Username harus 3-50 karakter"
+        }, status_code=400)
+    attempt_key = _client_key(request)
+    if _login_blocked(attempt_key):
+        return render("register.html", context={
+            "request": request,
+            "error": "Terlalu banyak percobaan. Coba lagi dalam beberapa menit."
+        }, status_code=429)
     if username == _admin_username(db).lower():
         return render("register.html", context={
             "request": request,
@@ -3233,6 +3377,7 @@ def register(
     db.flush()
     db.add(Balance(user_id=user.id, balance=0))
     db.commit()
+    _login_reset(attempt_key)
     copy_shared_fp_to_user(user.username)
 
     token = create_access_token({"sub": str(user.id), "role": "user"})

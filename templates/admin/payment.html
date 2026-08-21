@@ -91,10 +91,10 @@ function refreshStatusBadge() {
     <div>
         <div class="page-title">Atur QRIS API</div>
         <div class="page-subtitle">Konfigurasi gateway QRIS untuk topup saldo panel otomatis.</div>
+        <span id="cfg-status" class="cfg-status {% if gopay_ready %}on{% else %}off{% endif %}" style="margin-top:10px;">
+            {% if gopay_ready %}&#9679; Gateway terkonfigurasi{% else %}&#9675; Belum terkonfigurasi{% endif %}
+        </span>
     </div>
-    <span id="cfg-status" class="cfg-status {% if gopay_ready %}on{% else %}off{% endif %}">
-        {% if gopay_ready %}&#9679; Gateway terkonfigurasi{% else %}&#9675; Belum terkonfigurasi{% endif %}
-    </span>
 </div>
 
 <div class="card" style="max-width:640px;">

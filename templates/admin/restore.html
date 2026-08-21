@@ -3,13 +3,6 @@
 {% block head %}
 <style>
 .card h2 { margin: 0 0 4px; font-size: 16px; }
-.restore-msg {
-  background: #d1fae5; border: 1px solid #6ee7b7; color: #047857;
-  padding: 12px 16px; border-radius: 10px; font-size: 14px; margin-bottom: 16px;
-}
-.restore-msg.warn {
-  background: #fff3cd; border: 1px solid #ffe08a; color: #7a5c00;
-}
 .dropzone {
   border: 2px dashed #c7cdd8; border-radius: 12px; padding: 26px 16px;
   text-align: center; cursor: pointer; transition: all .15s ease;
@@ -38,6 +31,15 @@
 #restoreDoneModal .modal { max-width: 420px; }
 #restoreDoneModal .modal h3 { color: #047857; }
 #restoreDoneModal .modal-body { margin-bottom: 14px; }
+#restoreConfirmModal .modal { max-width: 420px; }
+#restoreConfirmModal .modal h3 { color: #b45309; }
+#restoreConfirmModal .modal-body {
+  margin-bottom: 14px; font-size: 13.5px; line-height: 1.65; color: #374151;
+}
+#restoreConfirmModal .warn-inline {
+  background: #fff3cd; border: 1px solid #ffe08a; color: #7a5c00;
+  padding: 10px 12px; border-radius: 8px; margin-top: 10px;
+}
 .restore-result-summary {
   background: #f1f5ff; border: 1px solid #dbe3ff; border-radius: 8px;
   padding: 6px 14px; margin: 0 0 16px; font-size: 13.5px; color: #374151;
@@ -113,11 +115,21 @@
             <a href="/admin/dashboard" class="btn btn-outline">Batal</a>
             <button type="submit" class="btn btn-primary" id="submitBtn" disabled>Hapus &amp; Restore</button>
         </div>
-
-        <div class="restore-msg warn" style="margin:18px 0 0;">
-            <strong>Perhatian!</strong> Seluruh data saat ini — pengguna, saldo, riwayat transaksi, nomor XL, dan fee paket — akan <strong>DIHAPUS</strong> lalu diganti dengan isi file backup. Tindakan ini tidak dapat dibatalkan. Backup admin akan dikembalikan sesuai file (jika file tidak memuat admin, dipakai admin/admin).
-        </div>
     </form>
+</div>
+
+<div class="modal-overlay" id="restoreConfirmModal">
+    <div class="modal">
+        <h3>Hapus &amp; Restore Backup?</h3>
+        <p class="modal-body">
+            <strong>Perhatian!</strong> Seluruh data saat ini — pengguna, saldo, riwayat transaksi, nomor XL, dan fee paket — akan <strong>DIHAPUS</strong> lalu diganti dengan isi file backup. Tindakan ini tidak dapat dibatalkan.
+            <span class="warn-inline">Backup admin akan dikembalikan sesuai file (jika file tidak memuat admin, dipakai admin/admin).</span>
+        </p>
+        <div class="modal-actions">
+            <button type="button" class="btn btn-outline" id="restoreCancelBtn">Batal</button>
+            <button type="button" class="btn btn-primary" id="restoreConfirmBtn">Ya, Hapus &amp; Restore</button>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -129,11 +141,20 @@ function updateDropzone(input) {
     dz.querySelector('.dz-title').textContent = name ? name : 'Klik atau tarik file ke sini';
     btn.disabled = !name;
 }
-document.getElementById('restoreForm').addEventListener('submit', function(e) {
-    if (!window.confirm('PERINGATAN: semua data saat ini akan DIHAPUS dan diganti isi backup.\n\nLanjutkan?')) {
-        e.preventDefault();
-        return;
-    }
+var restoreForm = document.getElementById('restoreForm');
+var restoreConfirmModal = document.getElementById('restoreConfirmModal');
+restoreForm.addEventListener('submit', function(e) {
+    e.preventDefault();
+    restoreConfirmModal.classList.add('show');
+});
+document.getElementById('restoreCancelBtn').addEventListener('click', function() {
+    restoreConfirmModal.classList.remove('show');
+});
+restoreConfirmModal.addEventListener('click', function(e) {
+    if (e.target === restoreConfirmModal) restoreConfirmModal.classList.remove('show');
+});
+document.getElementById('restoreConfirmBtn').addEventListener('click', function() {
+    restoreForm.submit();
 });
 var dz = document.getElementById('dropzone');
 ['dragenter', 'dragover'].forEach(function(ev) {

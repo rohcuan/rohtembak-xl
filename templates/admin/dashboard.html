@@ -1,15 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Admin - RohTembak (XL){% endblock %}
+{% block title %}Kelola User - RohTembak (XL){% endblock %}
 {% block head %}
 <style>
 .header-section .btn-primary { width: auto; }
-.fees-form { display: flex; gap: 8px; align-items: center; }
-.fee-input { width: 110px; }
-@media (max-width: 700px) {
-  .fees-form { width: 100%; flex-wrap: wrap; }
-  .fee-input { width: 100%; }
-  .fees-form .btn { flex: 1 1 100%; width: 100%; }
-}
 @media (max-width: 700px) {
   .header-section { flex-direction: column; align-items: stretch; gap: 8px; }
   .header-section .page-subtitle { margin-bottom: 8px; }
@@ -109,9 +102,11 @@ document.addEventListener('click', function(e) {
 {% endblock %}
 {% block content %}
 
+{% with active = 'users' %}{% include "admin/_nav.html" %}{% endwith %}
+
 <div class="header-section">
     <div>
-        <div class="page-title">Dashboard Admin</div>
+        <div class="page-title">Kelola User</div>
         <div class="page-subtitle">Kelola saldo panel pengguna</div>
     </div>
     <div style="display:flex;gap:8px;">
@@ -153,39 +148,6 @@ document.addEventListener('click', function(e) {
     {% else %}
     <div class="empty-state">Belum ada pengguna terdaftar.</div>
     {% endif %}
-</div>
-
-<div class="card">
-    <h2 style="font-size:16px;margin-bottom:12px;">Saldo Panel yang Terkonsumsi per Paket</h2>
-    <table id="fees-table">
-        <thead>
-            <tr>
-                <th>Nama Paket</th>
-                <th>Fee Pulsa (IDR)</th>
-                <th>Fee QRIS (IDR)</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for row in fee_rows %}
-            <tr>
-                <td data-label="Nama Paket"><strong>{{ row.label }}</strong></td>
-                <td data-label="Fee Pulsa">
-                    <input type="number" name="fee_pulsa" value="{{ row.pulsa }}" min="0" step="1" class="form-control fee-input" form="fee-form-{{ row.key }}" required>
-                </td>
-                <td data-label="Fee QRIS">
-                    <input type="number" name="fee_qris" value="{{ row.qris }}" min="0" step="1" class="form-control fee-input" form="fee-form-{{ row.key }}" required>
-                </td>
-                <td>
-                    <form method="POST" action="/admin/fees/set" class="fees-form" id="fee-form-{{ row.key }}">
-                        <input type="hidden" name="family_key" value="{{ row.key }}">
-                        <button type="submit" class="btn btn-sm btn-outline">Simpan</button>
-                    </form>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
 </div>
 
 <div class="modal-overlay" id="addUserModal">

@@ -49,6 +49,8 @@
 {% endblock %}
 {% block content %}
 
+{% with active = 'income' %}{% include "admin/_nav.html" %}{% endwith %}
+
 <div class="header-section income-header">
     <div>
         <div class="page-title">Penghasilan</div>

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Pengaturan Pembayaran - RohTembak (XL){% endblock %}
+{% block title %}Atur QRIS API - RohTembak (XL){% endblock %}
 {% block head %}
 <style>
 .cfg-status {
@@ -86,9 +86,11 @@ function refreshStatusBadge() {
 {% endblock %}
 {% block content %}
 
+{% with active = 'payment' %}{% include "admin/_nav.html" %}{% endwith %}
+
 <div class="header-section">
     <div>
-        <div class="page-title">Pengaturan Pembayaran</div>
+        <div class="page-title">Atur QRIS API</div>
         <div class="page-subtitle">Konfigurasi gateway QRIS untuk topup saldo panel otomatis.</div>
     </div>
     <span id="cfg-status" class="cfg-status {% if gopay_ready %}on{% else %}off{% endif %}">

@@ -475,6 +475,20 @@ def admin_dashboard(request: Request, user: User = Depends(get_current_user)):
         })
     admin_bal = db.query(Balance).filter(Balance.user_id == user.id).first()
     db.close()
+    first_login = user.username == "admin" and verify_password("admin", user.password_hash)
+    return render("admin/dashboard.html", context={
+        "request": request,
+        "user": user,
+        "users": user_data,
+        "balance": admin_bal.balance if admin_bal else 0,
+        "first_login": first_login,
+    })
+
+
+@app.get("/admin/fees", response_class=HTMLResponse)
+def admin_fees_page(request: Request, user: User = Depends(get_current_user)):
+    if user.role != "admin":
+        return RedirectResponse(url="/user/dashboard", status_code=303)
     fees = _get_all_family_fees()
     fee_rows = []
     for fam in ("xcp", "addon10", "addon15", "xtraconf"):
@@ -484,14 +498,10 @@ def admin_dashboard(request: Request, user: User = Depends(get_current_user)):
             "pulsa": fees.get(_fee_key(fam, "balance"), 0),
             "qris": fees.get(_fee_key(fam, "qris"), 0),
         })
-    first_login = user.username == "admin" and verify_password("admin", user.password_hash)
-    return render("admin/dashboard.html", context={
+    return render("admin/fees.html", context={
         "request": request,
         "user": user,
-        "users": user_data,
-        "balance": admin_bal.balance if admin_bal else 0,
         "fee_rows": fee_rows,
-        "first_login": first_login,
     })
 
 
@@ -554,10 +564,10 @@ def admin_set_fee(
     if user.role != "admin":
         return RedirectResponse(url="/user/dashboard", status_code=303)
     if family_key not in FAMILY_LABELS or fee_pulsa < 0 or fee_qris < 0:
-        return RedirectResponse(url="/admin/dashboard", status_code=303)
+        return RedirectResponse(url="/admin/fees", status_code=303)
     _set_family_fee(_fee_key(family_key, "balance"), fee_pulsa)
     _set_family_fee(_fee_key(family_key, "qris"), fee_qris)
-    return RedirectResponse(url="/admin/dashboard", status_code=303)
+    return RedirectResponse(url="/admin/fees", status_code=303)
 
 
 @app.post("/admin/balance/add")

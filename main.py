@@ -457,7 +457,17 @@ def api_session(user: User = Depends(get_current_user)):
 # ─── Admin Dashboard ────────────────────────────────────────────────────────
 
 @app.get("/admin/dashboard", response_class=HTMLResponse)
-def admin_dashboard(request: Request, user: User = Depends(get_current_user)):
+def admin_home(request: Request, user: User = Depends(get_current_user)):
+    if user.role != "admin":
+        return RedirectResponse(url="/user/dashboard", status_code=303)
+    return render("admin/home.html", context={
+        "request": request,
+        "user": user,
+    })
+
+
+@app.get("/admin/users", response_class=HTMLResponse)
+def admin_users_page(request: Request, user: User = Depends(get_current_user)):
     if user.role != "admin":
         return RedirectResponse(url="/user/dashboard", status_code=303)
     db = next(get_db())
@@ -476,7 +486,7 @@ def admin_dashboard(request: Request, user: User = Depends(get_current_user)):
     admin_bal = db.query(Balance).filter(Balance.user_id == user.id).first()
     db.close()
     first_login = user.username == "admin" and verify_password("admin", user.password_hash)
-    return render("admin/dashboard.html", context={
+    return render("admin/users.html", context={
         "request": request,
         "user": user,
         "users": user_data,
@@ -597,7 +607,7 @@ def admin_add_balance(
     )
     db.add(trx)
     db.commit()
-    return RedirectResponse(url="/admin/dashboard", status_code=303)
+    return RedirectResponse(url="/admin/users", status_code=303)
 
 
 def _admin_username(db: Session) -> str:
@@ -651,7 +661,7 @@ def admin_add_user(
         ))
     db.commit()
     copy_shared_fp_to_user(user.username)
-    return RedirectResponse(url="/admin/dashboard", status_code=303)
+    return RedirectResponse(url="/admin/users", status_code=303)
 
 
 @app.post("/admin/users/delete")
@@ -673,7 +683,7 @@ def admin_delete_user(
     remove_user_ax_fp(u.username)
     db.delete(u)
     db.commit()
-    return RedirectResponse(url="/admin/dashboard", status_code=303)
+    return RedirectResponse(url="/admin/users", status_code=303)
 
 
 @app.post("/admin/balance/decrease")
@@ -703,7 +713,7 @@ def admin_decrease_balance(
         description=description or "Kurangi oleh admin"
     ))
     db.commit()
-    return RedirectResponse(url="/admin/dashboard", status_code=303)
+    return RedirectResponse(url="/admin/users", status_code=303)
 
 
 @app.post("/admin/balance/set")
@@ -733,7 +743,7 @@ def admin_set_balance(
             description=description or "Penyesuaian saldo oleh admin"
         ))
     db.commit()
-    return RedirectResponse(url="/admin/dashboard", status_code=303)
+    return RedirectResponse(url="/admin/users", status_code=303)
 
 
 # ─── Admin Backup ───────────────────────────────────────────────────────────

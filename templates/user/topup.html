@@ -52,7 +52,18 @@
 .qr-window .qr-total { margin-top: 12px; font-size: .95rem; color: #111; }
 .qr-window .qr-total strong { color: #059669; font-size: 1.1rem; }
 .qr-hint { margin-top: 14px; font-size: .72rem; color: #9ca3af; line-height: 1.5; }
-.qr-success-icon { font-size: 2.6rem; margin: 6px 0 2px; }
+.qr-window .success-title { color: #059669; font-size: 1.15rem; margin-bottom: 6px; }
+.success-box {
+  text-align: left; background: #f8f9fa; border: 1px solid #e5e7eb;
+  border-radius: 10px; padding: 14px 16px; margin-top: 16px;
+}
+.success-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; font-size: .88rem; }
+.success-row .k { color: #6b7280; }
+.success-row .v { font-weight: 600; color: #111; }
+.success-row .v.added { color: #059669; font-size: 1.05rem; }
+.success-row.total { border-top: 1px solid #e5e7eb; margin-top: 6px; padding-top: 12px; }
+.success-row.total .k { color: #111; font-weight: 600; }
+.success-row.total .v { color: #059669; font-size: 1.15rem; }
 
 .status-badge {
   display: inline-block; padding: 3px 10px; border-radius: 999px;
@@ -192,6 +203,7 @@ function checkStatus(silent) {
       }
       if (res.status === 'paid') {
         if (qrTimerInt) { clearInterval(qrTimerInt); qrTimerInt = null; }
+        document.getElementById('success-added').textContent = '+' + fmtIdr(res.credited) + ' IDR';
         document.getElementById('success-balance').textContent = fmtIdr(res.new_balance) + ' IDR';
         setQrViewState('success');
       } else if (!silent) {
@@ -328,12 +340,17 @@ function closeQr(reload) {
     </div>
 
     <div id="qr-view-success" style="display:none;">
-      <div class="qr-success-icon">&#9989;</div>
-      <h3>Topup Berhasil!</h3>
+      <h3 class="success-title">Topup Berhasil!</h3>
       <p>Pembayaran terkonfirmasi dan saldo sudah ditambahkan ke akunmu.</p>
-      <div class="saldo-box" style="text-align:left;">
-        <h3>Saldo Panel Sekarang</h3>
-        <div style="font-size:1.4rem;font-weight:700;color:#059669;" id="success-balance">—</div>
+      <div class="success-box">
+        <div class="success-row">
+          <span class="k">Saldo ditambahkan</span>
+          <span class="v added" id="success-added">—</span>
+        </div>
+        <div class="success-row total">
+          <span class="k">Saldo panel sekarang</span>
+          <span class="v" id="success-balance">—</span>
+        </div>
       </div>
       <div style="margin-top:16px;">
         <button class="btn btn-primary" onclick="closeQr(true)" style="width:100%;">Selesai</button>

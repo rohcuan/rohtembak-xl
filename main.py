@@ -2889,8 +2889,9 @@ def _check_and_settle_topup(db: Session, topup: TopupTransaction) -> dict:
         new_balance = _credit_topup(db, topup)
         if new_balance is not None:
             return {"ok": True, "status": "paid", "new_balance": new_balance,
+                    "credited": topup.amount,
                     "message": "Pembayaran diterima! Saldo sudah ditambahkan."}
-        return {"ok": True, "status": "paid",
+        return {"ok": True, "status": "paid", "credited": topup.amount,
                 "message": "Pembayaran sudah dikonfirmasi sebelumnya."}
     now_ts = time.time()
     exp_ts = _topup_expiry_epoch(topup)
@@ -3087,6 +3088,7 @@ def topup_check(topup_id: int = Form(...), user: User = Depends(get_current_user
             return JSONResponse({
                 "ok": True, "status": "paid",
                 "new_balance": bal.balance if bal else 0,
+                "credited": row.amount,
                 "message": "Pembayaran sudah dikonfirmasi sebelumnya."
             })
         if row.status == "expired":

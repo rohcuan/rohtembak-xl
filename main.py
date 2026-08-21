@@ -2980,6 +2980,19 @@ def topup_create(amount: int = Form(...), user: User = Depends(get_current_user)
             }, status_code=429)
 
         total = amount + TOPUP_ADMIN_FEE
+
+        # The gateway matches payments by nominal only, so two pending QRIS
+        # with the same total would race for the same incoming payment.
+        clash = db.query(TopupTransaction).filter(
+            TopupTransaction.status == "pending",
+            TopupTransaction.total == total
+        ).first()
+        if clash:
+            return JSONResponse({
+                "ok": False,
+                "message": f"Nominal total {_fmt_idr(total)} IDR sedang dipakai transaksi topup lain yang belum dibayar. Silakan pakai nominal berbeda (misal {_fmt_idr(amount + 1)}) atau tunggu beberapa menit."
+            }, status_code=409)
+
         res = gopay.create_qris(total)
         if not res.get("success"):
             return JSONResponse({

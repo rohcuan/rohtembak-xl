@@ -2,6 +2,7 @@ import os
 import io
 import time
 import json
+import random
 import asyncio
 import threading
 import zipfile
@@ -131,7 +132,8 @@ _XL_CALL_LIMIT = max(1, int(os.getenv("XL_CALL_LIMIT", "6")))
 
 TOPUP_MIN_AMOUNT = int(os.getenv("TOPUP_MIN_AMOUNT", "5000"))
 TOPUP_MAX_AMOUNT = int(os.getenv("TOPUP_MAX_AMOUNT", "1000000"))
-TOPUP_ADMIN_FEE = int(os.getenv("TOPUP_ADMIN_FEE", "250"))
+TOPUP_FEE_MIN = int(os.getenv("TOPUP_FEE_MIN", "1"))
+TOPUP_FEE_MAX = int(os.getenv("TOPUP_FEE_MAX", "250"))
 TOPUP_QR_TTL_SECONDS = 5 * 60
 TOPUP_EXPIRE_GRACE_SECONDS = int(os.getenv("TOPUP_EXPIRE_GRACE_SECONDS", "60"))
 TOPUP_CHECK_INTERVAL = int(os.getenv("TOPUP_CHECK_INTERVAL", "20"))
@@ -2956,7 +2958,8 @@ def topup_page(request: Request, user: User = Depends(get_current_user)):
         "topups": topups,
         "topup_min": TOPUP_MIN_AMOUNT,
         "topup_max": TOPUP_MAX_AMOUNT,
-        "topup_fee": TOPUP_ADMIN_FEE,
+        "topup_fee_min": TOPUP_FEE_MIN,
+        "topup_fee_max": TOPUP_FEE_MAX,
         "gopay_ready": gopay.is_configured(),
     })
     db.close()
@@ -2987,18 +2990,36 @@ def topup_create(amount: int = Form(...), user: User = Depends(get_current_user)
                 "message": f"Kamu masih punya {pending_count} topup menunggu pembayaran. Selesaikan atau tunggu kedaluwarsa dulu."
             }, status_code=429)
 
-        total = amount + TOPUP_ADMIN_FEE
+        total = amount + TOPUP_FEE_MIN  # lower bound sanity check only
 
-        # The gateway matches payments by nominal only, so two pending QRIS
-        # with the same total would race for the same incoming payment.
-        clash = db.query(TopupTransaction).filter(
-            TopupTransaction.status == "pending",
-            TopupTransaction.total == total
-        ).first()
-        if clash:
+        # The gateway matches payments by nominal only, so every pending QRIS
+        # must have a unique total. A random unique-code fee (1..250 IDR) is
+        # added on top of the amount; retry until the total is free.
+        row = None
+        for _ in range(60):
+            fee = random.randint(TOPUP_FEE_MIN, TOPUP_FEE_MAX)
+            total = amount + fee
+            clash = db.query(TopupTransaction).filter(
+                TopupTransaction.status == "pending",
+                TopupTransaction.total == total
+            ).first()
+            if not clash:
+                row = TopupTransaction(
+                    user_id=user.id,
+                    amount=amount,
+                    fee=fee,
+                    total=total,
+                    trx_id="",
+                    status="pending",
+                    expires_at=datetime.fromtimestamp(
+                        int(time.time()) + TOPUP_QR_TTL_SECONDS, tz=timezone.utc
+                    ),
+                )
+                break
+        if row is None:
             return JSONResponse({
                 "ok": False,
-                "message": f"Nominal total {_fmt_idr(total)} IDR sedang dipakai transaksi topup lain yang belum dibayar. Silakan pakai nominal berbeda (misal {_fmt_idr(amount + 1)}) atau tunggu beberapa menit."
+                "message": "Semua kode unik sedang terpakai. Coba lagi beberapa menit."
             }, status_code=409)
 
         res = gopay.create_qris(total)
@@ -3026,17 +3047,10 @@ def topup_create(amount: int = Form(...), user: User = Depends(get_current_user)
         except (ValueError, TypeError, AttributeError):
             pass
 
-        row = TopupTransaction(
-            user_id=user.id,
-            amount=amount,
-            fee=TOPUP_ADMIN_FEE,
-            total=total,
-            trx_id=trx_id,
-            qris_id=str(data.get("qris_id") or ""),
-            qris_code=qris_code,
-            status="pending",
-            expires_at=datetime.fromtimestamp(expires_ts, tz=timezone.utc),
-        )
+        row.trx_id = trx_id
+        row.qris_id = str(data.get("qris_id") or "")
+        row.qris_code = qris_code
+        row.expires_at = datetime.fromtimestamp(expires_ts, tz=timezone.utc)
         db.add(row)
         db.commit()
 
@@ -3046,7 +3060,7 @@ def topup_create(amount: int = Form(...), user: User = Depends(get_current_user)
             "qr_img": _qris_text_png_data_uri(qris_code),
             "expires_ts": expires_ts,
             "amount": amount,
-            "fee": TOPUP_ADMIN_FEE,
+            "fee": row.fee,
             "total": total,
         })
     finally:

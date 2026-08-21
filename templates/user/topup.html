@@ -93,10 +93,10 @@ function updateSummary() {
   var raw = document.getElementById('topup-amount').value.trim();
   var amount = parseInt(raw, 10);
   if (!raw || isNaN(amount) || amount <= 0) amount = 0;
-  var fee = {{ topup_fee }};
+  var feeMin = {{ topup_fee_min }}, feeMax = {{ topup_fee_max }};
   document.getElementById('sum-nominal').textContent = fmtIdr(amount) + ' IDR';
-  document.getElementById('sum-fee').textContent = fmtIdr(fee) + ' IDR';
-  document.getElementById('sum-total').textContent = fmtIdr(amount > 0 ? amount + fee : 0) + ' IDR';
+  document.getElementById('sum-fee').textContent = 'acak ' + fmtIdr(feeMin) + '\u2013' + fmtIdr(feeMax) + ' IDR';
+  document.getElementById('sum-total').textContent = amount > 0 ? fmtIdr(amount) + ' + kode unik' : '0 IDR';
 }
 
 function createTopup() {
@@ -254,8 +254,8 @@ function closeQr(reload) {
           <span class="v" id="sum-nominal">0 IDR</span>
         </div>
         <div class="saldo-row">
-          <span class="k">Biaya admin QRIS</span>
-          <span class="v" id="sum-fee">{{ topup_fee|rupiah }} IDR</span>
+          <span class="k">Kode unik / biaya admin</span>
+          <span class="v" id="sum-fee">acak {{ topup_fee_min }}&ndash;{{ topup_fee_max }} IDR</span>
         </div>
         <div class="saldo-row total">
           <span class="k">Total yang dibayarkan</span>
@@ -315,7 +315,7 @@ function closeQr(reload) {
       <p>Selesaikan pembayaran sebelum waktu habis.</p>
       <img class="qr-img" id="qr-img" alt="QRIS" src="">
       <div class="qr-total">
-        Nominal: <span id="qr-nominal">—</span> &middot; Admin: <span id="qr-fee">—</span><br>
+        Nominal: <span id="qr-nominal">—</span> &middot; Kode unik: <span id="qr-fee">—</span><br>
         Total: <strong id="qr-total">—</strong>
       </div>
       <div style="margin-top:10px;font-size:.85rem;color:#374151;">

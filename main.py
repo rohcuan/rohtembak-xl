@@ -460,9 +460,11 @@ def api_session(user: User = Depends(get_current_user)):
 def admin_home(request: Request, user: User = Depends(get_current_user)):
     if user.role != "admin":
         return RedirectResponse(url="/user/dashboard", status_code=303)
+    first_login = user.username == "admin" and verify_password("admin", user.password_hash)
     return render("admin/home.html", context={
         "request": request,
         "user": user,
+        "first_login": first_login,
     })
 
 

@@ -58,7 +58,6 @@ function openDecrease() { document.getElementById('decreaseModal').classList.add
 function closeDecrease() { document.getElementById('decreaseModal').classList.remove('show'); }
 function openSet() { document.getElementById('setModal').classList.add('show'); }
 function closeSet() { document.getElementById('setModal').classList.remove('show'); }
-function closeFirstLogin() { document.getElementById('firstLoginModal').classList.remove('show'); }
 function pickUser(inputId, hiddenId) {
   var username = document.getElementById(inputId).value;
   var opt = document.querySelector('#users-list option[value="' + username + '"]');
@@ -93,7 +92,7 @@ function filterUsers() {
   document.getElementById('users-empty').style.display = visible ? 'none' : 'block';
 }
 document.addEventListener('click', function(e) {
-  ['topupModal', 'addUserModal', 'deleteModal', 'decreaseModal', 'setModal', 'firstLoginModal'].forEach(function(id) {
+  ['topupModal', 'addUserModal', 'deleteModal', 'decreaseModal', 'setModal'].forEach(function(id) {
     var m = document.getElementById(id);
     if (m && m.classList.contains('show') && e.target === m) m.classList.remove('show');
   });
@@ -269,20 +268,8 @@ document.addEventListener('click', function(e) {
                 <button type="button" class="btn btn-outline" onclick="closeTopup()">Batal</button>
                 <button type="button" class="btn btn-outline" onclick="submitTopup()">Topup</button>
             </div>
-        </form>
-    </div>
-</div>
+         </form>
+     </div>
+ </div>
 
-{% if first_login %}
-<div class="modal-overlay show" id="firstLoginModal">
-    <div class="modal">
-        <h3>Ganti Kredensial Admin</h3>
-        <p class="modal-body">Anda masih menggunakan kredensial default <strong>admin / admin</strong>. Segera ubah username dan password Anda lewat menu <strong>Edit Admin Credentials</strong>.</p>
-        <div class="modal-actions">
-            <button type="button" class="btn btn-primary" onclick="closeFirstLogin()">I understand</button>
-        </div>
-    </div>
-</div>
-{% endif %}
-
-{% endblock %}
+ {% endblock %}

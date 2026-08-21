@@ -15,7 +15,13 @@
 }
 .test-result.ok { display: block; background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46; }
 .test-result.err { display: block; background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
-.cfg-hint { font-size: .74rem; color: #9ca3af; margin-top: 4px; line-height: 1.5; }
+.info-box {
+  margin-top: 18px; padding: 14px 16px; border-radius: 10px;
+  background: #f9fafb; border: 1px solid #e5e7eb;
+  font-size: .78rem; color: #6b7280; line-height: 1.7;
+}
+.info-box strong { color: #374151; }
+.info-box code { background: #eef2f7; padding: 1px 5px; border-radius: 4px; font-size: .74rem; }
 </style>
 <script>
 function setResult(ok, msg) {
@@ -100,16 +106,14 @@ function refreshStatusBadge() {
 <div class="card" style="max-width:640px;">
   <div class="form-group">
     <label for="cfg-endpoint" style="font-size:.82rem;font-weight:600;color:#374151;">Endpoint Gateway</label>
-    <input type="text" id="cfg-endpoint" class="form-control" placeholder="http://vps-kamu:3000 atau https://gopay.domainkamu.com"
+    <input type="text" id="cfg-endpoint" class="form-control" placeholder="https://gateway.domainkamu.com"
            value="{{ gateway_url }}" style="margin-top:6px;">
-    <div class="cfg-hint">Alamat server <em>gopay-api-gateaway</em> tanpa garis miring di akhir. Kosongkan untuk memakai nilai GOPAY_GATEWAY_URL dari .env.</div>
   </div>
 
   <div class="form-group">
     <label for="cfg-api-key" style="font-size:.82rem;font-weight:600;color:#374151;">API Key</label>
-    <input type="text" id="cfg-api-key" class="form-control" placeholder="API_KEY rahasia dari .env gateway"
+    <input type="text" id="cfg-api-key" class="form-control" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;"
            value="{{ gateway_api_key }}" style="margin-top:6px;" autocomplete="off">
-    <div class="cfg-hint">Nilai API_KEY yang dipakai server gateway. Kosongkan untuk memakai fallback GOPAY_API_KEY dari .env.</div>
   </div>
 
   <div class="cfg-actions">
@@ -120,7 +124,10 @@ function refreshStatusBadge() {
 
   <div id="cfg-result" class="test-result"></div>
 
-  <div style="margin-top:18px;padding-top:14px;border-top:1px solid #f0f0f0;font-size:.76rem;color:#9ca3af;line-height:1.6;">
+  <div class="info-box">
+    <div style="font-weight:700;margin-bottom:6px;">Keterangan</div>
+    <strong>Endpoint Gateway</strong> &mdash; alamat server <em>gopay-api-gateaway</em>, tanpa garis miring di akhir. Kosongkan untuk memakai nilai <code>GOPAY_GATEWAY_URL</code> dari .env.<br>
+    <strong>API Key</strong> &mdash; nilai <code>API_KEY</code> yang dipakai server gateway. Kosongkan untuk memakai fallback <code>GOPAY_API_KEY</code> dari .env.<br>
     <strong>Test API</strong> &mdash; memastikan endpoint dapat dihubungi dan API key diterima gateway.<br>
     <strong>Test Token Validity</strong> &mdash; memastikan sesi login GoPay Merchant di server gateway masih aktif (token auto-refresh berjalan). Jika hangus, jalankan <code>node login.js</code> ulang di server gateway.
   </div>

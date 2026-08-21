@@ -680,6 +680,7 @@ def admin_delete_user(
         raise HTTPException(status_code=404, detail="User tidak ditemukan")
 
     db.query(BalanceTransaction).filter(BalanceTransaction.user_id == u.id).delete()
+    db.query(TopupTransaction).filter(TopupTransaction.user_id == u.id).delete()
     remove_user_ax_fp(u.username)
     db.delete(u)
     db.commit()
@@ -1290,6 +1291,7 @@ async def admin_restore_upload(
 
     # 2. Wipe all existing data so the restore result is identical with the backup
     db.query(BalanceTransaction).delete(synchronize_session=False)
+    db.query(TopupTransaction).delete(synchronize_session=False)
     db.query(Balance).delete(synchronize_session=False)
     db.query(XLAccount).delete(synchronize_session=False)
     db.query(User).delete(synchronize_session=False)

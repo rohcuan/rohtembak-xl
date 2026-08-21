@@ -918,14 +918,42 @@ def admin_penghasilan(request: Request, user: User = Depends(get_current_user)):
         BalanceTransaction.type == trx_type,
         BalanceTransaction.created_at >= start,
     ).order_by(BalanceTransaction.created_at.desc()).all()
-    total = sum(abs(r.amount) for r in rows)
+
+    # For topups, the real income is what the user PAID (base amount + unique
+    # code fee). The ledger only stores the credited base, so match each row
+    # to its TopupTransaction (written in the same commit, timestamps within
+    # seconds) and add the fee back.
+    paid_by_user = {}
+    if metric == "topup":
+        for t in db.query(TopupTransaction).filter(
+            TopupTransaction.status == "paid",
+            TopupTransaction.paid_at.isnot(None),
+        ).all():
+            paid_at = t.paid_at.replace(tzinfo=None) if t.paid_at.tzinfo else t.paid_at
+            paid_by_user.setdefault(t.user_id, []).append((t, paid_at))
+
+    def _match_fee(r):
+        if not r.created_at:
+            return 0
+        best_diff = None
+        fee = 0
+        for t, paid_at in paid_by_user.get(r.user_id, []):
+            diff = abs((paid_at - r.created_at).total_seconds())
+            if diff <= 15 and (best_diff is None or diff < best_diff):
+                best_diff = diff
+                fee = t.fee or 0
+        return fee
+
+    total = 0
     details = []
     for r in rows:
         u = db.query(User).filter(User.id == r.user_id).first()
+        amount = abs(r.amount) + (_match_fee(r) if metric == "topup" else 0)
+        total += amount
         details.append({
             "ts": _fmt_wib(r.created_at) if r.created_at else "—",
             "username": u.username if u else f"user #{r.user_id}",
-            "amount": abs(r.amount),
+            "amount": amount,
         })
     db.close()
     return render("admin/penghasilan.html", context={

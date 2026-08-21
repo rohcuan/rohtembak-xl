@@ -554,6 +554,14 @@ def admin_home(request: Request, user: User = Depends(get_current_user)):
             BalanceTransaction.type == "topup",
             BalanceTransaction.created_at >= day_start_utc,
         ).scalar() or 0
+        # Real QRIS income includes the unique-code fee users actually paid;
+        # the ledger only records the credited base amount.
+        fee_today = db.query(func.coalesce(func.sum(TopupTransaction.fee), 0)).filter(
+            TopupTransaction.status == "paid",
+            TopupTransaction.paid_at.isnot(None),
+            TopupTransaction.paid_at >= day_start_utc.replace(tzinfo=None),
+        ).scalar() or 0
+        topup_today += fee_today
         used_today = -(db.query(func.coalesce(func.sum(BalanceTransaction.amount), 0)).filter(
             BalanceTransaction.type == "purchase",
             BalanceTransaction.created_at >= day_start_utc,

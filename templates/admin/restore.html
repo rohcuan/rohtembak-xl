@@ -109,13 +109,13 @@
             <input type="file" name="backup_file" id="backup_file" accept=".zip,.json,.txt,application/zip,application/json,text/plain" onchange="updateDropzone(this)" style="display:none;">
         </div>
 
-        <div class="restore-msg warn" style="margin:18px 0 16px;">
-            <strong>Perhatian!</strong> Seluruh data saat ini — pengguna, saldo, riwayat transaksi, nomor XL, dan fee paket — akan <strong>DIHAPUS</strong> lalu diganti dengan isi file backup. Tindakan ini tidak dapat dibatalkan. Backup admin akan dikembalikan sesuai file (jika file tidak memuat admin, dipakai admin/admin).
-        </div>
-
         <div style="display:flex;gap:8px;">
             <a href="/admin/dashboard" class="btn btn-outline">Batal</a>
             <button type="submit" class="btn btn-primary" id="submitBtn" disabled>Hapus &amp; Restore</button>
+        </div>
+
+        <div class="restore-msg warn" style="margin:18px 0 0;">
+            <strong>Perhatian!</strong> Seluruh data saat ini — pengguna, saldo, riwayat transaksi, nomor XL, dan fee paket — akan <strong>DIHAPUS</strong> lalu diganti dengan isi file backup. Tindakan ini tidak dapat dibatalkan. Backup admin akan dikembalikan sesuai file (jika file tidak memuat admin, dipakai admin/admin).
         </div>
     </form>
 </div>

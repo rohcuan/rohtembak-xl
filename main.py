@@ -3,6 +3,7 @@ import io
 import time
 import json
 import random
+import uuid
 import asyncio
 import threading
 import zipfile
@@ -3078,12 +3079,14 @@ def topup_create(amount: int = Form(...), user: User = Depends(get_current_user)
                     amount=amount,
                     fee=fee,
                     total=total,
-                    trx_id="",
+                    trx_id=f"pending-{uuid.uuid4().hex}",
                     status="pending",
                     expires_at=datetime.fromtimestamp(
                         int(time.time()) + TOPUP_QR_TTL_SECONDS, tz=timezone.utc
                     ),
                 )
+                db.add(row)
+                db.commit()
                 break
         if row is None:
             return JSONResponse({
@@ -3093,6 +3096,8 @@ def topup_create(amount: int = Form(...), user: User = Depends(get_current_user)
 
         res = gopay.create_qris(total)
         if not res.get("success"):
+            db.delete(row)
+            db.commit()
             return JSONResponse({
                 "ok": False,
                 "message": res.get("error") or "Gagal membuat QRIS. Coba lagi."
@@ -3102,6 +3107,8 @@ def topup_create(amount: int = Form(...), user: User = Depends(get_current_user)
         trx_id = data.get("trx_id") or ""
         qris_code = data.get("qris_code") or ""
         if not trx_id or not qris_code:
+            db.delete(row)
+            db.commit()
             return JSONResponse({
                 "ok": False,
                 "message": "Respon gateway tidak lengkap. Coba lagi."

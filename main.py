@@ -1124,6 +1124,14 @@ def admin_backup(format: str = "zip", admin_user: User = Depends(get_current_use
         resp = JSONResponse(payload)
         resp.headers["Content-Disposition"] = 'attachment; filename="backup.json"'
         return resp
+    zip_bytes = _build_backup_zip_bytes(admin_data, users_data, xl_data, fees, users)
+    resp = Response(content=zip_bytes, media_type="application/zip")
+    resp.headers["Content-Disposition"] = 'attachment; filename="backup.zip"'
+    return resp
+
+
+def _build_backup_zip_bytes(admin_data: dict, users_data: list, xl_data: list, fees: dict, users: list) -> bytes:
+    """Bangun backup.zip format manifest v3 — dipakai /admin/backup dan auto backup Telegram."""
     exported_at = datetime.now(WIB).strftime("%Y-%m-%d %H:%M:%S WIB")
     ax_fp = _read_ax_fp_file()
     buf = io.BytesIO()
@@ -1152,9 +1160,7 @@ def admin_backup(format: str = "zip", admin_user: User = Depends(get_current_use
                 except (OSError, UnicodeDecodeError):
                     pass
     buf.seek(0)
-    resp = Response(content=buf.getvalue(), media_type="application/zip")
-    resp.headers["Content-Disposition"] = 'attachment; filename="backup.zip"'
-    return resp
+    return buf.getvalue()
 
 
 # =============================================================================
@@ -1201,38 +1207,42 @@ def _ab_write_state(state: dict) -> None:
 
 
 def _autobackup_zip_bytes() -> bytes:
-    """Bangun zip backup: .env, ax.fp, dan seluruh isi folder data/."""
-    exported_at = datetime.now(WIB).strftime("%Y-%m-%d %H:%M:%S WIB")
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("manifest.json", json.dumps({
-            "version": 1,
-            "app": "RohTembak (XL) auto-backup",
-            "exported_at": exported_at,
-        }, indent=2, ensure_ascii=False))
-        env_path = os.path.join(BASE_DIR, ".env")
-        if os.path.exists(env_path):
-            try:
-                zf.write(env_path, ".env")
-            except OSError:
-                pass
-        fp_shared = _read_ax_fp_file()
-        if fp_shared:
-            zf.writestr("ax.fp", fp_shared)
-        data_dir = os.path.join(BASE_DIR, "data")
-        if os.path.isdir(data_dir):
-            for root, _dirs, files in os.walk(data_dir):
-                for fn in files:
-                    full = os.path.join(root, fn)
-                    rel = os.path.relpath(full, BASE_DIR)
-                    if rel.replace(os.sep, "/") == "data/autobackup.json":
-                        continue
-                    try:
-                        zf.write(full, rel)
-                    except OSError:
-                        pass
-    buf.seek(0)
-    return buf.getvalue()
+    """Bangun backup.zip identik dengan Backup (ZIP) di dropdown admin (format manifest v3)."""
+    db = next(get_db())
+    try:
+        admin = db.query(User).filter(User.role == "admin").first()
+        users = db.query(User).filter(User.role == "user").all()
+        admin_data = {
+            "username": admin.username if admin else "",
+            "password": (admin.password or admin.password_hash) if admin else "",
+            "email": admin.email if admin else "",
+        }
+        users_data = []
+        xl_data = []
+        for u in users:
+            bal = db.query(Balance).filter(Balance.user_id == u.id).first()
+            users_data.append({
+                "username": u.username,
+                "password": u.password or u.password_hash,
+                "email": u.email,
+                "saldo": bal.balance if bal else 0,
+            })
+            xls = db.query(XLAccount).filter(XLAccount.user_id == u.id).all()
+            for x in xls:
+                xl_data.append({
+                    "username": u.username,
+                    "phone_number": x.phone_number,
+                    "label": x.label,
+                    "refresh_token": x.refresh_token,
+                    "refresh_expires_at": x.refresh_expires_at,
+                    "subscriber_id": x.subscriber_id,
+                    "subscription_type": x.subscription_type,
+                    "is_active": bool(x.is_active),
+                })
+        fees = _get_all_family_fees()
+        return _build_backup_zip_bytes(admin_data, users_data, xl_data, fees, users)
+    finally:
+        db.close()
 
 
 def _telegram_send_backup(trigger: str) -> tuple[bool, str]:

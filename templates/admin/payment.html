@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}Pengaturan Pembayaran - RohTembak (XL){% endblock %}
+{% block head %}
+<style>
+.cfg-status {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 12px; border-radius: 999px; font-size: .78rem; font-weight: 600;
+}
+.cfg-status.on { background: #d1fae5; color: #065f46; }
+.cfg-status.off { background: #f3f4f6; color: #6b7280; }
+.cfg-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+.test-result {
+  display: none; margin-top: 14px; padding: 10px 14px; border-radius: 8px;
+  font-size: .84rem; line-height: 1.5; word-break: break-word;
+}
+.test-result.ok { display: block; background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46; }
+.test-result.err { display: block; background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+.cfg-hint { font-size: .74rem; color: #9ca3af; margin-top: 4px; line-height: 1.5; }
+</style>
+<script>
+function setResult(ok, msg) {
+  var el = document.getElementById('cfg-result');
+  el.className = 'test-result ' + (ok ? 'ok' : 'err');
+  el.textContent = msg;
+}
+
+function saveCfg() {
+  var btn = document.getElementById('save-btn');
+  if (btn.disabled) return;
+  btn.disabled = true;
+  btn.textContent = 'Menyimpan...';
+  var fd = new FormData();
+  fd.append('endpoint', document.getElementById('cfg-endpoint').value);
+  fd.append('api_key', document.getElementById('cfg-api-key').value);
+  fetch('/admin/payment/save', { method: 'POST', body: fd, credentials: 'same-origin' })
+    .then(function(r) { return r.json(); })
+    .then(function(res) {
+      btn.disabled = false;
+      btn.textContent = 'Simpan';
+      setResult(res.ok, res.message || (res.ok ? 'Tersimpan.' : 'Gagal menyimpan.'));
+      if (res.ok) refreshStatusBadge();
+    })
+    .catch(function(e) {
+      btn.disabled = false;
+      btn.textContent = 'Simpan';
+      setResult(false, 'Terjadi kesalahan: ' + e.message);
+    });
+}
+
+function testCfg(mode, btnId, busyLabel) {
+  var btn = document.getElementById(btnId);
+  if (btn.disabled) return;
+  var orig = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = busyLabel;
+  var fd = new FormData();
+  fd.append('mode', mode);
+  fd.append('endpoint', document.getElementById('cfg-endpoint').value);
+  fd.append('api_key', document.getElementById('cfg-api-key').value);
+  fetch('/admin/payment/test', { method: 'POST', body: fd, credentials: 'same-origin' })
+    .then(function(r) { return r.json(); })
+    .then(function(res) {
+      btn.disabled = false;
+      btn.textContent = orig;
+      setResult(res.ok, res.message || (res.ok ? 'OK.' : 'Gagal.'));
+    })
+    .catch(function(e) {
+      btn.disabled = false;
+      btn.textContent = orig;
+      setResult(false, 'Terjadi kesalahan: ' + e.message);
+    });
+}
+
+function refreshStatusBadge() {
+  fetch('/admin/payment', { credentials: 'same-origin', cache: 'no-store' })
+    .then(function(r) { return r.text(); })
+    .then(function(html) {
+      var doc = new DOMParser().parseFromString(html, 'text/html');
+      var fresh = doc.getElementById('cfg-status');
+      var cur = document.getElementById('cfg-status');
+      if (fresh && cur) cur.replaceWith(fresh);
+    })
+    .catch(function() {});
+}
+</script>
+{% endblock %}
+{% block content %}
+
+<div class="header-section">
+    <div>
+        <div class="page-title">Pengaturan Pembayaran</div>
+        <div class="page-subtitle">Konfigurasi gateway QRIS untuk topup saldo panel otomatis.</div>
+    </div>
+    <span id="cfg-status" class="cfg-status {% if gopay_ready %}on{% else %}off{% endif %}">
+        {% if gopay_ready %}&#9679; Gateway terkonfigurasi{% else %}&#9675; Belum terkonfigurasi{% endif %}
+    </span>
+</div>
+
+<div class="card" style="max-width:640px;">
+  <div class="form-group">
+    <label for="cfg-endpoint" style="font-size:.82rem;font-weight:600;color:#374151;">Endpoint Gateway</label>
+    <input type="text" id="cfg-endpoint" class="form-control" placeholder="http://vps-kamu:3000 atau https://gopay.domainkamu.com"
+           value="{{ gateway_url }}" style="margin-top:6px;">
+    <div class="cfg-hint">Alamat server <em>gopay-api-gateaway</em> tanpa garis miring di akhir. Kosongkan untuk memakai nilai GOPAY_GATEWAY_URL dari .env.</div>
+  </div>
+
+  <div class="form-group">
+    <label for="cfg-api-key" style="font-size:.82rem;font-weight:600;color:#374151;">API Key</label>
+    <input type="text" id="cfg-api-key" class="form-control" placeholder="API_KEY rahasia dari .env gateway"
+           value="{{ gateway_api_key }}" style="margin-top:6px;" autocomplete="off">
+    <div class="cfg-hint">Nilai API_KEY yang dipakai server gateway. Kosongkan untuk memakai fallback GOPAY_API_KEY dari .env.</div>
+  </div>
+
+  <div class="cfg-actions">
+    <button type="button" class="btn btn-primary" id="save-btn" onclick="saveCfg()">Simpan</button>
+    <button type="button" class="btn btn-outline" id="test-api-btn" onclick="testCfg('api', 'test-api-btn', 'Menguji API...')">Test API</button>
+    <button type="button" class="btn btn-outline" id="test-token-btn" onclick="testCfg('token', 'test-token-btn', 'Menguji token...')">Test Token Validity</button>
+  </div>
+
+  <div id="cfg-result" class="test-result"></div>
+
+  <div style="margin-top:18px;padding-top:14px;border-top:1px solid #f0f0f0;font-size:.76rem;color:#9ca3af;line-height:1.6;">
+    <strong>Test API</strong> &mdash; memastikan endpoint dapat dihubungi dan API key diterima gateway.<br>
+    <strong>Test Token Validity</strong> &mdash; memastikan sesi login GoPay Merchant di server gateway masih aktif (token auto-refresh berjalan). Jika hangus, jalankan <code>node login.js</code> ulang di server gateway.
+  </div>
+</div>
+
+{% endblock %}

@@ -788,6 +788,96 @@ def admin_penghasilan(request: Request, user: User = Depends(get_current_user)):
     })
 
 
+# ─── Admin: Pengaturan Pembayaran (QRIS gateway) ───────────────────────────
+
+
+@app.get("/admin/payment")
+def admin_payment_page(request: Request, user: User = Depends(get_current_user)):
+    if user.role != "admin":
+        return RedirectResponse(url="/user/dashboard", status_code=303)
+    url, api_key = gopay.get_config()
+    return render("admin/payment.html", context={
+        "request": request,
+        "user": user,
+        "gateway_url": url,
+        "gateway_api_key": api_key,
+        "gopay_ready": bool(url and api_key),
+    })
+
+
+@app.post("/admin/payment/save")
+def admin_payment_save(
+    request: Request,
+    endpoint: str = Form(""),
+    api_key: str = Form(""),
+    user: User = Depends(get_current_user),
+):
+    if user.role != "admin":
+        return JSONResponse({"ok": False, "message": "Akses ditolak"}, status_code=403)
+    endpoint = endpoint.strip()
+    if endpoint and not endpoint.startswith(("http://", "https://")):
+        return JSONResponse({"ok": False, "message": "Endpoint harus diawali http:// atau https://"}, status_code=400)
+    try:
+        gopay.set_config(endpoint, api_key)
+    except Exception as e:
+        return JSONResponse({"ok": False, "message": f"Gagal menyimpan: {e}"}, status_code=500)
+    if not endpoint or not api_key.strip():
+        msg = "Pengaturan disimpan. Gateway memakai fallback .env untuk nilai yang dikosongkan."
+    else:
+        msg = "Pengaturan pembayaran tersimpan."
+    return JSONResponse({"ok": True, "message": msg})
+
+
+@app.post("/admin/payment/test")
+def admin_payment_test(
+    request: Request,
+    mode: str = Form(...),
+    endpoint: str = Form(""),
+    api_key: str = Form(""),
+    user: User = Depends(get_current_user),
+):
+    if user.role != "admin":
+        return JSONResponse({"ok": False, "message": "Akses ditolak"}, status_code=403)
+    endpoint = endpoint.strip().rstrip("/")
+    if not endpoint or not api_key.strip():
+        return JSONResponse({"ok": False, "message": "Isi endpoint dan API key terlebih dahulu."})
+    if not endpoint.startswith(("http://", "https://")):
+        return JSONResponse({"ok": False, "message": "Endpoint harus diawali http:// atau https://"})
+
+    res = gopay.token_status(endpoint, api_key)
+
+    if res["http_status"] == 0:
+        return JSONResponse({"ok": False, "message": res["error"]})
+    if res["http_status"] in (401, 403):
+        return JSONResponse({"ok": False, "message": "Endpoint terjangkau, tetapi API key ditolak gateway."})
+    if res["http_status"] != 200 or not isinstance(res["data"], dict):
+        return JSONResponse({
+            "ok": False,
+            "message": f"Endpoint merespons dengan HTTP {res['http_status']}, bukan respon gateway yang valid."
+        })
+
+    data = res["data"] or {}
+    if mode == "token":
+        info = data.get("data") or {}
+        status_val = str(info.get("token_status") or "").lower()
+        gw_msg = info.get("message") or ""
+        if data.get("success") and status_val == "valid":
+            return JSONResponse({
+                "ok": True,
+                "message": f"Token GoPay Merchant aktif.{(' ' + str(gw_msg)) if gw_msg else ''}"
+            })
+        return JSONResponse({
+            "ok": False,
+            "message": f"Token GoPay Merchant tidak valid / sesi hangus.{((' ' + str(gw_msg)) if gw_msg else '')} Jalankan 'node login.js' ulang di server gateway."
+        })
+
+    # mode == "api": reachability + API key accepted
+    if data.get("success"):
+        return JSONResponse({"ok": True, "message": "API gateway berjalan dan API key diterima."})
+    err = data.get("error") or data.get("detail") or "Respon tidak dikenal"
+    return JSONResponse({"ok": False, "message": f"Gateway merespons tapi gagal: {err}"})
+
+
 @app.get("/admin/backup")
 def admin_backup(format: str = "zip", admin_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if admin_user.role != "admin":

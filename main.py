@@ -138,6 +138,7 @@ TOPUP_QR_TTL_SECONDS = 5 * 60
 TOPUP_EXPIRE_GRACE_SECONDS = int(os.getenv("TOPUP_EXPIRE_GRACE_SECONDS", "60"))
 TOPUP_CHECK_INTERVAL = int(os.getenv("TOPUP_CHECK_INTERVAL", "20"))
 TOPUP_MAX_PENDING_PER_USER = 3
+_APP_START_TS = time.time()
 
 import app.client.engsel as _engsel
 
@@ -461,10 +462,53 @@ def admin_home(request: Request, user: User = Depends(get_current_user)):
     if user.role != "admin":
         return RedirectResponse(url="/user/dashboard", status_code=303)
     first_login = user.username == "admin" and verify_password("admin", user.password_hash)
+
+    if gopay.is_configured():
+        tok = gopay.token_status(timeout=8)
+        if tok.get("ok"):
+            qris_label = "Aktif · Token Valid"
+        elif tok.get("http_status"):
+            qris_label = "Aktif · Token Invalid"
+        else:
+            qris_label = "Aktif · Gateway Tak Dijangkau"
+    else:
+        qris_label = "Belum dikonfigurasi"
+
+    up = max(0, int(time.time() - _APP_START_TS))
+    days, rem = divmod(up, 86400)
+    hours, rem2 = divmod(rem, 3600)
+    minutes = rem2 // 60
+    if days:
+        uptime_label = f"{days}h {hours}j"
+    elif hours:
+        uptime_label = f"{hours}j {minutes}m"
+    else:
+        uptime_label = f"{minutes}m"
+
+    db = next(get_db())
+    try:
+        day_start_utc = datetime.now(WIB).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        ).astimezone(timezone.utc)
+        topup_today = db.query(func.coalesce(func.sum(BalanceTransaction.amount), 0)).filter(
+            BalanceTransaction.type == "topup",
+            BalanceTransaction.created_at >= day_start_utc,
+        ).scalar() or 0
+        used_today = -(db.query(func.coalesce(func.sum(BalanceTransaction.amount), 0)).filter(
+            BalanceTransaction.type == "purchase",
+            BalanceTransaction.created_at >= day_start_utc,
+        ).scalar() or 0)
+    finally:
+        db.close()
+
     return render("admin/home.html", context={
         "request": request,
         "user": user,
         "first_login": first_login,
+        "qris_label": qris_label,
+        "uptime_label": uptime_label,
+        "topup_today": topup_today,
+        "used_today": used_today,
     })
 
 

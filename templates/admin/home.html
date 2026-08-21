@@ -14,6 +14,9 @@
 }
 .first-login-warn strong { color: #b45309; }
 .first-login-warn a { color: #4361ee; font-weight: 600; text-decoration: none; }
+.banner-grid.cols4 { grid-template-columns: repeat(4, 1fr); }
+@media (max-width: 900px) { .banner-grid.cols4 { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 600px) { .banner-grid.cols4 { grid-template-columns: 1fr; } }
 </style>
 {% endblock %}
 {% block content %}
@@ -22,6 +25,27 @@
     <div>
         <div class="page-title">Dashboard Admin</div>
         <div class="page-subtitle">Atur semuanya disini</div>
+    </div>
+</div>
+
+<div class="banner">
+    <div class="banner-grid cols4">
+        <div class="banner-item">
+            <div class="label">Status QRIS API</div>
+            <div class="value" style="font-size:14px;">{{ qris_label }}</div>
+        </div>
+        <div class="banner-item">
+            <div class="label">Uptime</div>
+            <div class="value">{{ uptime_label }}</div>
+        </div>
+        <div class="banner-item">
+            <div class="label">Topup Saldo Hari Ini</div>
+            <div class="value">{{ topup_today|rupiah }} IDR</div>
+        </div>
+        <div class="banner-item">
+            <div class="label">Dipakai Hari Ini</div>
+            <div class="value">{{ used_today|rupiah }} IDR</div>
+        </div>
     </div>
 </div>
 

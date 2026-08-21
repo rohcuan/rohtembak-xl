@@ -2874,7 +2874,15 @@ def _credit_topup(db: Session, topup: TopupTransaction):
 
 def _check_and_settle_topup(db: Session, topup: TopupTransaction) -> dict:
     """Ask the gateway about one topup; settle (credit/mark expired) accordingly."""
-    res = gopay.check_payment(topup.total, topup.trx_id)
+    # Only look for payments newer than this QRIS itself (small clock-skew
+    # buffer), so a fresh QR can never claim an older unclaimed payment.
+    start_iso = None
+    if topup.created_at is not None:
+        created = topup.created_at
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+        start_iso = (created - timedelta(seconds=60)).isoformat()
+    res = gopay.check_payment(topup.total, topup.trx_id, start_time=start_iso)
     if res.get("success") and res.get("paid"):
         new_balance = _credit_topup(db, topup)
         if new_balance is not None:

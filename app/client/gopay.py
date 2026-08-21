@@ -111,7 +111,7 @@ def create_qris(amount: int) -> dict:
     return data
 
 
-def check_payment(amount: int, trx_id: str) -> dict:
+def check_payment(amount: int, trx_id: str, start_time: str | None = None) -> dict:
     """Server-to-server payment check scoped by trx_id (anti double-claim).
 
     Returns gateway JSON dict; `paid` is True only when the matching
@@ -120,10 +120,13 @@ def check_payment(amount: int, trx_id: str) -> dict:
     url, api_key = get_config()
     if not url or not api_key:
         return {"success": False, "error": "Gateway QRIS belum dikonfigurasi"}
+    params = {"amount": int(amount), "trx_id": trx_id}
+    if start_time:
+        params["startTime"] = start_time
     try:
         res = requests.get(
             f"{url}/check-payment",
-            params={"amount": int(amount), "trx_id": trx_id},
+            params=params,
             headers={"X-Api-Key": api_key},
             timeout=GOPAY_TIMEOUT,
         )

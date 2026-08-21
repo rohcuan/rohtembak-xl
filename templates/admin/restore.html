@@ -33,12 +33,11 @@
 #restoreDoneModal .modal-body { margin-bottom: 14px; }
 #restoreConfirmModal .modal { max-width: 420px; }
 #restoreConfirmModal .modal h3 { color: #b45309; }
-#restoreConfirmModal .modal-body {
-  margin-bottom: 14px; font-size: 13.5px; line-height: 1.65; color: #374151;
-}
-#restoreConfirmModal .warn-inline {
-  background: #fff3cd; border: 1px solid #ffe08a; color: #7a5c00;
-  padding: 10px 12px; border-radius: 8px; margin-top: 10px;
+#restoreConfirmModal .modal-body { margin-bottom: 10px; font-size: 13.5px; line-height: 1.6; color: #374151; }
+.confirm-list { margin: 0 0 12px; padding-left: 20px; font-size: 13.5px; color: #374151; line-height: 1.8; }
+.warn-inline {
+  display: block; background: #fff3cd; border: 1px solid #ffe08a; color: #7a5c00;
+  padding: 10px 12px; border-radius: 8px; font-size: 13px; line-height: 1.55;
 }
 .restore-result-summary {
   background: #f1f5ff; border: 1px solid #dbe3ff; border-radius: 8px;
@@ -121,10 +120,14 @@
 <div class="modal-overlay" id="restoreConfirmModal">
     <div class="modal">
         <h3>Hapus &amp; Restore Backup?</h3>
-        <p class="modal-body">
-            <strong>Perhatian!</strong> Seluruh data saat ini — pengguna, saldo, riwayat transaksi, nomor XL, dan fee paket — akan <strong>DIHAPUS</strong> lalu diganti dengan isi file backup. Tindakan ini tidak dapat dibatalkan.
-            <span class="warn-inline">Backup admin akan dikembalikan sesuai file (jika file tidak memuat admin, dipakai admin/admin).</span>
-        </p>
+        <p class="modal-body">Seluruh data saat ini akan <strong>dihapus permanen</strong> dan diganti dengan isi file backup. Tindakan ini tidak dapat dibatalkan:</p>
+        <ul class="confirm-list">
+            <li>Pengguna &amp; saldo</li>
+            <li>Riwayat transaksi</li>
+            <li>Nomor XL</li>
+            <li>Fee paket</li>
+        </ul>
+        <div class="warn-inline">Admin dikembalikan sesuai file backup. Jika file tidak memuat admin, akan dipakai admin/admin.</div>
         <div class="modal-actions">
             <button type="button" class="btn btn-outline" id="restoreCancelBtn">Batal</button>
             <button type="button" class="btn btn-primary" id="restoreConfirmBtn">Ya, Hapus &amp; Restore</button>

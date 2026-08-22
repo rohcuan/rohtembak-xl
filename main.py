@@ -2,6 +2,7 @@ import os
 import io
 import time
 import json
+import html as _html
 import calendar
 import random
 import uuid
@@ -732,9 +733,11 @@ def admin_add_balance(
         uname = u.username if u else f"id {user_id}"
         _notify(
             _tg_time_header() +
-            "💵 Topup Saldo via Admin\n"
-            f'Saldo user "{uname}" ditambah {_fmt_idr(amount)} IDR oleh admin.\n'
-            f"Saldo sekarang: {_fmt_idr(bal.balance)} IDR"
+            "💵 <b>TOPUP SALDO VIA ADMIN</b>\n\n"
+            f'👤 User: <b>"{_tg_esc(uname)}"</b>\n'
+            f"➕ Ditambah: <b>{_fmt_idr(amount)}</b>\n\n"
+            f"{TG_SEP}\n"
+            f'<blockquote>💰 Saldo sekarang: <b>{_fmt_idr(bal.balance)}</b></blockquote>'
         )
     return RedirectResponse(url="/admin/users", status_code=303)
 
@@ -864,9 +867,11 @@ def admin_decrease_balance(
         uname = u.username if u else f"id {user_id}"
         _notify(
             _tg_time_header() +
-            "💰 Saldo Dikurangi Admin\n"
-            f'Saldo user "{uname}" dikurangi {_fmt_idr(amount)} IDR oleh admin.\n'
-            f"Saldo sekarang: {_fmt_idr(bal.balance)} IDR"
+            "💰 <b>SALDO DIKURANGI ADMIN</b>\n\n"
+            f'👤 User: <b>"{_tg_esc(uname)}"</b>\n'
+            f"➖ Dikurangi: <b>{_fmt_idr(amount)}</b>\n\n"
+            f"{TG_SEP}\n"
+            f'<blockquote>💰 Saldo sekarang: <b>{_fmt_idr(bal.balance)}</b></blockquote>'
         )
     return RedirectResponse(url="/admin/users", status_code=303)
 
@@ -905,11 +910,14 @@ def admin_set_balance(
         u = db.query(User).filter(User.id == user_id).first()
         uname = u.username if u else f"id {user_id}"
         arah = "ditambah" if delta > 0 else "dikurangi"
+        arah_emoji = "➕" if delta > 0 else "➖"
         _notify(
             _tg_time_header() +
-            "💰 Saldo Disesuaikan Admin\n"
-            f'Saldo user "{uname}" {arah} {_fmt_idr(abs(delta))} IDR oleh admin.\n'
-            f"Saldo sekarang: {_fmt_idr(bal.balance)} IDR"
+            "💰 <b>SALDO DISESUAIKAN ADMIN</b>\n\n"
+            f'👤 User: <b>"{_tg_esc(uname)}"</b>\n'
+            f"{arah_emoji} {arah.title()}: <b>{_fmt_idr(abs(delta))}</b>\n\n"
+            f"{TG_SEP}\n"
+            f'<blockquote>💰 Saldo sekarang: <b>{_fmt_idr(bal.balance)}</b></blockquote>'
         )
     return RedirectResponse(url="/admin/users", status_code=303)
 
@@ -1303,7 +1311,7 @@ def _telegram_send_text(text: str) -> tuple[bool, str]:
     try:
         r = requests.post(
             f"https://api.telegram.org/bot{token}/sendMessage",
-            data={"chat_id": chat_id, "text": text},
+            data={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
             timeout=60,
         )
         try:
@@ -1332,7 +1340,14 @@ def _notify(text: str) -> None:
 def _tg_time_header() -> str:
     """Header Jam/Tanggal (WIB) untuk semua pesan notif Telegram."""
     now = datetime.now(WIB)
-    return f"Jam: {now:%H:%M} WIB\nTanggal: {now:%d/%m/%Y}\n\n"
+    return f"🕐 Jam: <b>{now:%H:%M} WIB</b>\n📅 Tanggal: <b>{now:%d/%m/%Y}</b>\n\n"
+
+
+TG_SEP = "━━━━━━━━━━━━━━━"
+
+
+def _tg_esc(v) -> str:
+    return _html.escape(str(v), quote=False)
 
 
 def _autobackup_zip_bytes() -> bytes:
@@ -1400,8 +1415,11 @@ def _telegram_send_backup(trigger: str) -> tuple[bool, str]:
                             "chat_id": chat_id,
                             "caption": (
                                 _tg_time_header() +
-                                f"✅ Backup RohTembak (XL) berhasil ({'otomatis' if trigger == 'auto' else 'manual'}).\n"
-                                f"File backup terlampir: {fname}"
+                                "✅ <b>BACKUP BERHASIL</b>\n\n"
+                                f"🗄️ Mode: <b>{'Otomatis' if trigger == 'auto' else 'Manual'}</b>\n"
+                                f"📎 File: <code>{fname}</code>\n\n"
+                                f"{TG_SEP}\n"
+                                "<blockquote>💾 Simpan file backup ini dengan aman.</blockquote>"
                             ),
                         },
                         files={"document": (fname, f)},
@@ -1541,7 +1559,7 @@ def admin_bottele_settings(
 def admin_bottele_test(request: Request, admin_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if admin_user.role != "admin":
         raise HTTPException(status_code=403, detail="Forbidden")
-    ok, out = _telegram_send_text("✅ Tes berhasil! Bot Telegram RohTembak (XL) terhubung.")
+    ok, out = _telegram_send_text("✅ <b>Tes berhasil!</b> Bot Telegram RohTembak (XL) terhubung.")
     return JSONResponse({"ok": ok, "output": out})
 
 
@@ -3471,10 +3489,13 @@ def _pay_response(user, detail, pay_error, pay_success, method, family_key, pay_
             pkg_name = (detail or {}).get("option_name") or FAMILY_LABELS.get(family_key, family_key)
             _notify(
                 _tg_time_header() +
-                "🛒 Pembelian Paket\n"
-                f'User "{user.username}" membeli paket {pkg_name}, '
-                f"untuk nomor {phone_number or '-'}.\n"
-                f"Biaya konsumsi panel: {_fmt_idr(fee)} IDR · Saldo sekarang: {_fmt_idr(new_balance)} IDR"
+                "🛒 <b>PEMBELIAN PAKET</b>\n\n"
+                f'👤 User: <b>"{_tg_esc(user.username)}"</b>\n'
+                f"📦 Paket: <b>{_tg_esc(pkg_name)}</b>\n"
+                f"📱 Nomor: <code>{_tg_esc(phone_number) if phone_number else '-'}</code>\n"
+                f"🏷️ Biaya panel: <b>{_fmt_idr(fee)}</b>\n\n"
+                f"{TG_SEP}\n"
+                f'<blockquote>💰 Saldo sekarang: <b>{_fmt_idr(new_balance)}</b></blockquote>'
             )
         resp = {"ok": True, "message": pay_success, "deducted": fee, "new_balance": new_balance}
         qris_b64 = (pay_extra or {}).get("qris_b64")
@@ -3552,9 +3573,11 @@ def _credit_topup(db: Session, topup: TopupTransaction):
             uname = u.username if u else f"id {row.user_id}"
             _notify(
                 _tg_time_header() +
-                "💵 Topup QRIS\n"
-                f'User "{uname}" topup saldo {_fmt_idr(row.amount)} IDR via QRIS.\n'
-                f"Saldo sekarang: {_fmt_idr(bal.balance)} IDR"
+                "💵 <b>TOPUP QRIS</b>\n\n"
+                f'👤 User: <b>"{_tg_esc(uname)}"</b>\n'
+                f'💸 Jumlah: <b>{_fmt_idr(row.amount)}</b>\n\n'
+                f"{TG_SEP}\n"
+                f'<blockquote>💰 Saldo sekarang: <b>{_fmt_idr(bal.balance)}</b></blockquote>'
             )
         return bal.balance
 

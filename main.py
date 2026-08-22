@@ -731,6 +731,7 @@ def admin_add_balance(
         u = db.query(User).filter(User.id == user_id).first()
         uname = u.username if u else f"id {user_id}"
         _notify(
+            _tg_time_header() +
             "👛 Topup Saldo via Admin\n"
             f"Saldo user {uname} ditambah {_fmt_idr(amount)} IDR oleh admin.\n"
             f"Saldo sekarang: {_fmt_idr(bal.balance)} IDR"
@@ -862,6 +863,7 @@ def admin_decrease_balance(
         u = db.query(User).filter(User.id == user_id).first()
         uname = u.username if u else f"id {user_id}"
         _notify(
+            _tg_time_header() +
             "👛 Saldo Dikurangi Admin\n"
             f"Saldo user {uname} dikurangi {_fmt_idr(amount)} IDR oleh admin.\n"
             f"Saldo sekarang: {_fmt_idr(bal.balance)} IDR"
@@ -904,6 +906,7 @@ def admin_set_balance(
         uname = u.username if u else f"id {user_id}"
         arah = "ditambah" if delta > 0 else "dikurangi"
         _notify(
+            _tg_time_header() +
             "👛 Saldo Disesuaikan Admin\n"
             f"Saldo user {uname} {arah} {_fmt_idr(abs(delta))} IDR oleh admin.\n"
             f"Saldo sekarang: {_fmt_idr(bal.balance)} IDR"
@@ -1326,6 +1329,12 @@ def _notify(text: str) -> None:
     threading.Thread(target=_run, daemon=True).start()
 
 
+def _tg_time_header() -> str:
+    """Header Jam/Tanggal (WIB) untuk semua pesan notif Telegram."""
+    now = datetime.now(WIB)
+    return f"Jam: {now:%H:%M} WIB\nTanggal: {now:%d/%m/%Y}\n\n"
+
+
 def _autobackup_zip_bytes() -> bytes:
     """Bangun backup.zip identik dengan Backup (ZIP) di dropdown admin (format manifest v3)."""
     db = next(get_db())
@@ -1387,7 +1396,14 @@ def _telegram_send_backup(trigger: str) -> tuple[bool, str]:
                 with open(tmp_zip, "rb") as f:
                     r = requests.post(
                         f"https://api.telegram.org/bot{token}/sendDocument",
-                        data={"chat_id": chat_id},
+                        data={
+                            "chat_id": chat_id,
+                            "caption": (
+                                _tg_time_header() +
+                                f"✅ Backup RohTembak (XL) berhasil ({'otomatis' if trigger == 'auto' else 'manual'}).\n"
+                                f"File backup terlampir: {fname}"
+                            ),
+                        },
                         files={"document": (fname, f)},
                         timeout=600,
                     )
@@ -3454,6 +3470,7 @@ def _pay_response(user, detail, pay_error, pay_success, method, family_key, pay_
         if _ab_read_state().get("notif_purchase"):
             pkg_name = (detail or {}).get("option_name") or FAMILY_LABELS.get(family_key, family_key)
             _notify(
+                _tg_time_header() +
                 "🛒 Pembelian Paket\n"
                 f"user {user.username} membeli paket {pkg_name}, "
                 f"untuk nomor {phone_number or '-'}.\n"
@@ -3534,6 +3551,7 @@ def _credit_topup(db: Session, topup: TopupTransaction):
             u = db.query(User).filter(User.id == row.user_id).first()
             uname = u.username if u else f"id {row.user_id}"
             _notify(
+                _tg_time_header() +
                 "💰 Topup QRIS\n"
                 f"user {uname} topup saldo {_fmt_idr(row.amount)} IDR via QRIS.\n"
                 f"Saldo sekarang: {_fmt_idr(bal.balance)} IDR"

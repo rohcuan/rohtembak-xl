@@ -727,6 +727,14 @@ def admin_add_balance(
         )
         db.add(trx)
         db.commit()
+    if _ab_read_state().get("notif_topup_admin"):
+        u = db.query(User).filter(User.id == user_id).first()
+        uname = u.username if u else f"id {user_id}"
+        _notify(
+            "👛 Topup Saldo via Admin\n"
+            f"Saldo user {uname} ditambah {_fmt_idr(amount)} IDR oleh admin.\n"
+            f"Saldo sekarang: {_fmt_idr(bal.balance)} IDR"
+        )
     return RedirectResponse(url="/admin/users", status_code=303)
 
 
@@ -850,6 +858,14 @@ def admin_decrease_balance(
             description=description or "Kurangi oleh admin"
         ))
         db.commit()
+    if _ab_read_state().get("notif_topup_admin"):
+        u = db.query(User).filter(User.id == user_id).first()
+        uname = u.username if u else f"id {user_id}"
+        _notify(
+            "👛 Saldo Dikurangi Admin\n"
+            f"Saldo user {uname} dikurangi {_fmt_idr(amount)} IDR oleh admin.\n"
+            f"Saldo sekarang: {_fmt_idr(bal.balance)} IDR"
+        )
     return RedirectResponse(url="/admin/users", status_code=303)
 
 
@@ -883,6 +899,15 @@ def admin_set_balance(
                 description=description or "Penyesuaian saldo oleh admin"
             ))
         db.commit()
+    if delta != 0 and _ab_read_state().get("notif_topup_admin"):
+        u = db.query(User).filter(User.id == user_id).first()
+        uname = u.username if u else f"id {user_id}"
+        arah = "ditambah" if delta > 0 else "dikurangi"
+        _notify(
+            "👛 Saldo Disesuaikan Admin\n"
+            f"Saldo user {uname} {arah} {_fmt_idr(abs(delta))} IDR oleh admin.\n"
+            f"Saldo sekarang: {_fmt_idr(bal.balance)} IDR"
+        )
     return RedirectResponse(url="/admin/users", status_code=303)
 
 
@@ -1287,6 +1312,18 @@ def _telegram_send_text(text: str) -> tuple[bool, str]:
         return False, body.get("description") or f"HTTP {r.status_code} dari Telegram API."
     except requests.RequestException as e:
         return False, f"Gagal menghubungi Telegram: {e}"
+
+
+def _notify(text: str) -> None:
+    """Kirim notif teks via bot Telegram di background (tidak memblokir flow utama)."""
+    def _run():
+        try:
+            ok, out = _telegram_send_text(text)
+            if not ok:
+                print(f"[notify] Gagal kirim notif: {out}")
+        except Exception as e:
+            print(f"[notify] Error: {e}")
+    threading.Thread(target=_run, daemon=True).start()
 
 
 def _autobackup_zip_bytes() -> bytes:
@@ -3270,7 +3307,8 @@ def pay_paket(request: Request, option_number: int, method: str, user: User = De
     ctx = get_user_context(user, db)
     db.close()
     detail, pay_error, pay_success, pay_extra = _process_payment(ctx.get("active_xl"), option_number, False, method)
-    return _pay_response(user, detail, pay_error, pay_success, method, "xcp", pay_extra)
+    return _pay_response(user, detail, pay_error, pay_success, method, "xcp", pay_extra,
+                         phone_number=getattr(ctx.get("active_xl"), "phone_number", "") or "")
 
 
 @app.post("/user/xl/beli-paket/addon10-xcp-{option_number}/pay/{method}")
@@ -3286,7 +3324,8 @@ def pay_addon(request: Request, option_number: int, method: str, user: User = De
     ctx = get_user_context(user, db)
     db.close()
     detail, pay_error, pay_success, pay_extra = _process_payment(ctx.get("active_xl"), option_number, ADDON_SPEC_10, method)
-    return _pay_response(user, detail, pay_error, pay_success, method, "addon10", pay_extra)
+    return _pay_response(user, detail, pay_error, pay_success, method, "addon10", pay_extra,
+                         phone_number=getattr(ctx.get("active_xl"), "phone_number", "") or "")
 
 
 @app.post("/user/xl/beli-paket/addon15-xcp-{option_number}/pay/{method}")
@@ -3302,7 +3341,8 @@ def pay_addon15(request: Request, option_number: int, method: str, user: User = 
     ctx = get_user_context(user, db)
     db.close()
     detail, pay_error, pay_success, pay_extra = _process_payment(ctx.get("active_xl"), option_number, ADDON_SPEC_15, method)
-    return _pay_response(user, detail, pay_error, pay_success, method, "addon15", pay_extra)
+    return _pay_response(user, detail, pay_error, pay_success, method, "addon15", pay_extra,
+                         phone_number=getattr(ctx.get("active_xl"), "phone_number", "") or "")
 
 
 @app.post("/user/xl/beli-paket/xtraconf-{option_number}/pay/{method}")
@@ -3318,7 +3358,8 @@ def pay_xtraconf(request: Request, option_number: int, method: str, user: User =
     ctx = get_user_context(user, db)
     db.close()
     detail, pay_error, pay_success, pay_extra = _process_payment(ctx.get("active_xl"), option_number, XTRA_CONF_SPEC, method)
-    return _pay_response(user, detail, pay_error, pay_success, method, "xtraconf", pay_extra)
+    return _pay_response(user, detail, pay_error, pay_success, method, "xtraconf", pay_extra,
+                         phone_number=getattr(ctx.get("active_xl"), "phone_number", "") or "")
 
 
 def _qris_png_data_uri(qris_b64):
@@ -3397,7 +3438,7 @@ def _fetch_pending_qris(active_xl, tokens=None, transactions=None):
     return qris_txs, matched_codes
 
 
-def _pay_response(user, detail, pay_error, pay_success, method, family_key, pay_extra=None):
+def _pay_response(user, detail, pay_error, pay_success, method, family_key, pay_extra=None, phone_number=""):
     if pay_success:
         fee = _get_family_fee(_fee_key(family_key, method))
         new_balance = _deduct_token_balance(
@@ -3410,6 +3451,14 @@ def _pay_response(user, detail, pay_error, pay_success, method, family_key, pay_
                 "ok": False,
                 "message": f"Saldo panel tidak cukup untuk biaya konsumsi ({_fmt_idr(fee)} IDR). Topup dulu ya."
             })
+        if _ab_read_state().get("notif_purchase"):
+            pkg_name = (detail or {}).get("option_name") or FAMILY_LABELS.get(family_key, family_key)
+            _notify(
+                "🛒 Pembelian Paket\n"
+                f"user {user.username} membeli paket {pkg_name}, "
+                f"untuk nomor {phone_number or '-'}.\n"
+                f"Biaya konsumsi panel: {_fmt_idr(fee)} IDR · Saldo sekarang: {_fmt_idr(new_balance)} IDR"
+            )
         resp = {"ok": True, "message": pay_success, "deducted": fee, "new_balance": new_balance}
         qris_b64 = (pay_extra or {}).get("qris_b64")
         if qris_b64:
@@ -3481,6 +3530,14 @@ def _credit_topup(db: Session, topup: TopupTransaction):
                 description=f"Topup saldo via QRIS ({_fmt_idr(row.total)} IDR, termasuk biaya admin {_fmt_idr(row.fee)} IDR)"
             ))
             db.commit()
+        if _ab_read_state().get("notif_topup_qris"):
+            u = db.query(User).filter(User.id == row.user_id).first()
+            uname = u.username if u else f"id {row.user_id}"
+            _notify(
+                "💰 Topup QRIS\n"
+                f"user {uname} topup saldo {_fmt_idr(row.amount)} IDR via QRIS.\n"
+                f"Saldo sekarang: {_fmt_idr(bal.balance)} IDR"
+            )
         return bal.balance
 
 

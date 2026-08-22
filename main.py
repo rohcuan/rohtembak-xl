@@ -733,7 +733,7 @@ def admin_add_balance(
         uname = u.username if u else f"id {user_id}"
         _notify(
             TG_LINE + "\n\n"
-            + "💵 " + _tg_bold("TOPUP SALDO VIA ADMIN") + "\n\n"
+            + "🟢 " + _tg_bold("TOPUP SALDO VIA ADMIN") + " 💵\n\n"
             "<blockquote>"
             + _tg_field("User", f'<b>"{_tg_esc(uname)}"</b>')
             + _tg_field("Nominal", f"<b>+{amount} IDR</b>")
@@ -870,7 +870,7 @@ def admin_decrease_balance(
         uname = u.username if u else f"id {user_id}"
         _notify(
             TG_LINE + "\n\n"
-            + "💰 " + _tg_bold("SALDO DIKURANGI ADMIN") + "\n\n"
+            + "🟢 " + _tg_bold("SALDO DIKURANGI ADMIN") + " 💰\n\n"
             "<blockquote>"
             + _tg_field("User", f'<b>"{_tg_esc(uname)}"</b>')
             + _tg_field("Nominal", f"<b>-{amount} IDR</b>")
@@ -918,7 +918,7 @@ def admin_set_balance(
         sign = "+" if delta > 0 else "-"
         _notify(
             TG_LINE + "\n\n"
-            + "💰 " + _tg_bold("SALDO DISESUAIKAN ADMIN") + "\n\n"
+            + "🟢 " + _tg_bold("SALDO DISESUAIKAN ADMIN") + " 💰\n\n"
             "<blockquote>"
             + _tg_field("User", f'<b>"{_tg_esc(uname)}"</b>')
             + _tg_field("Nominal", f"<b>{sign}{abs(delta)} IDR</b>")
@@ -1439,7 +1439,7 @@ def _telegram_send_backup(trigger: str) -> tuple[bool, str]:
                             "chat_id": chat_id,
                             "caption": (
                                 TG_LINE + "\n\n"
-                                + "✅ " + _tg_bold("BACKUP BERHASIL") + "\n\n"
+                                + "🟢 " + _tg_bold("BACKUP BERHASIL") + " ✅\n\n"
                                 "<blockquote>"
                                 + _tg_field("Mode", "<b>Otomatis</b>" if trigger == "auto" else "<b>Manual</b>")
                                 + _tg_field("File", f"<code>{fname}</code>")
@@ -3517,7 +3517,7 @@ def _pay_response(user, detail, pay_error, pay_success, method, family_key, pay_
             pkg_name = (detail or {}).get("option_name") or FAMILY_LABELS.get(family_key, family_key)
             _notify(
                 TG_LINE + "\n\n"
-                + "🛒 " + _tg_bold("PEMBELIAN PAKET") + "\n\n"
+                + "🟢 " + _tg_bold("PEMBELIAN PAKET") + " 🛒\n\n"
                 "<blockquote>"
                 + _tg_field("User", f'<b>"{_tg_esc(user.username)}"</b>')
                 + _tg_field("Paket", f"<b>{_tg_esc(pkg_name)}</b>")
@@ -3603,7 +3603,7 @@ def _credit_topup(db: Session, topup: TopupTransaction):
             uname = u.username if u else f"id {row.user_id}"
             _notify(
                 TG_LINE + "\n\n"
-                + "💵 " + _tg_bold("TOPUP QRIS") + "\n\n"
+                + "🟢 " + _tg_bold("TOPUP QRIS") + " 💵\n\n"
                 "<blockquote>"
                 + _tg_field("User", f'<b>"{_tg_esc(uname)}"</b>')
                 + _tg_field("Nominal", f"<b>+{row.amount} IDR</b>")

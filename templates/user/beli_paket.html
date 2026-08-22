@@ -166,11 +166,16 @@ function fmtRp(n) {
   return n.toLocaleString('id-ID') + ' IDR';
 }
 
+function escHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
 function xcpCardHtml(p, i) {
   return '<a class="pkg-card" href="/user/xl/beli-paket/xcp-' + p.number + '/detail">' +
     '<div class="pkg-number">Alternatif ' + (i + 1) + ' &middot; Option #' + p.number + '</div>' +
-    '<div class="pkg-name">Xtra Combo Plus 30k</div>' +
-    '<div class="pkg-price">30.000 IDR</div>' +
+    '<div class="pkg-name">' + escHtml(p.option_name) + '</div>' +
+    '<div class="pkg-price">' + fmtRp(p.price) + '</div>' +
     '</a>';
 }
 

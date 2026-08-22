@@ -84,7 +84,10 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     payload = decode_token(token)
     if payload is None:
         raise HTTPException(status_code=status.HTTP_303_SEE_OTHER, headers={"Location": "/login"})
-    user = db.query(User).filter(User.id == int(payload.get("sub"))).first()
+    try:
+        user = db.query(User).filter(User.id == int(payload.get("sub"))).first()
+    except (TypeError, ValueError):
+        user = None
     if user is None:
         raise HTTPException(status_code=status.HTTP_303_SEE_OTHER, headers={"Location": "/login"})
     return user

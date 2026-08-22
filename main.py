@@ -19,6 +19,7 @@ from fastapi import FastAPI, Request, Depends, Form, File, UploadFile, HTTPExcep
 from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse, Response
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 from jinja2 import Environment, FileSystemLoader
 
@@ -31,7 +32,7 @@ from auth import (
 
 from datetime import datetime, timezone, timedelta
 from app.client.ciam import get_otp as xl_get_otp, submit_otp as xl_submit_otp, get_new_token as xl_refresh_token
-from app.client.encrypt import API_KEY, load_ax_fp, copy_shared_fp_to_user, remove_user_ax_fp
+from app.client.encrypt import API_KEY, load_ax_fp, copy_shared_fp_to_user, remove_user_ax_fp, get_user_ax_fp
 from app.client.engsel import login_info as xl_login_info, get_balance as xl_get_balance, get_transaction_history as xl_get_transactions, get_tiering_info as xl_get_tiering, send_api_request, get_family as xl_get_family, get_package as xl_get_package, get_addons as xl_get_addons
 from app.menus.util import format_quota_byte
 from app.type_dict import PaymentItem
@@ -668,7 +669,7 @@ def admin_credentials_update(
         user.password_hash = hash_password(new_password)
         user.password = new_password
     else:
-        new_username = new_username.strip()
+        new_username = new_username.strip().lower()
         if not new_username:
             return RedirectResponse(url="/admin/credentials?error=username_kosong", status_code=303)
         if db.query(User).filter(User.username.ilike(new_username), User.id != user.id).first():
@@ -765,18 +766,20 @@ def admin_add_user(
         raise HTTPException(status_code=400, detail="Email wajib diisi")
     if not username.strip():
         raise HTTPException(status_code=400, detail="Username wajib diisi")
-    if username.strip().lower() == _admin_username(db).lower():
+    username = username.strip().lower()
+    email = email.strip().lower()
+    if username == _admin_username(db).lower():
         raise HTTPException(status_code=400, detail="Username admin tidak boleh digunakan")
 
     existing = db.query(User).filter(
-        (User.username == username) | (User.email == email)
+        (func.lower(User.username) == username) | (func.lower(User.email) == email)
     ).first()
     if existing:
         raise HTTPException(status_code=400, detail="Username atau email sudah terdaftar")
 
     user = User(
-        username=username.strip(),
-        email=email.strip(),
+        username=username,
+        email=email,
         password_hash=hash_password(password),
         password=password,
         role="user"
@@ -794,7 +797,7 @@ def admin_add_user(
             description="Saldo awal dari admin"
         ))
     db.commit()
-    copy_shared_fp_to_user(user.username)
+    get_user_ax_fp(user.username)
     return RedirectResponse(url="/admin/users", status_code=303)
 
 
@@ -3069,7 +3072,7 @@ def _settle_with_decoy(pay_fn, tokens, items, detail, method, use_decoy):
         return pay_fn(API_KEY, tokens, items_with_decoy, "SHARE_PACKAGE", False, overwrite_amount=overwrite_amount, token_confirmation_idx=1)
 
     res = pay_fn(API_KEY, tokens, items_with_decoy, "🤫", False, overwrite_amount=overwrite_amount, token_confirmation_idx=1)
-    if res and res.get("status") != "SUCCESS":
+    if isinstance(res, dict) and res.get("status") != "SUCCESS":
         msg = str(res.get("message", ""))
         if "Bizz-err.Amount.Total" in msg or "valid amount is" in msg:
             valid_amount = _parse_bizz_total(msg)
@@ -3225,13 +3228,37 @@ def _checkout_detail(active_xl, fetch_fn):
     return fetch_fn()
 
 
-def _qris_decoy_price():
+_decoy_price_cache: dict = {}
+_DECOY_PRICE_TTL = 3600
+
+
+def _qris_decoy_price(active_xl=None):
+    """Harga decoy QRIS yang dipakai di settlement (live dari API), dicache 1 jam.
+
+    Checkout menampilkan harga ini agar total QRIS di layar == total yang
+    benar-benar ditagih. Saat cache kosong (atau tanpa akun XL aktif) dipakai
+    harga dari decoy-default-qris.json sebagai fallback.
+    """
+    entry = _decoy_price_cache.get("qris")
+    if entry and entry[1] > time.time():
+        return entry[0]
+    price = 0
     try:
-        from app.service.decoy import load_decoy_config
+        from app.service.decoy import build_decoy_item, load_decoy_config
         config = load_decoy_config("qris") or {}
-        return int(config.get("price") or 0)
+        price = int(config.get("price") or 0)
+        if active_xl and active_xl.refresh_token:
+            _api_delay()
+            tokens = _get_xl_tokens(active_xl)
+            if tokens:
+                _api_delay()
+                item = build_decoy_item(API_KEY, tokens, "qris")
+                if item:
+                    price = int(item["item_price"] or 0)
     except Exception:
-        return 0
+        pass
+    _decoy_price_cache["qris"] = (price, time.time() + _DECOY_PRICE_TTL)
+    return price
 
 
 def _checkout_context(active_xl, user, detail, method, family_key):
@@ -3245,7 +3272,7 @@ def _checkout_context(active_xl, user, detail, method, family_key):
     remaining = balance - fee
     price = detail.get("price") or 0
     if family_key == "xtraconf" and method == "qris":
-        price = price + _qris_decoy_price()
+        price = price + _qris_decoy_price(active_xl)
     return {
         "detail": detail,
         "method": method,
@@ -3739,21 +3766,28 @@ def topup_create(amount: int = Form(...), user: User = Depends(get_current_user)
                 TopupTransaction.status == "pending",
                 TopupTransaction.total == total
             ).first()
-            if not clash:
-                row = TopupTransaction(
-                    user_id=user.id,
-                    amount=amount,
-                    fee=fee,
-                    total=total,
-                    trx_id=f"pending-{uuid.uuid4().hex}",
-                    status="pending",
-                    expires_at=datetime.fromtimestamp(
-                        int(time.time()) + TOPUP_QR_TTL_SECONDS, tz=timezone.utc
-                    ),
-                )
-                db.add(row)
+            if clash:
+                continue
+            row = TopupTransaction(
+                user_id=user.id,
+                amount=amount,
+                fee=fee,
+                total=total,
+                trx_id=f"pending-{uuid.uuid4().hex}",
+                status="pending",
+                expires_at=datetime.fromtimestamp(
+                    int(time.time()) + TOPUP_QR_TTL_SECONDS, tz=timezone.utc
+                ),
+            )
+            db.add(row)
+            try:
                 db.commit()
-                break
+            except IntegrityError:
+                # Unique index uq_topup_pending_total: another request claimed
+                # the same total concurrently. Roll back and try another fee.
+                db.rollback()
+                continue
+            break
         if row is None:
             return JSONResponse({
                 "ok": False,
@@ -3888,6 +3922,7 @@ def register(
             "error": "Terlalu banyak percobaan. Coba lagi dalam beberapa menit."
         }, status_code=429)
     if username == _admin_username(db).lower():
+        _login_record_failure(attempt_key)
         return render("register.html", context={
             "request": request,
             "error": "Username admin tidak boleh digunakan"
@@ -3896,6 +3931,7 @@ def register(
         func.lower(User.username) == username
     ).first()
     if existing:
+        _login_record_failure(attempt_key)
         return render("register.html", context={
             "request": request,
             "error": "Username atau email sudah terdaftar"
@@ -3904,6 +3940,7 @@ def register(
         func.lower(User.email) == email
     ).first()
     if existing:
+        _login_record_failure(attempt_key)
         return render("register.html", context={
             "request": request,
             "error": "Username atau email sudah terdaftar"
@@ -3921,7 +3958,7 @@ def register(
     db.add(Balance(user_id=user.id, balance=0))
     db.commit()
     _login_reset(attempt_key)
-    copy_shared_fp_to_user(user.username)
+    get_user_ax_fp(user.username)
 
     token = create_access_token({"sub": str(user.id), "role": "user"})
     resp = RedirectResponse(url="/user/dashboard", status_code=303)

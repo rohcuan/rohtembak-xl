@@ -39,3 +39,14 @@ def init_db():
         if "refresh_expires_at" not in xl_cols:
             conn.execute(__import__("sqlalchemy").text("ALTER TABLE xl_accounts ADD COLUMN refresh_expires_at INTEGER DEFAULT NULL"))
             conn.commit()
+        idx = conn.execute(__import__("sqlalchemy").text(
+            "SELECT name FROM sqlite_master WHERE type='index' AND name='uq_topup_pending_total'"
+        )).fetchone()
+        if not idx:
+            try:
+                conn.execute(__import__("sqlalchemy").text(
+                    "CREATE UNIQUE INDEX uq_topup_pending_total ON topup_transactions (total) WHERE status = 'pending'"
+                ))
+                conn.commit()
+            except Exception as e:
+                print(f"[init_db] warning: gagal membuat index uq_topup_pending_total: {e}")

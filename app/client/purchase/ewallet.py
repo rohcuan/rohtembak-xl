@@ -62,7 +62,7 @@ def settlement_multipayment(
     
     print("Getting payment methods...")
     payment_res = send_api_request(api_key, payment_path, payment_payload, tokens["id_token"], "POST")
-    if payment_res["status"] != "SUCCESS":
+    if not isinstance(payment_res, dict) or payment_res.get("status") != "SUCCESS":
         print("Failed to fetch payment methods.")
         print(f"Error: {payment_res}")
         return None
@@ -155,7 +155,7 @@ def settlement_multipayment(
         return decrypted_body
     except Exception as e:
         print("[decrypt err]", e)
-        return resp.text
+        return None
 
 def show_multipayment(
     api_key: str,

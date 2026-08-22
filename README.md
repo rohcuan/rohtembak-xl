@@ -72,8 +72,8 @@ sudo ./reinstall-dev-staging.sh
 Yang TIDAK ikut di-commit:
 
 - `data/*.db` — database runtime berisi **refresh token / access token** akun XL tiap nomor. Instalasi baru = panel kosong, belum ada nomor yang login OTP.
-- `data/ax.fp.{username}` — device fingerprint per user; dibuat otomatis saat pertama kali user berjalan. Setiap user mendapat fingerprint terpisah (max 10 nomor XL per fingerprint).
-- `ax.fp` — shared device fingerprint (fallback untuk user baru sebelum per-user fp dibuat).
+- `data/ax.fp.{username}` — device fingerprint per user; dibuat otomatis saat user didaftarkan (register / ditambah admin). Setiap user mendapat fingerprint terpisah (max 10 nomor XL per fingerprint).
+- `ax.fp` — shared device fingerprint; dipakai untuk migrasi user lama dan fallback restore saat backup tidak menyertakan fp per user.
 
 ## Akun default
 

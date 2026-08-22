@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, Text
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, Text, Index, text
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 
@@ -62,6 +62,17 @@ class BalanceTransaction(Base):
 
 class TopupTransaction(Base):
     __tablename__ = "topup_transactions"
+    # Anti double-claim: only ONE pending topup may exist per unique total.
+    # The gateway matches payments by nominal, so duplicate pending totals
+    # would let a single real payment credit two rows.
+    __table_args__ = (
+        Index(
+            "uq_topup_pending_total",
+            "total",
+            unique=True,
+            sqlite_where=text("status = 'pending'"),
+        ),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)

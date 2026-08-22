@@ -63,7 +63,7 @@ def settlement_qris(
     
     print("Getting payment methods...")
     payment_res = send_api_request(api_key, payment_path, payment_payload, tokens["id_token"], "POST")
-    if payment_res["status"] != "SUCCESS":
+    if not isinstance(payment_res, dict) or payment_res.get("status") != "SUCCESS":
         print("Failed to fetch payment methods.")
         print(f"Error: {payment_res}")
         return None
@@ -178,7 +178,7 @@ def settlement_qris(
         return transaction_id
     except Exception as e:
         print("[decrypt err]", e)
-        return resp.text
+        return None
 
 def get_qris_code(
     api_key: str,
@@ -194,7 +194,7 @@ def get_qris_code(
     }
     
     res = send_api_request(api_key, path, payload, tokens["id_token"], "POST")
-    if res["status"] != "SUCCESS":
+    if not isinstance(res, dict) or res.get("status") != "SUCCESS":
         print("Failed to fetch QRIS code.")
         print(f"Error: {res}")
         return None

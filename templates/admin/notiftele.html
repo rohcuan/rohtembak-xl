@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Atur Notif Bot Tele - RohTembak (XL){% endblock %}
+{% block head %}
+<style>
+.cfg-status {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 12px; border-radius: 999px; font-size: .78rem; font-weight: 600;
+}
+.cfg-status.on { background: #d1fae5; color: #065f46; }
+.cfg-status.off { background: #f3f4f6; color: #6b7280; }
+.notif-item {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 12px 14px; border: 1px solid #e5e7eb; border-radius: 10px;
+  margin-bottom: 10px; cursor: pointer; transition: background .15s, border-color .15s;
+}
+.notif-item:hover { background: #f9fafb; }
+.notif-item input[type="checkbox"] { width: 18px; height: 18px; margin-top: 1px; accent-color: #4361ee; flex-shrink: 0; }
+.notif-item .t { font-size: .88rem; font-weight: 600; color: #374151; }
+.notif-item .d { font-size: .78rem; color: #6b7280; margin-top: 2px; line-height: 1.5; }
+</style>
+{% endblock %}
+{% block content %}
+
+<div class="header-section">
+    <div>
+        <div class="page-title">Atur Notif Bot Tele</div>
+        <div class="page-subtitle">Pilih notifikasi apa saja yang dikirim ke bot Telegram.</div>
+        <span id="ab-status" class="cfg-status {% if configured %}on{% else %}off{% endif %}" style="margin-top:10px;">
+            {% if configured %}&#9679; Bot terkonfigurasi{% else %}&#9675; Bot belum terkonfigurasi &mdash; atur di <a href="/admin/bottele" style="color:#4361ee;">Atur Bot Tele</a>{% endif %}
+        </span>
+    </div>
+</div>
+
+{% if saved %}
+<div style="max-width:640px;margin-bottom:16px;padding:10px 14px;background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;font-size:.84rem;border-radius:8px;">
+    &#10003; Pengaturan disimpan.
+</div>
+{% endif %}
+
+<div class="card" style="max-width:640px;">
+    <h2 style="font-size:16px;margin-bottom:12px;">Notifikasi Aktif</h2>
+    <form method="POST" action="/admin/notiftele/settings">
+        <label class="notif-item">
+            <input type="checkbox" name="topup_qris" {% if st.notif_topup_qris %}checked{% endif %}>
+            <span>
+                <span class="t">Terima notif topup saldo via QRIS</span>
+                <span class="d">Setiap ada user yang menyelesaikan pembayaran topup saldo lewat QRIS.</span>
+            </span>
+        </label>
+
+        <label class="notif-item">
+            <input type="checkbox" name="topup_admin" {% if st.notif_topup_admin %}checked{% endif %}>
+            <span>
+                <span class="t">Terima notif topup saldo via Admin</span>
+                <span class="d">Setiap saldo panel diisi / diubah lewat dashboard admin (Topup, Set Saldo, Kurangi Saldo).</span>
+            </span>
+        </label>
+
+        <label class="notif-item">
+            <input type="checkbox" name="purchase" {% if st.notif_purchase %}checked{% endif %}>
+            <span>
+                <span class="t">Terima notif pembelian paket</span>
+                <span class="d">Format: user xxxx membeli paket xxxx, untuk nomor xxxx.</span>
+            </span>
+        </label>
+
+        <button type="submit" class="btn btn-primary" style="margin-top:16px;">Simpan Notifikasi</button>
+    </form>
+</div>
+
+{% endblock %}

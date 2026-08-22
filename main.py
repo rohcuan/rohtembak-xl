@@ -1191,6 +1191,9 @@ def _ab_read_state() -> dict:
         "weekday": 0,
         "monthday": 1,
         "next_run_ts": 0,
+        "notif_topup_qris": False,
+        "notif_topup_admin": False,
+        "notif_purchase": False,
         "last_run_at": "",
         "last_run_ok": None,
         "last_output": "",
@@ -1260,6 +1263,30 @@ def _ab_next_run_after(base_dt, st: dict):
 
 def _ab_set_next_run(st: dict, base_dt=None) -> None:
     st["next_run_ts"] = int(_ab_next_run_after(base_dt or datetime.now(WIB), st).timestamp())
+
+
+def _telegram_send_text(text: str) -> tuple[bool, str]:
+    """Kirim pesan teks ke chat yang terdaftar di pengaturan bot."""
+    cfg = _ab_read_state()
+    chat_id = (cfg.get("chat_id") or "").strip()
+    token = (cfg.get("token") or "").strip()
+    if not chat_id or not token:
+        return False, "Chat ID / API key bot belum lengkap. Isi dulu di halaman Atur Bot Tele."
+    try:
+        r = requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            data={"chat_id": chat_id, "text": text},
+            timeout=60,
+        )
+        try:
+            body = r.json()
+        except ValueError:
+            body = {}
+        if r.status_code == 200 and body.get("ok"):
+            return True, "Pesan terkirim ke Telegram."
+        return False, body.get("description") or f"HTTP {r.status_code} dari Telegram API."
+    except requests.RequestException as e:
+        return False, f"Gagal menghubungi Telegram: {e}"
 
 
 def _autobackup_zip_bytes() -> bytes:
@@ -1455,6 +1482,46 @@ def admin_bottele_settings(
     st["token"] = token.strip()
     _ab_write_state(st)
     return RedirectResponse("/admin/bottele?saved=1", status_code=303)
+
+
+@app.post("/admin/bottele/test")
+def admin_bottele_test(request: Request, admin_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if admin_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden")
+    ok, out = _telegram_send_text("✅ Tes berhasil! Bot Telegram RohTembak (XL) terhubung.")
+    return JSONResponse({"ok": ok, "output": out})
+
+
+@app.get("/admin/notiftele", response_class=HTMLResponse)
+def admin_notiftele_page(request: Request, admin_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if admin_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden")
+    st = _ab_read_state()
+    configured = bool((st.get("chat_id") or "").strip() and (st.get("token") or "").strip())
+    return render("admin/notiftele.html", context={
+        "request": request, "user": admin_user,
+        "st": st, "configured": configured,
+        "saved": request.query_params.get("saved") == "1",
+    })
+
+
+@app.post("/admin/notiftele/settings")
+def admin_notiftele_settings(
+    request: Request,
+    topup_qris: str = Form(""),
+    topup_admin: str = Form(""),
+    purchase: str = Form(""),
+    admin_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if admin_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden")
+    st = _ab_read_state()
+    st["notif_topup_qris"] = topup_qris == "on"
+    st["notif_topup_admin"] = topup_admin == "on"
+    st["notif_purchase"] = purchase == "on"
+    _ab_write_state(st)
+    return RedirectResponse("/admin/notiftele?saved=1", status_code=303)
 
 
 @app.post("/admin/autobackup/run")

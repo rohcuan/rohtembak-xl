@@ -8,6 +8,13 @@
 }
 .cfg-status.on { background: #d1fae5; color: #065f46; }
 .cfg-status.off { background: #f3f4f6; color: #6b7280; }
+.cfg-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+.test-result {
+  display: none; margin-top: 14px; padding: 10px 14px; border-radius: 8px;
+  font-size: .84rem; line-height: 1.5; word-break: break-word;
+}
+.test-result.ok { display: block; background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46; }
+.test-result.err { display: block; background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
 .info-box {
   margin-top: 18px; padding: 14px 16px; border-radius: 10px;
   background: #f9fafb; border: 1px solid #e5e7eb;
@@ -15,6 +22,23 @@
 }
 .info-box strong { color: #374151; }
 </style>
+<script>
+function abRun() {
+  var btn = document.getElementById('ab-run-btn'), out = document.getElementById('ab-output');
+  var orig = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Mengirim...';
+  out.className = 'test-result'; out.style.display = 'block';
+  out.textContent = 'Membuat backup & mengirim ke Telegram...';
+  fetch('/admin/autobackup/run', { method: 'POST', credentials: 'same-origin' })
+    .then(function(r) { return r.json(); })
+    .then(function(res) {
+      out.className = 'test-result ' + (res.ok ? 'ok' : 'err');
+      out.textContent = (res.ok ? '[OK] ' : '[GAGAL] ') + (res.output || '');
+    })
+    .catch(function(e) { out.className = 'test-result err'; out.textContent = 'Terjadi kesalahan: ' + e.message; })
+    .finally(function() { btn.disabled = false; btn.textContent = orig; });
+}
+</script>
 {% endblock %}
 {% block content %}
 
@@ -78,7 +102,11 @@
             </div>
         </div>
         <button type="submit" class="btn btn-primary" style="margin-top:16px;">Simpan Jadwal</button>
+        <div class="cfg-actions">
+            <button type="button" class="btn btn-outline" id="ab-run-btn" onclick="abRun()">Backup Sekarang</button>
+        </div>
     </form>
+    <div id="ab-output" class="test-result"></div>
 </div>
 
 {% if st.last_run_at %}

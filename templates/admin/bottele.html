@@ -24,13 +24,13 @@
 .info-box code { background: #eef2f7; padding: 1px 5px; border-radius: 4px; font-size: .74rem; }
 </style>
 <script>
-function abRun() {
-  var btn = document.getElementById('ab-run-btn'), out = document.getElementById('ab-output');
+function btTest() {
+  var btn = document.getElementById('bt-test-btn'), out = document.getElementById('bt-output');
   var orig = btn.textContent;
   btn.disabled = true; btn.textContent = 'Mengirim...';
   out.className = 'test-result'; out.style.display = 'block';
-  out.textContent = 'Membuat backup & mengirim ke Telegram...';
-  fetch('/admin/autobackup/run', { method: 'POST', credentials: 'same-origin' })
+  out.textContent = 'Mengirim pesan tes ke Telegram...';
+  fetch('/admin/bottele/test', { method: 'POST', credentials: 'same-origin' })
     .then(function(r) { return r.json(); })
     .then(function(res) {
       out.className = 'test-result ' + (res.ok ? 'ok' : 'err');
@@ -76,10 +76,10 @@ function abRun() {
 
         <div class="cfg-actions">
             <button type="submit" class="btn btn-primary">Simpan Pengaturan</button>
-            <button type="button" class="btn btn-outline" id="ab-run-btn" onclick="abRun()">Backup Sekarang</button>
+            <button type="button" class="btn btn-outline" id="bt-test-btn" onclick="btTest()">Tes Kirim Pesan</button>
         </div>
     </form>
-    <div id="ab-output" class="test-result"></div>
+    <div id="bt-output" class="test-result"></div>
 </div>
 
 <div class="card" style="max-width:640px;">

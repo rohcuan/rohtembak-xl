@@ -735,7 +735,7 @@ def admin_add_balance(
             TG_LINE + "\n\n"
             + "🟢 " + _tg_bold("TOPUP SALDO VIA ADMIN") + " 💵\n\n"
             "<blockquote>"
-            + _tg_field("User", f'<b>"{_tg_esc(uname)}"</b>')
+            + _tg_field("User", f"<b>{_tg_esc(uname)}</b>")
             + _tg_field("Nominal", f"<b>+{amount} IDR</b>")
             + _tg_field("Metode", "Admin")
             + "</blockquote>\n\n"
@@ -872,7 +872,7 @@ def admin_decrease_balance(
             TG_LINE + "\n\n"
             + "🟢 " + _tg_bold("SALDO DIKURANGI ADMIN") + " 💰\n\n"
             "<blockquote>"
-            + _tg_field("User", f'<b>"{_tg_esc(uname)}"</b>')
+            + _tg_field("User", f"<b>{_tg_esc(uname)}</b>")
             + _tg_field("Nominal", f"<b>-{amount} IDR</b>")
             + _tg_field("Metode", "Admin")
             + "</blockquote>\n\n"
@@ -920,7 +920,7 @@ def admin_set_balance(
             TG_LINE + "\n\n"
             + "🟢 " + _tg_bold("SALDO DISESUAIKAN ADMIN") + " 💰\n\n"
             "<blockquote>"
-            + _tg_field("User", f'<b>"{_tg_esc(uname)}"</b>')
+            + _tg_field("User", f"<b>{_tg_esc(uname)}</b>")
             + _tg_field("Nominal", f"<b>{sign}{abs(delta)} IDR</b>")
             + _tg_field("Metode", "Admin")
             + "</blockquote>\n\n"
@@ -3519,7 +3519,7 @@ def _pay_response(user, detail, pay_error, pay_success, method, family_key, pay_
                 TG_LINE + "\n\n"
                 + "🟢 " + _tg_bold("PEMBELIAN PAKET") + " 🛒\n\n"
                 "<blockquote>"
-                + _tg_field("User", f'<b>"{_tg_esc(user.username)}"</b>')
+                + _tg_field("User", f"<b>{_tg_esc(user.username)}</b>")
                 + _tg_field("Nomor", f"<b>{_tg_esc(phone_number) if phone_number else '-'}</b>")
                 + _tg_field("Biaya admin", f"<b>{fee} IDR</b>")
                 + _tg_field("Paket", f"<b>{_tg_esc(pkg_name)}</b>")
@@ -3605,7 +3605,7 @@ def _credit_topup(db: Session, topup: TopupTransaction):
                 TG_LINE + "\n\n"
                 + "🟢 " + _tg_bold("TOPUP QRIS") + " 💵\n\n"
                 "<blockquote>"
-                + _tg_field("User", f'<b>"{_tg_esc(uname)}"</b>')
+                + _tg_field("User", f"<b>{_tg_esc(uname)}</b>")
                 + _tg_field("Nominal", f"<b>+{row.amount} IDR</b>")
                 + _tg_field("Metode", "QRIS")
                 + "</blockquote>\n\n"

@@ -732,15 +732,14 @@ def admin_add_balance(
         u = db.query(User).filter(User.id == user_id).first()
         uname = u.username if u else f"id {user_id}"
         _notify(
-            TG_LINE + "\n\n"
-            + "🟢  " + _tg_bold("TOPUP SALDO VIA ADMIN") + "  💵\n\n"
+            "🟢  " + _tg_bold("TOPUP SALDO VIA ADMIN") + "  💵\n\n"
             "<blockquote>"
             + _tg_field("User", _tg_esc(uname))
             + _tg_field("Nominal", f"+{amount} IDR")
             + _tg_field("Metode", "Admin")
             + "</blockquote>\n\n"
             f"<blockquote>{_tg_field('Saldo', f'{bal.balance} IDR')}</blockquote>\n\n"
-            f"<blockquote>{_tg_time_footer()}</blockquote>\n\n{TG_LINE}"
+            f"<blockquote>{_tg_time_footer()}</blockquote>"
         )
     return RedirectResponse(url="/admin/users", status_code=303)
 
@@ -869,15 +868,14 @@ def admin_decrease_balance(
         u = db.query(User).filter(User.id == user_id).first()
         uname = u.username if u else f"id {user_id}"
         _notify(
-            TG_LINE + "\n\n"
-            + "🟢  " + _tg_bold("SALDO DIKURANGI ADMIN") + "  💰\n\n"
+            "🟢  " + _tg_bold("SALDO DIKURANGI ADMIN") + "  💰\n\n"
             "<blockquote>"
             + _tg_field("User", _tg_esc(uname))
             + _tg_field("Nominal", f"-{amount} IDR")
             + _tg_field("Metode", "Admin")
             + "</blockquote>\n\n"
             f"<blockquote>{_tg_field('Saldo', f'{bal.balance} IDR')}</blockquote>\n\n"
-            f"<blockquote>{_tg_time_footer()}</blockquote>\n\n{TG_LINE}"
+            f"<blockquote>{_tg_time_footer()}</blockquote>"
         )
     return RedirectResponse(url="/admin/users", status_code=303)
 
@@ -917,15 +915,14 @@ def admin_set_balance(
         uname = u.username if u else f"id {user_id}"
         sign = "+" if delta > 0 else "-"
         _notify(
-            TG_LINE + "\n\n"
-            + "🟢  " + _tg_bold("SALDO DISESUAIKAN ADMIN") + "  💰\n\n"
+            "🟢  " + _tg_bold("SALDO DISESUAIKAN ADMIN") + "  💰\n\n"
             "<blockquote>"
             + _tg_field("User", _tg_esc(uname))
             + _tg_field("Nominal", f"{sign}{abs(delta)} IDR")
             + _tg_field("Metode", "Admin")
             + "</blockquote>\n\n"
             f"<blockquote>{_tg_field('Saldo', f'{bal.balance} IDR')}</blockquote>\n\n"
-            f"<blockquote>{_tg_time_footer()}</blockquote>\n\n{TG_LINE}"
+            f"<blockquote>{_tg_time_footer()}</blockquote>"
         )
     return RedirectResponse(url="/admin/users", status_code=303)
 
@@ -1349,8 +1346,6 @@ def _tg_esc(v) -> str:
     return _html.escape(str(v), quote=False)
 
 
-TG_LINE = "──────────"
-
 TG_LW = 14  # lebar kolom label agar titik dua semua baris sejajar vertikal
 
 
@@ -1437,8 +1432,7 @@ def _telegram_send_backup(trigger: str) -> tuple[bool, str]:
                         data={
                             "chat_id": chat_id,
                             "caption": (
-                                TG_LINE + "\n\n"
-                                + "🟢  " + _tg_bold("BACKUP BERHASIL") + "  ✅\n\n"
+                                "🟢  " + _tg_bold("BACKUP BERHASIL") + "  ✅\n\n"
                                 "<blockquote>"
                                 + _tg_field("Mode", "Otomatis" if trigger == "auto" else "Manual")
                                 + _tg_field("File", fname)
@@ -1446,7 +1440,7 @@ def _telegram_send_backup(trigger: str) -> tuple[bool, str]:
                                 + "</blockquote>\n\n"
                                 "<blockquote>Backup RohTembak (XL) sukses dibuat.\n"
                                 "Simpan file backup ini dengan aman.</blockquote>\n\n"
-                                f"<blockquote>{_tg_time_footer()}</blockquote>\n\n{TG_LINE}"
+                                f"<blockquote>{_tg_time_footer()}</blockquote>"
                             ),
                         },
                         files={"document": (fname, f)},
@@ -3515,8 +3509,7 @@ def _pay_response(user, detail, pay_error, pay_success, method, family_key, pay_
         if _ab_read_state().get("notif_purchase"):
             pkg_name = (detail or {}).get("option_name") or FAMILY_LABELS.get(family_key, family_key)
             _notify(
-                TG_LINE + "\n\n"
-                + "🟢  " + _tg_bold("PEMBELIAN PAKET") + "  🛒\n\n"
+                "🟢  " + _tg_bold("PEMBELIAN PAKET") + "  🛒\n\n"
                 "<blockquote>"
                 + _tg_field("User", _tg_esc(user.username))
                 + _tg_field("Nomor", _tg_esc(phone_number) if phone_number else "-")
@@ -3524,7 +3517,7 @@ def _pay_response(user, detail, pay_error, pay_success, method, family_key, pay_
                 + _tg_field("Paket", _tg_esc(pkg_name))
                 + "</blockquote>\n\n"
                 f"<blockquote>{_tg_field('Saldo', f'{new_balance} IDR')}</blockquote>\n\n"
-                f"<blockquote>{_tg_time_footer()}</blockquote>\n\n{TG_LINE}"
+                f"<blockquote>{_tg_time_footer()}</blockquote>"
             )
         resp = {"ok": True, "message": pay_success, "deducted": fee, "new_balance": new_balance}
         qris_b64 = (pay_extra or {}).get("qris_b64")
@@ -3601,15 +3594,14 @@ def _credit_topup(db: Session, topup: TopupTransaction):
             u = db.query(User).filter(User.id == row.user_id).first()
             uname = u.username if u else f"id {row.user_id}"
             _notify(
-                TG_LINE + "\n\n"
-                + "🟢  " + _tg_bold("TOPUP QRIS") + "  💵\n\n"
+                "🟢  " + _tg_bold("TOPUP QRIS") + "  💵\n\n"
                 "<blockquote>"
                 + _tg_field("User", _tg_esc(uname))
                 + _tg_field("Nominal", f"+{row.amount} IDR")
                 + _tg_field("Metode", "QRIS")
                 + "</blockquote>\n\n"
                 f"<blockquote>{_tg_field('Saldo', f'{bal.balance} IDR')}</blockquote>\n\n"
-                f"<blockquote>{_tg_time_footer()}</blockquote>\n\n{TG_LINE}"
+                f"<blockquote>{_tg_time_footer()}</blockquote>"
             )
         return bal.balance
 

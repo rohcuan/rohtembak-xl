@@ -2,6 +2,7 @@ import os
 import io
 import time
 import json
+import calendar
 import random
 import uuid
 import asyncio
@@ -1187,8 +1188,8 @@ def _ab_read_state() -> dict:
         "token": "",
         "mode": "daily",
         "time": "03:00",
-        "days": 1,
-        "hours": 12,
+        "weekday": 0,
+        "monthday": 1,
         "next_run_ts": 0,
         "last_run_at": "",
         "last_run_ok": None,
@@ -1211,26 +1212,46 @@ def _ab_write_state(state: dict) -> None:
 
 
 def _ab_next_run_after(base_dt, st: dict):
-    """Hitung waktu jadwal berikutnya dari base_dt sesuai mode (daily / days / hours)."""
+    """Hitung waktu jadwal berikutnya dari base_dt sesuai mode (daily / weekly / monthly)."""
     mode = st.get("mode") or "daily"
-    if mode == "hours":
-        try:
-            n = min(max(int(st.get("hours") or 12), 1), 24)
-        except (TypeError, ValueError):
-            n = 12
-        return base_dt + timedelta(hours=n)
-    if mode == "days":
-        try:
-            n = min(max(int(st.get("days") or 1), 1), 30)
-        except (TypeError, ValueError):
-            n = 1
-        return base_dt + timedelta(days=n)
     hh, mm = 3, 0
     try:
         parts = str(st.get("time") or "03:00").split(":")
         hh, mm = int(parts[0]), int(parts[1])
     except (ValueError, IndexError):
         pass
+    try:
+        wd = min(max(int(st.get("weekday") or 0), 0), 6)  # 0=Senin .. 6=Minggu
+    except (TypeError, ValueError):
+        wd = 0
+    try:
+        md = min(max(int(st.get("monthday") or 1), 1), 30)
+    except (TypeError, ValueError):
+        md = 1
+
+    if mode == "weekly":
+        cand = base_dt.replace(hour=hh, minute=mm, second=0, microsecond=0)
+        cand += timedelta(days=(wd - cand.weekday()) % 7)
+        if cand <= base_dt:
+            cand += timedelta(days=7)
+        return cand
+
+    if mode == "monthly":
+        y, mo = base_dt.year, base_dt.month
+
+        def mk(y, mo):
+            last = calendar.monthrange(y, mo)[1]
+            return base_dt.replace(year=y, month=mo, day=min(md, last), hour=hh, minute=mm, second=0, microsecond=0)
+
+        cand = mk(y, mo)
+        if cand <= base_dt:
+            mo += 1
+            if mo > 12:
+                mo, y = 1, y + 1
+            cand = mk(y, mo)
+        return cand
+
+    # daily
     cand = base_dt.replace(hour=hh, minute=mm, second=0, microsecond=0)
     if cand <= base_dt:
         cand += timedelta(days=1)
@@ -1377,8 +1398,8 @@ def admin_autobackup_settings(
     mode: str = Form(None),
     time_h: str = Form(None),
     time_m: str = Form(None),
-    days: str = Form(None),
-    hours: str = Form(None),
+    weekday: str = Form(None),
+    monthday: str = Form(None),
     admin_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -1386,28 +1407,25 @@ def admin_autobackup_settings(
         raise HTTPException(status_code=403, detail="Forbidden")
     st = _ab_read_state()
     if form_type == "schedule":
-        st["mode"] = mode if mode in ("daily", "days", "hours") else "daily"
-        if st["mode"] == "daily":
-            hh, mm = 3, 0
-            try:
-                hh = min(max(int(time_h), 0), 23)
-            except (TypeError, ValueError):
-                pass
-            try:
-                mm = min(max(int(time_m), 0), 59)
-            except (TypeError, ValueError):
-                pass
-            st["time"] = f"{hh:02d}:{mm:02d}"
-        elif st["mode"] == "days":
-            try:
-                st["days"] = min(max(int(days), 1), 30)
-            except (TypeError, ValueError):
-                st["days"] = 1
-        else:
-            try:
-                st["hours"] = min(max(int(hours), 1), 24)
-            except (TypeError, ValueError):
-                st["hours"] = 12
+        st["mode"] = mode if mode in ("daily", "weekly", "monthly") else "daily"
+        hh, mm = 3, 0
+        try:
+            hh = min(max(int(time_h), 0), 23)
+        except (TypeError, ValueError):
+            pass
+        try:
+            mm = min(max(int(time_m), 0), 59)
+        except (TypeError, ValueError):
+            pass
+        st["time"] = f"{hh:02d}:{mm:02d}"
+        try:
+            st["weekday"] = min(max(int(weekday), 0), 6)
+        except (TypeError, ValueError):
+            st["weekday"] = 0
+        try:
+            st["monthday"] = min(max(int(monthday), 1), 30)
+        except (TypeError, ValueError):
+            st["monthday"] = 1
         _ab_set_next_run(st)
         _ab_write_state(st)
         return RedirectResponse("/admin/autobackup?saved=1", status_code=303)

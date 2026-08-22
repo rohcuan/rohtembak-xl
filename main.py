@@ -732,11 +732,11 @@ def admin_add_balance(
         u = db.query(User).filter(User.id == user_id).first()
         uname = u.username if u else f"id {user_id}"
         _notify(
-            f"💵 <b>TOPUP SALDO VIA ADMIN</b>\n\n{TG_SEP}\n\n\n"
+            f"💵 <b>TOPUP SALDO VIA ADMIN</b>\n\n{TG_SEP}\n\n"
             + _tg_field("👤", "User", f'<b>"{_tg_esc(uname)}"</b>')
             + _tg_field("💰", "Nominal", f"<b>{_fmt_idr(amount)}</b>")
             + _tg_field("💳", "Metode", "Admin")
-            + f"\n{TG_SEP}\n\n\n"
+            + f"\n{TG_SEP}\n\n"
             f"✅ Saldo sekarang: <b>{_fmt_idr(bal.balance)}</b>\n"
             + _tg_time_footer()
         )
@@ -867,11 +867,11 @@ def admin_decrease_balance(
         u = db.query(User).filter(User.id == user_id).first()
         uname = u.username if u else f"id {user_id}"
         _notify(
-            f"💰 <b>SALDO DIKURANGI ADMIN</b>\n\n{TG_SEP}\n\n\n"
+            f"💰 <b>SALDO DIKURANGI ADMIN</b>\n\n{TG_SEP}\n\n"
             + _tg_field("👤", "User", f'<b>"{_tg_esc(uname)}"</b>')
             + _tg_field("💰", "Nominal", f"<b>{_fmt_idr(amount)}</b>")
             + _tg_field("💳", "Metode", "Admin")
-            + f"\n{TG_SEP}\n\n\n"
+            + f"\n{TG_SEP}\n\n"
             f"✅ Saldo sekarang: <b>{_fmt_idr(bal.balance)}</b>\n"
             + _tg_time_footer()
         )
@@ -913,11 +913,11 @@ def admin_set_balance(
         uname = u.username if u else f"id {user_id}"
         arah = "ditambah" if delta > 0 else "dikurangi"
         _notify(
-            f"💰 <b>SALDO DISESUAIKAN ADMIN</b>\n\n{TG_SEP}\n\n\n"
+            f"💰 <b>SALDO DISESUAIKAN ADMIN</b>\n\n{TG_SEP}\n\n"
             + _tg_field("👤", "User", f'<b>"{_tg_esc(uname)}"</b>')
             + _tg_field("🔧", "Perubahan", f"{arah.title()}: <b>{_fmt_idr(abs(delta))}</b>")
             + _tg_field("💳", "Metode", "Admin")
-            + f"\n{TG_SEP}\n\n\n"
+            + f"\n{TG_SEP}\n\n"
             f"✅ Saldo sekarang: <b>{_fmt_idr(bal.balance)}</b>\n"
             + _tg_time_footer()
         )
@@ -1420,11 +1420,11 @@ def _telegram_send_backup(trigger: str) -> tuple[bool, str]:
                         data={
                             "chat_id": chat_id,
                             "caption": (
-                                "✅ <b>BACKUP BERHASIL</b>\n\n" + TG_SEP + "\n\n\n"
+                                "✅ <b>BACKUP BERHASIL</b>\n\n" + TG_SEP + "\n\n"
                                 + _tg_field("🗄️", "Mode", "<b>Otomatis</b>" if trigger == "auto" else "<b>Manual</b>")
                                 + _tg_field("📎", "File", f"<code>{fname}</code>")
                                 + _tg_field("💾", "Ukuran", f"{size / 1048576:.2f} MB")
-                                + f"\n{TG_SEP}\n\n\n"
+                                + f"\n{TG_SEP}\n\n"
                                 "✅ Backup RohTembak (XL) sukses dibuat.\n"
                                 "💾 Simpan file backup ini dengan aman.\n"
                                 + _tg_time_footer()
@@ -3496,12 +3496,12 @@ def _pay_response(user, detail, pay_error, pay_success, method, family_key, pay_
         if _ab_read_state().get("notif_purchase"):
             pkg_name = (detail or {}).get("option_name") or FAMILY_LABELS.get(family_key, family_key)
             _notify(
-                f"🛒 <b>PEMBELIAN PAKET</b>\n\n{TG_SEP}\n\n\n"
+                f"🛒 <b>PEMBELIAN PAKET</b>\n\n{TG_SEP}\n\n"
                 + _tg_field("👤", "User", f'<b>"{_tg_esc(user.username)}"</b>')
                 + _tg_field("📦", "Paket", f"<b>{_tg_esc(pkg_name)}</b>")
                 + _tg_field("📱", "Nomor", _tg_esc(phone_number) if phone_number else "-")
                 + _tg_field("🏷️", "Biaya panel", f"<b>{_fmt_idr(fee)}</b>")
-                + f"\n{TG_SEP}\n\n\n"
+                + f"\n{TG_SEP}\n\n"
                 f"✅ Saldo sekarang: <b>{_fmt_idr(new_balance)}</b>\n"
                 + _tg_time_footer()
             )
@@ -3580,11 +3580,11 @@ def _credit_topup(db: Session, topup: TopupTransaction):
             u = db.query(User).filter(User.id == row.user_id).first()
             uname = u.username if u else f"id {row.user_id}"
             _notify(
-                f"💵 <b>TOPUP QRIS</b>\n\n{TG_SEP}\n\n\n"
+                f"💵 <b>TOPUP QRIS</b>\n\n{TG_SEP}\n\n"
                 + _tg_field("👤", "User", f'<b>"{_tg_esc(uname)}"</b>')
                 + _tg_field("💰", "Nominal", f"<b>{_fmt_idr(row.amount)}</b>")
                 + _tg_field("💳", "Metode", "QRIS")
-                + f"\n{TG_SEP}\n\n\n"
+                + f"\n{TG_SEP}\n\n"
                 f"✅ Saldo sekarang: <b>{_fmt_idr(bal.balance)}</b>\n"
                 + _tg_time_footer()
             )

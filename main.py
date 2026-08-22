@@ -1438,8 +1438,6 @@ def _telegram_send_backup(trigger: str) -> tuple[bool, str]:
                                 + _tg_field("File", fname)
                                 + _tg_field("Ukuran", f"{size / 1048576:.2f} MB")
                                 + "</blockquote>\n\n"
-                                "<blockquote>Backup RohTembak (XL) sukses dibuat.\n"
-                                "Simpan file backup ini dengan aman.</blockquote>\n\n"
                                 f"<blockquote>{_tg_time_footer()}</blockquote>"
                             ),
                         },

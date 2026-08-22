@@ -734,7 +734,7 @@ def admin_add_balance(
         _notify(
             f"💵 <b>TOPUP SALDO VIA ADMIN</b>\n\n{TG_SEP}\n\n"
             + _tg_field("👤", "User", f'<b>"{_tg_esc(uname)}"</b>')
-            + _tg_field("💰", "Nominal", f"<b>{_fmt_idr(amount)}</b>")
+            + _tg_field("💰", "Nominal", f"<b>+{amount} IDR</b>")
             + _tg_field("💳", "Metode", "Admin")
             + f"\n{TG_SEP}\n\n"
             f"✅ Saldo sekarang: <b>{_fmt_idr(bal.balance)}</b>\n"
@@ -869,7 +869,7 @@ def admin_decrease_balance(
         _notify(
             f"💰 <b>SALDO DIKURANGI ADMIN</b>\n\n{TG_SEP}\n\n"
             + _tg_field("👤", "User", f'<b>"{_tg_esc(uname)}"</b>')
-            + _tg_field("💰", "Nominal", f"<b>{_fmt_idr(amount)}</b>")
+            + _tg_field("💰", "Nominal", f"<b>-{amount} IDR</b>")
             + _tg_field("💳", "Metode", "Admin")
             + f"\n{TG_SEP}\n\n"
             f"✅ Saldo sekarang: <b>{_fmt_idr(bal.balance)}</b>\n"
@@ -911,11 +911,11 @@ def admin_set_balance(
     if delta != 0 and _ab_read_state().get("notif_topup_admin"):
         u = db.query(User).filter(User.id == user_id).first()
         uname = u.username if u else f"id {user_id}"
-        arah = "ditambah" if delta > 0 else "dikurangi"
+        sign = "+" if delta > 0 else "-"
         _notify(
             f"💰 <b>SALDO DISESUAIKAN ADMIN</b>\n\n{TG_SEP}\n\n"
             + _tg_field("👤", "User", f'<b>"{_tg_esc(uname)}"</b>')
-            + _tg_field("🔧", "Perubahan", f"{arah.title()}: <b>{_fmt_idr(abs(delta))}</b>")
+            + _tg_field("💰", "Nominal", f"<b>{sign}{abs(delta)} IDR</b>")
             + _tg_field("💳", "Metode", "Admin")
             + f"\n{TG_SEP}\n\n"
             f"✅ Saldo sekarang: <b>{_fmt_idr(bal.balance)}</b>\n"
@@ -3500,7 +3500,7 @@ def _pay_response(user, detail, pay_error, pay_success, method, family_key, pay_
                 + _tg_field("👤", "User", f'<b>"{_tg_esc(user.username)}"</b>')
                 + _tg_field("📦", "Paket", f"<b>{_tg_esc(pkg_name)}</b>")
                 + _tg_field("📱", "Nomor", _tg_esc(phone_number) if phone_number else "-")
-                + _tg_field("🏷️", "Biaya panel", f"<b>{_fmt_idr(fee)}</b>")
+                + _tg_field("🏷️", "Biaya panel", f"<b>-{fee} IDR</b>")
                 + f"\n{TG_SEP}\n\n"
                 f"✅ Saldo sekarang: <b>{_fmt_idr(new_balance)}</b>\n"
                 + _tg_time_footer()
@@ -3582,7 +3582,7 @@ def _credit_topup(db: Session, topup: TopupTransaction):
             _notify(
                 f"💵 <b>TOPUP QRIS</b>\n\n{TG_SEP}\n\n"
                 + _tg_field("👤", "User", f'<b>"{_tg_esc(uname)}"</b>')
-                + _tg_field("💰", "Nominal", f"<b>{_fmt_idr(row.amount)}</b>")
+                + _tg_field("💰", "Nominal", f"<b>+{row.amount} IDR</b>")
                 + _tg_field("💳", "Metode", "QRIS")
                 + f"\n{TG_SEP}\n\n"
                 f"✅ Saldo sekarang: <b>{_fmt_idr(bal.balance)}</b>\n"

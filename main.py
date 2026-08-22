@@ -3520,9 +3520,9 @@ def _pay_response(user, detail, pay_error, pay_success, method, family_key, pay_
                 + "🟢 " + _tg_bold("PEMBELIAN PAKET") + " 🛒\n\n"
                 "<blockquote>"
                 + _tg_field("User", f'<b>"{_tg_esc(user.username)}"</b>')
+                + _tg_field("Nomor", f"<b>{_tg_esc(phone_number) if phone_number else '-'}</b>")
+                + _tg_field("Biaya admin", f"<b>{fee} IDR</b>")
                 + _tg_field("Paket", f"<b>{_tg_esc(pkg_name)}</b>")
-                + _tg_field("Nomor", _tg_esc(phone_number) if phone_number else "-")
-                + _tg_field("Biaya panel", f"<b>-{fee} IDR</b>")
                 + "</blockquote>\n\n"
                 f"<blockquote>{_tg_field('Saldo sekarang', f'<b>{new_balance} IDR</b>')}</blockquote>\n\n"
                 f"<blockquote>{_tg_time_footer()}</blockquote>\n\n{TG_LINE}"

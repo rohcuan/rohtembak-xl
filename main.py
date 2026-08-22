@@ -1375,7 +1375,8 @@ def admin_autobackup_settings(
     chat_id: str = Form(None),
     token: str = Form(None),
     mode: str = Form(None),
-    time: str = Form(None),
+    time_h: str = Form(None),
+    time_m: str = Form(None),
     days: str = Form(None),
     hours: str = Form(None),
     admin_user: User = Depends(get_current_user),
@@ -1389,11 +1390,12 @@ def admin_autobackup_settings(
         if st["mode"] == "daily":
             hh, mm = 3, 0
             try:
-                parts = (time or "").strip().split(":")
-                h, m = int(parts[0]), int(parts[1])
-                if 0 <= h <= 23 and 0 <= m <= 59:
-                    hh, mm = h, m
-            except (ValueError, IndexError):
+                hh = min(max(int(time_h), 0), 23)
+            except (TypeError, ValueError):
+                pass
+            try:
+                mm = min(max(int(time_m), 0), 59)
+            except (TypeError, ValueError):
                 pass
             st["time"] = f"{hh:02d}:{mm:02d}"
         elif st["mode"] == "days":

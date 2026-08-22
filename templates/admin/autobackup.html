@@ -83,8 +83,17 @@ function abRun() {
             </select>
         </div>
         <div class="form-group" id="ab-row-time">
-            <label for="ab-time" style="font-size:.82rem;font-weight:600;color:#374151;">Jam backup (WIB)</label>
-            <input type="time" name="time" id="ab-time" class="form-control" value="{{ st.time }}" style="margin-top:6px;">
+            <label style="font-size:.82rem;font-weight:600;color:#374151;">Jam backup (WIB)</label>
+            <div style="display:flex;gap:8px;margin-top:6px;">
+                <select name="time_h" class="form-control">
+                    {% set th = st.time.split(':')[0] %}
+                    {% for h in range(24) %}{% set hv = '%02d' % h %}<option value="{{ hv }}" {% if th == hv %}selected{% endif %}>{{ hv }}</option>{% endfor %}
+                </select>
+                <select name="time_m" class="form-control">
+                    {% set tm = st.time.split(':')[1] %}
+                    {% for m in range(60) %}{% set mv = '%02d' % m %}<option value="{{ mv }}" {% if tm == mv %}selected{% endif %}>{{ mv }}</option>{% endfor %}
+                </select>
+            </div>
         </div>
         <div class="form-group" id="ab-row-days" style="display:none;">
             <label for="ab-days" style="font-size:.82rem;font-weight:600;color:#374151;">Interval hari (1&ndash;30)</label>

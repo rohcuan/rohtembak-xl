@@ -733,14 +733,14 @@ def admin_add_balance(
         uname = u.username if u else f"id {user_id}"
         _notify(
             TG_LINE + "\n\n"
-            + "💵 <b>TOPUP SALDO VIA ADMIN</b>\n\n"
+            + "💵 " + _tg_bold("TOPUP SALDO VIA ADMIN") + "\n\n"
             "<blockquote>"
             + _tg_field("User", f'<b>"{_tg_esc(uname)}"</b>')
             + _tg_field("Nominal", f"<b>+{amount} IDR</b>")
             + _tg_field("Metode", "Admin")
             + "</blockquote>\n\n"
             f"<blockquote>{_tg_field('Saldo sekarang', f'<b>{bal.balance} IDR</b>')}</blockquote>\n\n"
-            f"{_tg_time_footer()}\n\n{TG_LINE}"
+            f"<blockquote>{_tg_time_footer()}</blockquote>\n\n{TG_LINE}"
         )
     return RedirectResponse(url="/admin/users", status_code=303)
 
@@ -870,14 +870,14 @@ def admin_decrease_balance(
         uname = u.username if u else f"id {user_id}"
         _notify(
             TG_LINE + "\n\n"
-            + "💰 <b>SALDO DIKURANGI ADMIN</b>\n\n"
+            + "💰 " + _tg_bold("SALDO DIKURANGI ADMIN") + "\n\n"
             "<blockquote>"
             + _tg_field("User", f'<b>"{_tg_esc(uname)}"</b>')
             + _tg_field("Nominal", f"<b>-{amount} IDR</b>")
             + _tg_field("Metode", "Admin")
             + "</blockquote>\n\n"
             f"<blockquote>{_tg_field('Saldo sekarang', f'<b>{bal.balance} IDR</b>')}</blockquote>\n\n"
-            f"{_tg_time_footer()}\n\n{TG_LINE}"
+            f"<blockquote>{_tg_time_footer()}</blockquote>\n\n{TG_LINE}"
         )
     return RedirectResponse(url="/admin/users", status_code=303)
 
@@ -918,14 +918,14 @@ def admin_set_balance(
         sign = "+" if delta > 0 else "-"
         _notify(
             TG_LINE + "\n\n"
-            + "💰 <b>SALDO DISESUAIKAN ADMIN</b>\n\n"
+            + "💰 " + _tg_bold("SALDO DISESUAIKAN ADMIN") + "\n\n"
             "<blockquote>"
             + _tg_field("User", f'<b>"{_tg_esc(uname)}"</b>')
             + _tg_field("Nominal", f"<b>{sign}{abs(delta)} IDR</b>")
             + _tg_field("Metode", "Admin")
             + "</blockquote>\n\n"
             f"<blockquote>{_tg_field('Saldo sekarang', f'<b>{bal.balance} IDR</b>')}</blockquote>\n\n"
-            f"{_tg_time_footer()}\n\n{TG_LINE}"
+            f"<blockquote>{_tg_time_footer()}</blockquote>\n\n{TG_LINE}"
         )
     return RedirectResponse(url="/admin/users", status_code=303)
 
@@ -1354,6 +1354,14 @@ TG_LINE = "──────────"
 TG_LW = 14  # lebar kolom label agar titik dua semua baris sejajar vertikal
 
 
+def _tg_bold(s: str) -> str:
+    """Ubah huruf/digit ASCII jadi Unicode Bold Sans-Serif (judul lebih menonjol)."""
+    caps = {chr(ord("A") + i): chr(0x1D5D4 + i) for i in range(26)}
+    small = {chr(ord("a") + i): chr(0x1D5EE + i) for i in range(26)}
+    digs = {chr(ord("0") + i): chr(0x1D7EC + i) for i in range(10)}
+    return "".join(caps.get(c, small.get(c, digs.get(c, c))) for c in s)
+
+
 def _tg_time_footer() -> str:
     """Footer Jam/Tanggal (WIB) untuk semua pesan notif Telegram."""
     now = datetime.now(WIB)
@@ -1431,7 +1439,7 @@ def _telegram_send_backup(trigger: str) -> tuple[bool, str]:
                             "chat_id": chat_id,
                             "caption": (
                                 TG_LINE + "\n\n"
-                                + "✅ <b>BACKUP BERHASIL</b>\n\n"
+                                + "✅ " + _tg_bold("BACKUP BERHASIL") + "\n\n"
                                 "<blockquote>"
                                 + _tg_field("Mode", "<b>Otomatis</b>" if trigger == "auto" else "<b>Manual</b>")
                                 + _tg_field("File", f"<code>{fname}</code>")
@@ -1439,7 +1447,7 @@ def _telegram_send_backup(trigger: str) -> tuple[bool, str]:
                                 + "</blockquote>\n\n"
                                 "<blockquote>Backup RohTembak (XL) sukses dibuat.\n"
                                 "Simpan file backup ini dengan aman.</blockquote>\n\n"
-                                f"{_tg_time_footer()}\n\n{TG_LINE}"
+                                f"<blockquote>{_tg_time_footer()}</blockquote>\n\n{TG_LINE}"
                             ),
                         },
                         files={"document": (fname, f)},
@@ -3509,7 +3517,7 @@ def _pay_response(user, detail, pay_error, pay_success, method, family_key, pay_
             pkg_name = (detail or {}).get("option_name") or FAMILY_LABELS.get(family_key, family_key)
             _notify(
                 TG_LINE + "\n\n"
-                + "🛒 <b>PEMBELIAN PAKET</b>\n\n"
+                + "🛒 " + _tg_bold("PEMBELIAN PAKET") + "\n\n"
                 "<blockquote>"
                 + _tg_field("User", f'<b>"{_tg_esc(user.username)}"</b>')
                 + _tg_field("Paket", f"<b>{_tg_esc(pkg_name)}</b>")
@@ -3517,7 +3525,7 @@ def _pay_response(user, detail, pay_error, pay_success, method, family_key, pay_
                 + _tg_field("Biaya panel", f"<b>-{fee} IDR</b>")
                 + "</blockquote>\n\n"
                 f"<blockquote>{_tg_field('Saldo sekarang', f'<b>{new_balance} IDR</b>')}</blockquote>\n\n"
-                f"{_tg_time_footer()}\n\n{TG_LINE}"
+                f"<blockquote>{_tg_time_footer()}</blockquote>\n\n{TG_LINE}"
             )
         resp = {"ok": True, "message": pay_success, "deducted": fee, "new_balance": new_balance}
         qris_b64 = (pay_extra or {}).get("qris_b64")
@@ -3595,14 +3603,14 @@ def _credit_topup(db: Session, topup: TopupTransaction):
             uname = u.username if u else f"id {row.user_id}"
             _notify(
                 TG_LINE + "\n\n"
-                + "💵 <b>TOPUP QRIS</b>\n\n"
+                + "💵 " + _tg_bold("TOPUP QRIS") + "\n\n"
                 "<blockquote>"
                 + _tg_field("User", f'<b>"{_tg_esc(uname)}"</b>')
                 + _tg_field("Nominal", f"<b>+{row.amount} IDR</b>")
                 + _tg_field("Metode", "QRIS")
                 + "</blockquote>\n\n"
                 f"<blockquote>{_tg_field('Saldo sekarang', f'<b>{bal.balance} IDR</b>')}</blockquote>\n\n"
-                f"{_tg_time_footer()}\n\n{TG_LINE}"
+                f"<blockquote>{_tg_time_footer()}</blockquote>\n\n{TG_LINE}"
             )
         return bal.balance
 

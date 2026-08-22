@@ -738,6 +738,7 @@ def admin_add_balance(
             + _tg_field("User", _tg_esc(uname))
             + _tg_field("Nominal", f"+{amount} IDR")
             + _tg_field("Metode", "Admin")
+            + "</blockquote>\n\n"
             f"<blockquote>{_tg_field('Saldo', f'{bal.balance} IDR')}</blockquote>\n\n"
             f"<blockquote>{_tg_time_footer()}</blockquote>\n\n{TG_LINE}"
         )
@@ -874,6 +875,7 @@ def admin_decrease_balance(
             + _tg_field("User", _tg_esc(uname))
             + _tg_field("Nominal", f"-{amount} IDR")
             + _tg_field("Metode", "Admin")
+            + "</blockquote>\n\n"
             f"<blockquote>{_tg_field('Saldo', f'{bal.balance} IDR')}</blockquote>\n\n"
             f"<blockquote>{_tg_time_footer()}</blockquote>\n\n{TG_LINE}"
         )
@@ -921,6 +923,7 @@ def admin_set_balance(
             + _tg_field("User", _tg_esc(uname))
             + _tg_field("Nominal", f"{sign}{abs(delta)} IDR")
             + _tg_field("Metode", "Admin")
+            + "</blockquote>\n\n"
             f"<blockquote>{_tg_field('Saldo', f'{bal.balance} IDR')}</blockquote>\n\n"
             f"<blockquote>{_tg_time_footer()}</blockquote>\n\n{TG_LINE}"
         )
@@ -3519,6 +3522,7 @@ def _pay_response(user, detail, pay_error, pay_success, method, family_key, pay_
                 + _tg_field("Nomor", _tg_esc(phone_number) if phone_number else "-")
                 + _tg_field("Biaya admin", f"{fee} IDR")
                 + _tg_field("Paket", _tg_esc(pkg_name))
+                + "</blockquote>\n\n"
                 f"<blockquote>{_tg_field('Saldo', f'{new_balance} IDR')}</blockquote>\n\n"
                 f"<blockquote>{_tg_time_footer()}</blockquote>\n\n{TG_LINE}"
             )
@@ -3603,6 +3607,7 @@ def _credit_topup(db: Session, topup: TopupTransaction):
                 + _tg_field("User", _tg_esc(uname))
                 + _tg_field("Nominal", f"+{row.amount} IDR")
                 + _tg_field("Metode", "QRIS")
+                + "</blockquote>\n\n"
                 f"<blockquote>{_tg_field('Saldo', f'{bal.balance} IDR')}</blockquote>\n\n"
                 f"<blockquote>{_tg_time_footer()}</blockquote>\n\n{TG_LINE}"
             )

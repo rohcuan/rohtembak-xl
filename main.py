@@ -1359,7 +1359,7 @@ def admin_autobackup_page(request: Request, admin_user: User = Depends(get_curre
     st = _ab_read_state()
     configured = bool((st.get("chat_id") or "").strip() and (st.get("token") or "").strip())
     nts = int(st.get("next_run_ts") or 0)
-    next_run_label = datetime.fromtimestamp(nts, tz=WIB).strftime("%d %B %Y %H:%M WIB") if nts else ""
+    next_run_label = datetime.fromtimestamp(nts, tz=WIB).strftime("%d %B %Y %H:%M") if nts else ""
     return render("admin/autobackup.html", context={
         "request": request, "user": admin_user,
         "st": st, "configured": configured,

@@ -732,8 +732,8 @@ def admin_add_balance(
         uname = u.username if u else f"id {user_id}"
         _notify(
             _tg_time_header() +
-            "👛 Topup Saldo via Admin\n"
-            f"Saldo user {uname} ditambah {_fmt_idr(amount)} IDR oleh admin.\n"
+            "💵 Topup Saldo via Admin\n"
+            f'Saldo user "{uname}" ditambah {_fmt_idr(amount)} IDR oleh admin.\n'
             f"Saldo sekarang: {_fmt_idr(bal.balance)} IDR"
         )
     return RedirectResponse(url="/admin/users", status_code=303)
@@ -864,8 +864,8 @@ def admin_decrease_balance(
         uname = u.username if u else f"id {user_id}"
         _notify(
             _tg_time_header() +
-            "👛 Saldo Dikurangi Admin\n"
-            f"Saldo user {uname} dikurangi {_fmt_idr(amount)} IDR oleh admin.\n"
+            "💰 Saldo Dikurangi Admin\n"
+            f'Saldo user "{uname}" dikurangi {_fmt_idr(amount)} IDR oleh admin.\n'
             f"Saldo sekarang: {_fmt_idr(bal.balance)} IDR"
         )
     return RedirectResponse(url="/admin/users", status_code=303)
@@ -907,8 +907,8 @@ def admin_set_balance(
         arah = "ditambah" if delta > 0 else "dikurangi"
         _notify(
             _tg_time_header() +
-            "👛 Saldo Disesuaikan Admin\n"
-            f"Saldo user {uname} {arah} {_fmt_idr(abs(delta))} IDR oleh admin.\n"
+            "💰 Saldo Disesuaikan Admin\n"
+            f'Saldo user "{uname}" {arah} {_fmt_idr(abs(delta))} IDR oleh admin.\n'
             f"Saldo sekarang: {_fmt_idr(bal.balance)} IDR"
         )
     return RedirectResponse(url="/admin/users", status_code=303)
@@ -3472,7 +3472,7 @@ def _pay_response(user, detail, pay_error, pay_success, method, family_key, pay_
             _notify(
                 _tg_time_header() +
                 "🛒 Pembelian Paket\n"
-                f"user {user.username} membeli paket {pkg_name}, "
+                f'User "{user.username}" membeli paket {pkg_name}, '
                 f"untuk nomor {phone_number or '-'}.\n"
                 f"Biaya konsumsi panel: {_fmt_idr(fee)} IDR · Saldo sekarang: {_fmt_idr(new_balance)} IDR"
             )
@@ -3552,8 +3552,8 @@ def _credit_topup(db: Session, topup: TopupTransaction):
             uname = u.username if u else f"id {row.user_id}"
             _notify(
                 _tg_time_header() +
-                "💰 Topup QRIS\n"
-                f"user {uname} topup saldo {_fmt_idr(row.amount)} IDR via QRIS.\n"
+                "💵 Topup QRIS\n"
+                f'User "{uname}" topup saldo {_fmt_idr(row.amount)} IDR via QRIS.\n'
                 f"Saldo sekarang: {_fmt_idr(bal.balance)} IDR"
             )
         return bal.balance

@@ -1365,12 +1365,12 @@ def _tg_bold(s: str) -> str:
 def _tg_time_footer() -> str:
     """Footer Jam/Tanggal (WIB) untuk semua pesan notif Telegram."""
     now = datetime.now(WIB)
-    return f"<b><code>{'Jam':<{TG_LW}}:</code></b> {now:%H:%M} WIB\n<b><code>{'Tanggal':<{TG_LW}}:</code></b> {now:%d/%m/%Y}"
+    return f"<b>{'Jam':<{TG_LW}}:</b> {now:%H:%M} WIB\n<b>{'Tanggal':<{TG_LW}}:</b> {now:%d/%m/%Y}"
 
 
 def _tg_field(label: str, value: str) -> str:
     # label bold + monospace agar kolom titik dua sejajar; value teks biasa.
-    return f"<b><code>{label:<{TG_LW}}:</code></b> {value}\n"
+    return f"<b>{label:<{TG_LW}}:</b> {value}\n"
 
 
 def _autobackup_zip_bytes() -> bytes:

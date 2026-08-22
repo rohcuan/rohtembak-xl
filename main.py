@@ -1392,9 +1392,6 @@ def admin_autobackup_page(request: Request, admin_user: User = Depends(get_curre
 @app.post("/admin/autobackup/settings")
 def admin_autobackup_settings(
     request: Request,
-    form_type: str = Form(""),
-    chat_id: str = Form(None),
-    token: str = Form(None),
     mode: str = Form(None),
     time_h: str = Form(None),
     time_m: str = Form(None),
@@ -1406,35 +1403,58 @@ def admin_autobackup_settings(
     if admin_user.role != "admin":
         raise HTTPException(status_code=403, detail="Forbidden")
     st = _ab_read_state()
-    if form_type == "schedule":
-        st["mode"] = mode if mode in ("daily", "weekly", "monthly") else "daily"
-        hh, mm = 3, 0
-        try:
-            hh = min(max(int(time_h), 0), 23)
-        except (TypeError, ValueError):
-            pass
-        try:
-            mm = min(max(int(time_m), 0), 59)
-        except (TypeError, ValueError):
-            pass
-        st["time"] = f"{hh:02d}:{mm:02d}"
-        try:
-            st["weekday"] = min(max(int(weekday), 0), 6)
-        except (TypeError, ValueError):
-            st["weekday"] = 0
-        try:
-            st["monthday"] = min(max(int(monthday), 1), 30)
-        except (TypeError, ValueError):
-            st["monthday"] = 1
-        _ab_set_next_run(st)
-        _ab_write_state(st)
-        return RedirectResponse("/admin/autobackup?saved=1", status_code=303)
-    if chat_id is not None:
-        st["chat_id"] = chat_id.strip()
-    if token is not None:
-        st["token"] = token.strip()
+    st["mode"] = mode if mode in ("daily", "weekly", "monthly") else "daily"
+    hh, mm = 3, 0
+    try:
+        hh = min(max(int(time_h), 0), 23)
+    except (TypeError, ValueError):
+        pass
+    try:
+        mm = min(max(int(time_m), 0), 59)
+    except (TypeError, ValueError):
+        pass
+    st["time"] = f"{hh:02d}:{mm:02d}"
+    try:
+        st["weekday"] = min(max(int(weekday), 0), 6)
+    except (TypeError, ValueError):
+        st["weekday"] = 0
+    try:
+        st["monthday"] = min(max(int(monthday), 1), 30)
+    except (TypeError, ValueError):
+        st["monthday"] = 1
+    _ab_set_next_run(st)
     _ab_write_state(st)
     return RedirectResponse("/admin/autobackup?saved=1", status_code=303)
+
+
+@app.get("/admin/bottele", response_class=HTMLResponse)
+def admin_bottele_page(request: Request, admin_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if admin_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden")
+    st = _ab_read_state()
+    configured = bool((st.get("chat_id") or "").strip() and (st.get("token") or "").strip())
+    return render("admin/bottele.html", context={
+        "request": request, "user": admin_user,
+        "st": st, "configured": configured,
+        "saved": request.query_params.get("saved") == "1",
+    })
+
+
+@app.post("/admin/bottele/settings")
+def admin_bottele_settings(
+    request: Request,
+    chat_id: str = Form(""),
+    token: str = Form(""),
+    admin_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if admin_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden")
+    st = _ab_read_state()
+    st["chat_id"] = chat_id.strip()
+    st["token"] = token.strip()
+    _ab_write_state(st)
+    return RedirectResponse("/admin/bottele?saved=1", status_code=303)
 
 
 @app.post("/admin/autobackup/run")

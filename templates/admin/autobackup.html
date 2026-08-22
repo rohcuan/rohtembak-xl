@@ -8,43 +8,13 @@
 }
 .cfg-status.on { background: #d1fae5; color: #065f46; }
 .cfg-status.off { background: #f3f4f6; color: #6b7280; }
-.cfg-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
-.test-result {
-  display: none; margin-top: 14px; padding: 10px 14px; border-radius: 8px;
-  font-size: .84rem; line-height: 1.5; word-break: break-word;
-}
-.test-result.ok { display: block; background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46; }
-.test-result.err { display: block; background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
 .info-box {
   margin-top: 18px; padding: 14px 16px; border-radius: 10px;
   background: #f9fafb; border: 1px solid #e5e7eb;
   font-size: .78rem; color: #6b7280; line-height: 1.7;
 }
 .info-box strong { color: #374151; }
-.info-box code { background: #eef2f7; padding: 1px 5px; border-radius: 4px; font-size: .74rem; }
 </style>
-<script>
-function abModeChange() {
-  var m = document.getElementById('ab-mode').value;
-  document.getElementById('ab-row-weekday').style.display = (m === 'weekly') ? '' : 'none';
-  document.getElementById('ab-row-monthday').style.display = (m === 'monthly') ? '' : 'none';
-}
-function abRun() {
-  var btn = document.getElementById('ab-run-btn'), out = document.getElementById('ab-output');
-  var orig = btn.textContent;
-  btn.disabled = true; btn.textContent = 'Mengirim...';
-  out.className = 'test-result'; out.style.display = 'block';
-  out.textContent = 'Membuat backup & mengirim ke Telegram...';
-  fetch('/admin/autobackup/run', { method: 'POST', credentials: 'same-origin' })
-    .then(function(r) { return r.json(); })
-    .then(function(res) {
-      out.className = 'test-result ' + (res.ok ? 'ok' : 'err');
-      out.textContent = (res.ok ? '[OK] ' : '[GAGAL] ') + (res.output || '');
-    })
-    .catch(function(e) { out.className = 'test-result err'; out.textContent = 'Terjadi kesalahan: ' + e.message; })
-    .finally(function() { btn.disabled = false; btn.textContent = orig; });
-}
-</script>
 {% endblock %}
 {% block content %}
 
@@ -53,7 +23,7 @@ function abRun() {
         <div class="page-title">Atur Auto Backup</div>
         <div class="page-subtitle">Kirim backup zip otomatis ke bot Telegram · format identik dengan Backup (ZIP), bisa di-restore lewat menu Restore Backup.</div>
         <span id="ab-status" class="cfg-status {% if configured %}on{% else %}off{% endif %}" style="margin-top:10px;">
-            {% if configured %}&#9679; Auto backup aktif{% else %}&#9675; Belum terkonfigurasi{% endif %}
+            {% if configured %}&#9679; Auto backup aktif{% else %}&#9675; Belum terkonfigurasi &mdash; atur bot di <a href="/admin/bottele" style="color:#4361ee;">Atur Bot Tele</a>{% endif %}
         </span>
     </div>
 </div>
@@ -72,7 +42,6 @@ function abRun() {
     </div>
     {% endif %}
     <form method="POST" action="/admin/autobackup/settings">
-        <input type="hidden" name="form_type" value="schedule">
         <div class="form-group">
             <label for="ab-mode" style="font-size:.82rem;font-weight:600;color:#374151;">Mode</label>
             <select name="mode" id="ab-mode" class="form-control" onchange="abModeChange()" style="margin-top:6px;">
@@ -108,34 +77,8 @@ function abRun() {
                 </select>
             </div>
         </div>
-        <div class="cfg-actions">
-            <button type="submit" class="btn btn-primary">Simpan Jadwal</button>
-        </div>
+        <button type="submit" class="btn btn-primary" style="margin-top:16px;">Simpan Jadwal</button>
     </form>
-</div>
-
-<div class="card" style="max-width:640px;">
-    <h2 style="font-size:16px;margin-bottom:12px;">Pengaturan Bot Telegram</h2>
-    <form method="POST" action="/admin/autobackup/settings">
-        <input type="hidden" name="form_type" value="credentials">
-        <div class="form-group">
-            <label for="ab-chat-id" style="font-size:.82rem;font-weight:600;color:#374151;">Chat ID Telegram</label>
-            <input type="text" name="chat_id" id="ab-chat-id" class="form-control" placeholder="mis. 123456789"
-                   value="{{ st.chat_id }}" autocomplete="off" style="margin-top:6px;" required>
-        </div>
-
-        <div class="form-group">
-            <label for="ab-token" style="font-size:.82rem;font-weight:600;color:#374151;">API Key Bot (Token dari @BotFather)</label>
-            <input type="text" name="token" id="ab-token" class="form-control" placeholder="mis. 1234567890:AAEhBOweik6ad9r_QXMENQjcrGbqCr5G-p0"
-                   value="{{ st.token }}" autocomplete="off" style="margin-top:6px;" required>
-        </div>
-
-        <div class="cfg-actions">
-            <button type="submit" class="btn btn-primary">Simpan Pengaturan</button>
-            <button type="button" class="btn btn-outline" id="ab-run-btn" onclick="abRun()">Backup Sekarang</button>
-        </div>
-    </form>
-    <div id="ab-output" class="test-result"></div>
 </div>
 
 {% if st.last_run_at %}
@@ -149,18 +92,5 @@ function abRun() {
     </div>
 </div>
 {% endif %}
-
-<div class="card" style="max-width:640px;">
-    <h2 style="font-size:16px;margin-bottom:12px;">Cara Mendapatkan Chat ID &amp; API Key</h2>
-    <ol style="margin:0;padding-left:18px;font-size:.84rem;color:#555;line-height:1.9;">
-        <li>Buka Telegram, cari <strong>@BotFather</strong>, kirim <code>/newbot</code> dan ikuti petunjuknya sampai Anda menerima <strong>token API</strong> (formatnya seperti <code>1234567890:AAE...</code>). Itu yang diisi di kolom <em>API Key Bot</em>.</li>
-        <li>Kirim satu pesan apa saja (misal <code>halo</code>) ke bot yang barusan Anda buat &mdash; bot tidak bisa mengirim pesan duluan sebelum pernah di-chat.</li>
-        <li>Ambil <strong>Chat ID</strong> lewat bot <strong>@userinfobot</strong>: buka chat-nya dan dia langsung membalas ID Anda (angka panjang, mis. <code>123456789</code>). Isi angka itu di kolom <em>Chat ID</em>.</li>
-        <li>Klik <strong>Simpan Pengaturan</strong>, lalu uji dengan tombol <strong>Backup Sekarang</strong>. Kalau file zip muncul di chat Telegram Anda, setup selesai.</li>
-    </ol>
-    <div class="info-box" style="margin-bottom:0;">
-        <strong>Catatan:</strong> batas ukuran kirim via Bot API adalah 50 MB per file. Backup berisi data sensitif &mdash; jangan sebarkan token bot &amp; chat ID.
-    </div>
-</div>
 
 {% endblock %}

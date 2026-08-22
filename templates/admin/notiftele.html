@@ -14,9 +14,10 @@
   margin-bottom: 10px; cursor: pointer; transition: background .15s, border-color .15s;
 }
 .notif-item:hover { background: #f9fafb; }
-.notif-item input[type="checkbox"] { width: 18px; height: 18px; margin-top: 1px; accent-color: #4361ee; flex-shrink: 0; }
+.notif-item input[type="checkbox"] { width: 18px; height: 18px; margin-top: 2px; accent-color: #4361ee; flex-shrink: 0; }
+.notif-item .txt { display: flex; flex-direction: column; gap: 3px; }
 .notif-item .t { font-size: .88rem; font-weight: 600; color: #374151; }
-.notif-item .d { font-size: .78rem; color: #6b7280; margin-top: 2px; line-height: 1.5; }
+.notif-item .d { font-size: .78rem; color: #6b7280; line-height: 1.5; }
 </style>
 {% endblock %}
 {% block content %}
@@ -42,7 +43,7 @@
     <form method="POST" action="/admin/notiftele/settings">
         <label class="notif-item">
             <input type="checkbox" name="topup_qris" {% if st.notif_topup_qris %}checked{% endif %}>
-            <span>
+            <span class="txt">
                 <span class="t">Terima notif topup saldo via QRIS</span>
                 <span class="d">Setiap ada user yang menyelesaikan pembayaran topup saldo lewat QRIS.</span>
             </span>
@@ -50,7 +51,7 @@
 
         <label class="notif-item">
             <input type="checkbox" name="topup_admin" {% if st.notif_topup_admin %}checked{% endif %}>
-            <span>
+            <span class="txt">
                 <span class="t">Terima notif topup saldo via Admin</span>
                 <span class="d">Setiap saldo panel diisi / diubah lewat dashboard admin (Topup, Set Saldo, Kurangi Saldo).</span>
             </span>
@@ -58,7 +59,7 @@
 
         <label class="notif-item">
             <input type="checkbox" name="purchase" {% if st.notif_purchase %}checked{% endif %}>
-            <span>
+            <span class="txt">
                 <span class="t">Terima notif pembelian paket</span>
                 <span class="d">Format: user xxxx membeli paket xxxx, untuk nomor xxxx.</span>
             </span>

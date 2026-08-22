@@ -1357,11 +1357,13 @@ TG_LW = 14  # lebar kolom label agar titik dua semua baris sejajar vertikal
 def _tg_time_footer() -> str:
     """Footer Jam/Tanggal (WIB) untuk semua pesan notif Telegram."""
     now = datetime.now(WIB)
-    return f"{'Jam':<{TG_LW}}: {now:%H:%M} WIB\n{'Tanggal':<{TG_LW}}: {now:%d/%m/%Y}"
+    return f"<code>{'Jam':<{TG_LW}}:</code> {now:%H:%M} WIB\n<code>{'Tanggal':<{TG_LW}}:</code> {now:%d/%m/%Y}"
 
 
 def _tg_field(label: str, value: str) -> str:
-    return f"{label:<{TG_LW}}: {value}\n"
+    # label+titik dua dalam <code> (monospace) agar kolom titik dua selalu sejajar
+    # di font proportional Telegram; value bebas dipaka <b>/<code>.
+    return f"<code>{label:<{TG_LW}}:</code> {value}\n"
 
 
 def _autobackup_zip_bytes() -> bytes:

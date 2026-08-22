@@ -24,6 +24,12 @@
 .info-box code { background: #eef2f7; padding: 1px 5px; border-radius: 4px; font-size: .74rem; }
 </style>
 <script>
+function abModeChange() {
+  var m = document.getElementById('ab-mode').value;
+  document.getElementById('ab-row-time').style.display = (m === 'daily') ? '' : 'none';
+  document.getElementById('ab-row-days').style.display = (m === 'days') ? '' : 'none';
+  document.getElementById('ab-row-hours').style.display = (m === 'hours') ? '' : 'none';
+}
 function abRun() {
   var btn = document.getElementById('ab-run-btn'), out = document.getElementById('ab-output');
   var orig = btn.textContent;
@@ -46,7 +52,7 @@ function abRun() {
 <div class="header-section">
     <div>
         <div class="page-title">Atur Auto Backup</div>
-        <div class="page-subtitle">Kirim backup zip otomatis ke bot Telegram, setiap hari pukul {{ ab_time }} WIB.</div>
+        <div class="page-subtitle">Kirim backup zip otomatis ke bot Telegram · format identik dengan Backup (ZIP), bisa di-restore lewat menu Restore Backup.</div>
         <span id="ab-status" class="cfg-status {% if configured %}on{% else %}off{% endif %}" style="margin-top:10px;">
             {% if configured %}&#9679; Auto backup aktif{% else %}&#9675; Belum terkonfigurasi{% endif %}
         </span>
@@ -60,7 +66,44 @@ function abRun() {
 {% endif %}
 
 <div class="card" style="max-width:640px;">
+    <h2 style="font-size:16px;margin-bottom:12px;">Waktu Backup</h2>
+    {% if next_run_label %}
+    <div class="info-box" style="margin-top:0;margin-bottom:14px;">
+        <strong>Jadwal berikutnya:</strong> {{ next_run_label }} WIB
+    </div>
+    {% endif %}
     <form method="POST" action="/admin/autobackup/settings">
+        <input type="hidden" name="form_type" value="schedule">
+        <div class="form-group">
+            <label for="ab-mode" style="font-size:.82rem;font-weight:600;color:#374151;">Mode</label>
+            <select name="mode" id="ab-mode" class="form-control" onchange="abModeChange()" style="margin-top:6px;">
+                <option value="daily" {% if st.mode == 'daily' %}selected{% endif %}>Harian (sekali sehari)</option>
+                <option value="days" {% if st.mode == 'days' %}selected{% endif %}>Setiap N hari</option>
+                <option value="hours" {% if st.mode == 'hours' %}selected{% endif %}>Setiap N jam</option>
+            </select>
+        </div>
+        <div class="form-group" id="ab-row-time">
+            <label for="ab-time" style="font-size:.82rem;font-weight:600;color:#374151;">Jam backup (WIB)</label>
+            <input type="time" name="time" id="ab-time" class="form-control" value="{{ st.time }}" style="margin-top:6px;">
+        </div>
+        <div class="form-group" id="ab-row-days" style="display:none;">
+            <label for="ab-days" style="font-size:.82rem;font-weight:600;color:#374151;">Interval hari (1&ndash;30)</label>
+            <input type="number" name="days" id="ab-days" class="form-control" min="1" max="30" value="{{ st.days }}" style="margin-top:6px;">
+        </div>
+        <div class="form-group" id="ab-row-hours" style="display:none;">
+            <label for="ab-hours" style="font-size:.82rem;font-weight:600;color:#374151;">Interval jam (1&ndash;24)</label>
+            <input type="number" name="hours" id="ab-hours" class="form-control" min="1" max="24" value="{{ st.hours }}" style="margin-top:6px;">
+        </div>
+        <div class="cfg-actions">
+            <button type="submit" class="btn btn-primary">Simpan Jadwal</button>
+        </div>
+    </form>
+</div>
+
+<div class="card" style="max-width:640px;">
+    <h2 style="font-size:16px;margin-bottom:12px;">Pengaturan Bot Telegram</h2>
+    <form method="POST" action="/admin/autobackup/settings">
+        <input type="hidden" name="form_type" value="credentials">
         <div class="form-group">
             <label for="ab-chat-id" style="font-size:.82rem;font-weight:600;color:#374151;">Chat ID Telegram</label>
             <input type="text" name="chat_id" id="ab-chat-id" class="form-control" placeholder="mis. 123456789"
@@ -74,30 +117,35 @@ function abRun() {
         </div>
 
         <div class="cfg-actions">
-            <button type="submit" class="btn btn-primary">Simpan</button>
+            <button type="submit" class="btn btn-primary">Simpan Pengaturan</button>
             <button type="button" class="btn btn-outline" id="ab-run-btn" onclick="abRun()">Backup Sekarang</button>
         </div>
     </form>
-
     <div id="ab-output" class="test-result"></div>
+</div>
 
-    {% if st.last_run_at %}
-    <div class="info-box">
-        <strong>Backup terakhir:</strong> {{ st.last_run_at }} &mdash;
-        {% if st.last_run_ok %}<strong style="color:#065f46;">Sukses</strong>{% elif st.last_run_ok == False %}<strong style="color:#b91c1c;">Gagal</strong>{% else %}&mdash;{% endif %}
+{% if st.last_run_at %}
+<div class="card" style="max-width:640px;">
+    <h2 style="font-size:16px;margin-bottom:12px;">Backup Terakhir</h2>
+    <div class="info-box" style="margin-top:0;">
+        <strong>Waktu:</strong> {{ st.last_run_at }}<br>
+        <strong>Hasil:</strong>
+        {% if st.last_run_ok %}<span style="color:#047857;font-weight:600;">Sukses</span>{% elif st.last_run_ok == False %}<span style="color:#b91c1c;font-weight:600;">Gagal</span>{% else %}&mdash;{% endif %}
         {% if st.last_output %}<br>{{ st.last_output }}{% endif %}
     </div>
-    {% endif %}
+</div>
+{% endif %}
 
-    <div class="info-box">
-        <div style="font-weight:700;margin-bottom:6px;">Cara mendapatkan Chat ID &amp; API Key</div>
-        <ol style="margin:0;padding-left:18px;">
-            <li>Buka Telegram, cari <strong>@BotFather</strong>, kirim <code>/newbot</code> dan ikuti petunjuknya sampai Anda menerima <strong>token API</strong> (formatnya seperti <code>1234567890:AAE...</code>). Itu yang diisi di kolom <em>API Key Bot</em>.</li>
-            <li>Kirim satu pesan apa saja (misal <code>halo</code>) ke bot yang barusan Anda buat &mdash; bot tidak bisa mengirim pesan duluan sebelum pernah di-chat.</li>
-            <li>Ambil <strong>Chat ID</strong> lewat bot <strong>@userinfobot</strong>: buka chat-nya dan dia langsung membalas ID Anda (angka panjang, mis. <code>123456789</code>). Isi angka itu di kolom <em>Chat ID</em>.</li>
-            <li>Klik <strong>Simpan</strong>, lalu uji dengan tombol <strong>Backup Sekarang</strong>. Kalau file zip muncul di chat Telegram Anda, setup selesai.</li>
-        </ol>
-        <div style="margin-top:8px;"><strong>Catatan:</strong> batas ukuran kirim via Bot API adalah 50 MB per file. Backup berisi data sensitif &mdash; jangan sebarkan token bot &amp; chat ID.</div>
+<div class="card" style="max-width:640px;">
+    <h2 style="font-size:16px;margin-bottom:12px;">Cara Mendapatkan Chat ID &amp; API Key</h2>
+    <ol style="margin:0;padding-left:18px;font-size:.84rem;color:#555;line-height:1.9;">
+        <li>Buka Telegram, cari <strong>@BotFather</strong>, kirim <code>/newbot</code> dan ikuti petunjuknya sampai Anda menerima <strong>token API</strong> (formatnya seperti <code>1234567890:AAE...</code>). Itu yang diisi di kolom <em>API Key Bot</em>.</li>
+        <li>Kirim satu pesan apa saja (misal <code>halo</code>) ke bot yang barusan Anda buat &mdash; bot tidak bisa mengirim pesan duluan sebelum pernah di-chat.</li>
+        <li>Ambil <strong>Chat ID</strong> lewat bot <strong>@userinfobot</strong>: buka chat-nya dan dia langsung membalas ID Anda (angka panjang, mis. <code>123456789</code>). Isi angka itu di kolom <em>Chat ID</em>.</li>
+        <li>Klik <strong>Simpan Pengaturan</strong>, lalu uji dengan tombol <strong>Backup Sekarang</strong>. Kalau file zip muncul di chat Telegram Anda, setup selesai.</li>
+    </ol>
+    <div class="info-box" style="margin-bottom:0;">
+        <strong>Catatan:</strong> batas ukuran kirim via Bot API adalah 50 MB per file. Backup berisi data sensitif &mdash; jangan sebarkan token bot &amp; chat ID.
     </div>
 </div>
 

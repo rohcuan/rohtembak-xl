@@ -1185,10 +1185,14 @@ def _ab_read_state() -> dict:
     state = {
         "chat_id": "",
         "token": "",
+        "mode": "daily",
+        "time": "03:00",
+        "days": 1,
+        "hours": 12,
+        "next_run_ts": 0,
         "last_run_at": "",
         "last_run_ok": None,
         "last_output": "",
-        "last_run_date": "",
     }
     try:
         with open(_ab_state_path(), "r", encoding="utf-8") as f:
@@ -1204,6 +1208,37 @@ def _ab_write_state(state: dict) -> None:
     os.makedirs(os.path.dirname(_ab_state_path()), exist_ok=True)
     with open(_ab_state_path(), "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2, ensure_ascii=False)
+
+
+def _ab_next_run_after(base_dt, st: dict):
+    """Hitung waktu jadwal berikutnya dari base_dt sesuai mode (daily / days / hours)."""
+    mode = st.get("mode") or "daily"
+    if mode == "hours":
+        try:
+            n = min(max(int(st.get("hours") or 12), 1), 24)
+        except (TypeError, ValueError):
+            n = 12
+        return base_dt + timedelta(hours=n)
+    if mode == "days":
+        try:
+            n = min(max(int(st.get("days") or 1), 1), 30)
+        except (TypeError, ValueError):
+            n = 1
+        return base_dt + timedelta(days=n)
+    hh, mm = 3, 0
+    try:
+        parts = str(st.get("time") or "03:00").split(":")
+        hh, mm = int(parts[0]), int(parts[1])
+    except (ValueError, IndexError):
+        pass
+    cand = base_dt.replace(hour=hh, minute=mm, second=0, microsecond=0)
+    if cand <= base_dt:
+        cand += timedelta(days=1)
+    return cand
+
+
+def _ab_set_next_run(st: dict, base_dt=None) -> None:
+    st["next_run_ts"] = int(_ab_next_run_after(base_dt or datetime.now(WIB), st).timestamp())
 
 
 def _autobackup_zip_bytes() -> bytes:
@@ -1293,8 +1328,7 @@ def _telegram_send_backup(trigger: str) -> tuple[bool, str]:
     cfg["last_run_at"] = now_str
     cfg["last_run_ok"] = ok
     cfg["last_output"] = out[-2000:]
-    if trigger == "auto":
-        cfg["last_run_date"] = datetime.now(WIB).strftime("%Y-%m-%d")
+    _ab_set_next_run(cfg)
     _ab_write_state(cfg)
     return ok, out
 
@@ -1304,15 +1338,15 @@ def _autobackup_loop():
         try:
             cfg = _ab_read_state()
             if (cfg.get("chat_id") or "").strip() and (cfg.get("token") or "").strip():
-                now = datetime.now(WIB)
-                today = now.strftime("%Y-%m-%d")
-                hh, mm = AUTOBACKUP_TIME.split(":")
-                if (now.hour, now.minute) >= (int(hh), int(mm)) and cfg.get("last_run_date") != today:
-                    if _AUTOBACKUP_LOCK.acquire(blocking=False):
-                        try:
-                            _telegram_send_backup("auto")
-                        finally:
-                            _AUTOBACKUP_LOCK.release()
+                next_ts = int(cfg.get("next_run_ts") or 0)
+                if not next_ts:
+                    _ab_set_next_run(cfg)
+                    _ab_write_state(cfg)
+                elif datetime.now(WIB).timestamp() >= next_ts and _AUTOBACKUP_LOCK.acquire(blocking=False):
+                    try:
+                        _telegram_send_backup("auto")
+                    finally:
+                        _AUTOBACKUP_LOCK.release()
         except Exception:
             pass
         time.sleep(60)
@@ -1324,27 +1358,61 @@ def admin_autobackup_page(request: Request, admin_user: User = Depends(get_curre
         raise HTTPException(status_code=403, detail="Forbidden")
     st = _ab_read_state()
     configured = bool((st.get("chat_id") or "").strip() and (st.get("token") or "").strip())
+    nts = int(st.get("next_run_ts") or 0)
+    next_run_label = datetime.fromtimestamp(nts, tz=WIB).strftime("%d %B %Y %H:%M WIB") if nts else ""
     return render("admin/autobackup.html", context={
         "request": request, "user": admin_user,
         "st": st, "configured": configured,
         "saved": request.query_params.get("saved") == "1",
-        "ab_time": AUTOBACKUP_TIME,
+        "next_run_label": next_run_label,
     })
 
 
 @app.post("/admin/autobackup/settings")
 def admin_autobackup_settings(
     request: Request,
-    chat_id: str = Form(""),
-    token: str = Form(""),
+    form_type: str = Form(""),
+    chat_id: str = Form(None),
+    token: str = Form(None),
+    mode: str = Form(None),
+    time: str = Form(None),
+    days: str = Form(None),
+    hours: str = Form(None),
     admin_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     if admin_user.role != "admin":
         raise HTTPException(status_code=403, detail="Forbidden")
     st = _ab_read_state()
-    st["chat_id"] = chat_id.strip()
-    st["token"] = token.strip()
+    if form_type == "schedule":
+        st["mode"] = mode if mode in ("daily", "days", "hours") else "daily"
+        if st["mode"] == "daily":
+            hh, mm = 3, 0
+            try:
+                parts = (time or "").strip().split(":")
+                h, m = int(parts[0]), int(parts[1])
+                if 0 <= h <= 23 and 0 <= m <= 59:
+                    hh, mm = h, m
+            except (ValueError, IndexError):
+                pass
+            st["time"] = f"{hh:02d}:{mm:02d}"
+        elif st["mode"] == "days":
+            try:
+                st["days"] = min(max(int(days), 1), 30)
+            except (TypeError, ValueError):
+                st["days"] = 1
+        else:
+            try:
+                st["hours"] = min(max(int(hours), 1), 24)
+            except (TypeError, ValueError):
+                st["hours"] = 12
+        _ab_set_next_run(st)
+        _ab_write_state(st)
+        return RedirectResponse("/admin/autobackup?saved=1", status_code=303)
+    if chat_id is not None:
+        st["chat_id"] = chat_id.strip()
+    if token is not None:
+        st["token"] = token.strip()
     _ab_write_state(st)
     return RedirectResponse("/admin/autobackup?saved=1", status_code=303)
 

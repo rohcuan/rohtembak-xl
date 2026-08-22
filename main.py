@@ -739,7 +739,7 @@ def admin_add_balance(
             + _tg_field("💳", "Metode", "Admin")
             + "</blockquote>\n\n"
             f"<blockquote>✅ Saldo sekarang: <b>{_fmt_idr(bal.balance)}</b></blockquote>\n\n"
-            f"<blockquote>{_tg_time_footer()}</blockquote>"
+            f"{_tg_time_footer()}"
         )
     return RedirectResponse(url="/admin/users", status_code=303)
 
@@ -875,7 +875,7 @@ def admin_decrease_balance(
             + _tg_field("💳", "Metode", "Admin")
             + "</blockquote>\n\n"
             f"<blockquote>✅ Saldo sekarang: <b>{_fmt_idr(bal.balance)}</b></blockquote>\n\n"
-            f"<blockquote>{_tg_time_footer()}</blockquote>"
+            f"{_tg_time_footer()}"
         )
     return RedirectResponse(url="/admin/users", status_code=303)
 
@@ -922,7 +922,7 @@ def admin_set_balance(
             + _tg_field("💳", "Metode", "Admin")
             + "</blockquote>\n\n"
             f"<blockquote>✅ Saldo sekarang: <b>{_fmt_idr(bal.balance)}</b></blockquote>\n\n"
-            f"<blockquote>{_tg_time_footer()}</blockquote>"
+            f"{_tg_time_footer()}"
         )
     return RedirectResponse(url="/admin/users", status_code=303)
 
@@ -1428,7 +1428,7 @@ def _telegram_send_backup(trigger: str) -> tuple[bool, str]:
                                 + "</blockquote>\n\n"
                                 "<blockquote>✅ Backup RohTembak (XL) sukses dibuat.\n"
                                 "💾 Simpan file backup ini dengan aman.</blockquote>\n\n"
-                                f"<blockquote>{_tg_time_footer()}</blockquote>"
+                                f"{_tg_time_footer()}"
                             ),
                         },
                         files={"document": (fname, f)},
@@ -3505,7 +3505,7 @@ def _pay_response(user, detail, pay_error, pay_success, method, family_key, pay_
                 + _tg_field("🏷️", "Biaya panel", f"<b>-{fee} IDR</b>")
                 + "</blockquote>\n\n"
                 f"<blockquote>✅ Saldo sekarang: <b>{_fmt_idr(new_balance)}</b></blockquote>\n\n"
-                f"<blockquote>{_tg_time_footer()}</blockquote>"
+                f"{_tg_time_footer()}"
             )
         resp = {"ok": True, "message": pay_success, "deducted": fee, "new_balance": new_balance}
         qris_b64 = (pay_extra or {}).get("qris_b64")
@@ -3589,7 +3589,7 @@ def _credit_topup(db: Session, topup: TopupTransaction):
                 + _tg_field("💳", "Metode", "QRIS")
                 + "</blockquote>\n\n"
                 f"<blockquote>✅ Saldo sekarang: <b>{_fmt_idr(bal.balance)}</b></blockquote>\n\n"
-                f"<blockquote>{_tg_time_footer()}</blockquote>"
+                f"{_tg_time_footer()}"
             )
         return bal.balance
 

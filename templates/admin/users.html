@@ -50,8 +50,6 @@
 <script>
 function openTopup() { document.getElementById('topupModal').classList.add('show'); }
 function closeTopup() { document.getElementById('topupModal').classList.remove('show'); }
-function openAddUser() { document.getElementById('addUserModal').classList.add('show'); }
-function closeAddUser() { document.getElementById('addUserModal').classList.remove('show'); }
 function openDelete() { document.getElementById('deleteModal').classList.add('show'); }
 function closeDelete() { document.getElementById('deleteModal').classList.remove('show'); }
 function openDecrease() { document.getElementById('decreaseModal').classList.add('show'); }
@@ -92,7 +90,7 @@ function filterUsers() {
   document.getElementById('users-empty').style.display = visible ? 'none' : 'block';
 }
 document.addEventListener('click', function(e) {
-  ['topupModal', 'addUserModal', 'deleteModal', 'decreaseModal', 'setModal'].forEach(function(id) {
+  ['topupModal', 'deleteModal', 'decreaseModal', 'setModal'].forEach(function(id) {
     var m = document.getElementById(id);
     if (m && m.classList.contains('show') && e.target === m) m.classList.remove('show');
   });
@@ -108,7 +106,6 @@ document.addEventListener('click', function(e) {
         <div class="page-subtitle">Kelola saldo panel pengguna</div>
     </div>
     <div style="display:flex;gap:8px;">
-        <button class="btn btn-sm btn-outline" onclick="openAddUser()">Add User</button>
         <button class="btn btn-sm btn-outline" onclick="openTopup()">Topup</button>
         <button class="btn btn-sm btn-outline" onclick="openSet()">Set Saldo</button>
         <button class="btn btn-sm btn-outline" onclick="openDecrease()">Kurangi Saldo</button>
@@ -146,34 +143,6 @@ document.addEventListener('click', function(e) {
     {% else %}
     <div class="empty-state">Belum ada pengguna terdaftar.</div>
     {% endif %}
-</div>
-
-<div class="modal-overlay" id="addUserModal">
-    <div class="modal">
-        <h3>Tambah User</h3>
-        <form method="POST" action="/admin/users/add" id="addUserForm">
-            <div class="form-group">
-                <label>Username</label>
-                <input type="text" name="username" placeholder="Pilih username" required autocomplete="off">
-            </div>
-            <div class="form-group">
-                <label>Email</label>
-                <input type="email" name="email" placeholder="contoh@email.com" required>
-            </div>
-            <div class="form-group">
-                <label>Password</label>
-                <input type="text" name="password" placeholder="Buat password" required autocomplete="off">
-            </div>
-            <div class="form-group">
-                <label>Saldo awal (opsional)</label>
-                <input type="number" name="initial_balance" placeholder="0" min="0">
-            </div>
-            <div class="modal-actions">
-                <button type="button" class="btn btn-outline" onclick="closeAddUser()">Batal</button>
-                <button type="submit" class="btn btn-outline">Simpan</button>
-            </div>
-        </form>
-    </div>
 </div>
 
 <div class="modal-overlay" id="deleteModal">

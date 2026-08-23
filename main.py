@@ -143,6 +143,9 @@ TOPUP_QR_TTL_SECONDS = 5 * 60
 TOPUP_EXPIRE_GRACE_SECONDS = int(os.getenv("TOPUP_EXPIRE_GRACE_SECONDS", "60"))
 TOPUP_CHECK_INTERVAL = int(os.getenv("TOPUP_CHECK_INTERVAL", "20"))
 TOPUP_MAX_PENDING_PER_USER = 3
+# QRIS lebih tua dari ini dianggap pasti kedaluwarsa: tidak perlu panggilan
+# pending-detail per baris saat memuat riwayat (menghindari N+1 API call).
+_QRIS_DETAIL_MAX_AGE = int(os.getenv("QRIS_DETAIL_MAX_AGE_HOURS", "24")) * 3600
 _APP_START_TS = time.time()
 _reconcile_task = None
 
@@ -754,57 +757,6 @@ def admin_add_balance(
 def _admin_username(db: Session) -> str:
     admin = db.query(User).filter(User.role == "admin").first()
     return admin.username if admin else "admin"
-
-
-@app.post("/admin/users/add")
-def admin_add_user(
-    username: str = Form(...),
-    email: str = Form(...),
-    password: str = Form(...),
-    initial_balance: int = Form(0),
-    admin_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    if admin_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Forbidden")
-
-    if not email.strip():
-        raise HTTPException(status_code=400, detail="Email wajib diisi")
-    if not username.strip():
-        raise HTTPException(status_code=400, detail="Username wajib diisi")
-    username = username.strip().lower()
-    email = email.strip().lower()
-    if username == _admin_username(db).lower():
-        raise HTTPException(status_code=400, detail="Username admin tidak boleh digunakan")
-
-    existing = db.query(User).filter(
-        (func.lower(User.username) == username) | (func.lower(User.email) == email)
-    ).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Username atau email sudah terdaftar")
-
-    user = User(
-        username=username,
-        email=email,
-        password_hash=hash_password(password),
-        password=password,
-        role="user"
-    )
-    db.add(user)
-    db.flush()
-    bal = Balance(user_id=user.id, balance=0)
-    db.add(bal)
-    if initial_balance > 0:
-        bal.balance = initial_balance
-        db.add(BalanceTransaction(
-            user_id=user.id,
-            amount=initial_balance,
-            type="topup",
-            description="Saldo awal dari admin"
-        ))
-    db.commit()
-    get_user_ax_fp(user.username)
-    return RedirectResponse(url="/admin/users", status_code=303)
 
 
 @app.post("/admin/users/delete")
@@ -3675,6 +3627,12 @@ def _fetch_pending_qris(active_xl, tokens=None, transactions=None):
             code = trx.get("code") or ""
             if not code or code in matched_codes:
                 continue
+            raw_ts = trx.get("timestamp")
+            ts_epoch = (int(raw_ts) - 7 * 3600) if raw_ts else 0
+            # QRIS berumur > batas ini pasti sudah kedaluwarsa: lewati panggilan
+            # pending-detail dan biarkan tampil sebagai baris riwayat biasa.
+            if ts_epoch and time.time() - ts_epoch > _QRIS_DETAIL_MAX_AGE:
+                continue
             matched_codes.add(code)
             payload = {"transaction_id": code, "is_enterprise": False, "lang": "en", "status": ""}
             _api_delay()
@@ -3691,14 +3649,13 @@ def _fetch_pending_qris(active_xl, tokens=None, transactions=None):
             st_detail = (detail.get("status") or "").upper()
             pay_st = (trx.get("payment_status") or "").upper()
             expired = remaining <= 0 or st_detail == "EXPIRED" or pay_st == "EXPIRED"
-            raw_ts = trx.get("timestamp")
             qris_txs.append({
                 "transaction_id": detail.get("payment_id") or code,
                 "option_name": trx.get("title") or trx.get("product_name") or "Paket",
                 "amount": trx.get("raw_price") or 0,
                 "status": trx.get("status"),
                 "created_at": detail.get("formated_date") or trx.get("formated_date") or "",
-                "ts_epoch": (int(raw_ts) - 7 * 3600) if raw_ts else 0,
+                "ts_epoch": ts_epoch,
                 "expires_ts": expires_ts,
                 "expired": expired,
                 "img": _qris_png_data_uri(qris_b64),

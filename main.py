@@ -1165,6 +1165,7 @@ def admin_backup(format: str = "zip", admin_user: User = Depends(get_current_use
             "admin": admin_data,
             "users": [dict(u, xl_accounts=[a for a in xl_data if a["username"] == u["username"]]) for u in users_data],
             "fees": fees,
+            "settings": _collect_backup_settings(),
         }
         resp = JSONResponse(payload)
         resp.headers["Content-Disposition"] = 'attachment; filename="backup.json"'
@@ -1175,22 +1176,49 @@ def admin_backup(format: str = "zip", admin_user: User = Depends(get_current_use
     return resp
 
 
+def _collect_backup_settings() -> dict:
+    """Kumpulkan pengaturan non-user untuk backup: QRIS gateway/API key,
+    chat ID & token bot Telegram, jadwal auto backup, dan flag notif tele."""
+    url, api_key = gopay.get_config()
+    st = _ab_read_state()
+    return {
+        "qris_gateway": {"url": url, "api_key": api_key},
+        "bot_tele": {
+            "chat_id": (st.get("chat_id") or "").strip(),
+            "token": (st.get("token") or "").strip(),
+        },
+        "autobackup": {
+            "mode": st.get("mode") or "daily",
+            "time": st.get("time") or "03:00",
+            "weekday": st.get("weekday", 0),
+            "monthday": st.get("monthday", 1),
+        },
+        "notif": {
+            "topup_qris": bool(st.get("notif_topup_qris")),
+            "topup_admin": bool(st.get("notif_topup_admin")),
+            "purchase": bool(st.get("notif_purchase")),
+        },
+    }
+
+
 def _build_backup_zip_bytes(admin_data: dict, users_data: list, xl_data: list, fees: dict, users: list) -> bytes:
     """Bangun backup.zip format manifest v3 — dipakai /admin/backup dan auto backup Telegram."""
     exported_at = datetime.now(WIB).strftime("%Y-%m-%d %H:%M:%S WIB")
     ax_fp = _read_ax_fp_file()
+    settings_data = _collect_backup_settings()
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("manifest.json", json.dumps({
             "version": 3,
             "app": "RohTembak (XL)",
             "exported_at": exported_at,
-            "counts": {"users": len(users_data), "xl_accounts": len(xl_data), "fees": len(fees)},
+            "counts": {"users": len(users_data), "xl_accounts": len(xl_data), "fees": len(fees), "settings": 1},
         }, indent=2, ensure_ascii=False))
         zf.writestr("admin.json", json.dumps(admin_data, indent=2, ensure_ascii=False))
         zf.writestr("users.json", json.dumps(users_data, indent=2, ensure_ascii=False))
         zf.writestr("xl_accounts.json", json.dumps(xl_data, indent=2, ensure_ascii=False))
         zf.writestr("fees.json", json.dumps(fees, indent=2, ensure_ascii=False))
+        zf.writestr("settings.json", json.dumps(settings_data, indent=2, ensure_ascii=False))
         if ax_fp:
             zf.writestr("device.fp", ax_fp)
         fp_dir = os.path.join(BASE_DIR, "data")
@@ -1698,6 +1726,7 @@ def _norm_backup(data: dict) -> dict:
         "users": users,
         "xl_accounts": xl_accounts or None,
         "fees": data.get("fees") if isinstance(data.get("fees"), dict) else None,
+        "settings": data.get("settings") if isinstance(data.get("settings"), dict) else None,
     }
 
 
@@ -1758,6 +1787,14 @@ def _load_backup_v3(zf) -> dict | None:
             except (UnicodeDecodeError, RuntimeError):
                 pass
 
+    settings_raw = None
+    try:
+        settings_raw = json.loads(zf.read("settings.json").decode("utf-8"))
+    except KeyError:
+        pass
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        raise ValueError("File settings.json di dalam ZIP tidak valid.")
+
     data = _norm_backup({
         "version": 3,
         "admin": read("admin.json"),
@@ -1767,6 +1804,7 @@ def _load_backup_v3(zf) -> dict | None:
     })
     data["device_fp"] = device_fp
     data["user_fingerprints"] = user_fingerprints
+    data["settings"] = settings_raw if isinstance(settings_raw, dict) else None
     return data
 
 
@@ -1827,6 +1865,101 @@ def _load_backup_data(raw_bytes: bytes, filename: str) -> dict:
             raise ValueError(f"Format JSON tidak dikenali: {e}")
     return {"kind": "users", "version": 1, "admin": None,
             "users": _parse_backup_entries(text), "xl_accounts": None, "fees": None}
+
+
+def _validate_restore_settings(raw) -> dict | None:
+    """Validasi section settings dari backup; None = tidak ada/tidak valid."""
+    if not isinstance(raw, dict):
+        return None
+    out = {}
+
+    qg = raw.get("qris_gateway")
+    if isinstance(qg, dict):
+        url = str(qg.get("url") or "").strip()
+        if url and not url.startswith(("http://", "https://")):
+            url = ""
+        out["qris_gateway"] = {"url": url, "api_key": str(qg.get("api_key") or "").strip()}
+
+    bt = raw.get("bot_tele")
+    if isinstance(bt, dict):
+        out["bot_tele"] = {
+            "chat_id": str(bt.get("chat_id") or "").strip(),
+            "token": str(bt.get("token") or "").strip(),
+        }
+
+    ab = raw.get("autobackup")
+    if isinstance(ab, dict):
+        mode = ab.get("mode") if ab.get("mode") in ("daily", "weekly", "monthly") else "daily"
+        hh, mm = 3, 0
+        try:
+            parts = str(ab.get("time") or "03:00").split(":")
+            hh, mm = int(parts[0]), int(parts[1])
+        except (ValueError, IndexError):
+            pass
+        try:
+            wd = min(max(int(ab.get("weekday")), 0), 6)
+        except (TypeError, ValueError):
+            wd = 0
+        try:
+            md = min(max(int(ab.get("monthday")), 1), 30)
+        except (TypeError, ValueError):
+            md = 1
+        out["autobackup"] = {"mode": mode, "time": f"{hh:02d}:{mm:02d}", "weekday": wd, "monthday": md}
+
+    nt = raw.get("notif")
+    if isinstance(nt, dict):
+        out["notif"] = {
+            "topup_qris": bool(nt.get("topup_qris")),
+            "topup_admin": bool(nt.get("topup_admin")),
+            "purchase": bool(nt.get("purchase")),
+        }
+
+    return out or None
+
+
+def _apply_restore_settings(valid_settings: dict) -> list:
+    """Terapkan pengaturan dari backup. Return daftar label yang diterapkan."""
+    applied = []
+
+    qg = valid_settings.get("qris_gateway")
+    if isinstance(qg, dict):
+        try:
+            gopay.set_config(qg.get("url") or "", qg.get("api_key") or "")
+            applied.append("QRIS API & Key")
+        except Exception as e:
+            print(f"[restore-settings] gagal simpan QRIS gateway: {e}")
+
+    st = _ab_read_state()
+    touched_state = False
+
+    bt = valid_settings.get("bot_tele")
+    if isinstance(bt, dict):
+        st["chat_id"] = bt.get("chat_id") or ""
+        st["token"] = bt.get("token") or ""
+        touched_state = True
+        applied.append("Chat ID & Bot Tele")
+
+    ab = valid_settings.get("autobackup")
+    if isinstance(ab, dict):
+        st["mode"] = ab["mode"]
+        st["time"] = ab["time"]
+        st["weekday"] = ab["weekday"]
+        st["monthday"] = ab["monthday"]
+        _ab_set_next_run(st)
+        touched_state = True
+        applied.append("Jadwal Auto Backup")
+
+    nt = valid_settings.get("notif")
+    if isinstance(nt, dict):
+        st["notif_topup_qris"] = bool(nt.get("topup_qris"))
+        st["notif_topup_admin"] = bool(nt.get("topup_admin"))
+        st["notif_purchase"] = bool(nt.get("purchase"))
+        touched_state = True
+        applied.append("Notif Tele")
+
+    if touched_state:
+        _ab_write_state(st)
+    return applied
 
 
 def _validate_restore_entry(entry: dict) -> dict | None:
@@ -1924,13 +2057,15 @@ async def admin_restore_upload(
         if key in FAMILY_FEE_DEFAULTS and isinstance(fee, int) and not isinstance(fee, bool) and fee >= 0:
             valid_fees[key] = fee
 
+    valid_settings = _validate_restore_settings(data.get("settings"))
+
     admin_section = data.get("admin")
     a_username = str(admin_section.get("username") or "").strip().lower() if admin_section else ""
     a_password = str(admin_section.get("password") or "").strip() if admin_section else ""
     a_email = str(admin_section.get("email") or "").strip().lower() if admin_section else ""
     has_admin = bool(a_username and a_password)
 
-    if not (has_admin or valid_users or valid_xl or valid_fees):
+    if not (has_admin or valid_users or valid_xl or valid_fees or valid_settings is not None):
         return _restore_render(request, admin_user, error="Tidak ada data valid dalam file backup.")
 
     # 2. Wipe all existing data so the restore result is identical with the backup
@@ -2029,6 +2164,10 @@ async def admin_restore_upload(
 
     db.commit()
 
+    settings_applied: list = []
+    if valid_settings is not None:
+        settings_applied = _apply_restore_settings(valid_settings)
+
     result = {
         "mode": "replace",
         "admin": admin_msg,
@@ -2037,6 +2176,8 @@ async def admin_restore_upload(
         "xl_skipped": xl_skipped,
         "fees_restored": fee_restored,
     }
+    if valid_settings is not None:
+        result["settings_applied"] = settings_applied
     if device_fp_ok is not None:
         result["device_fp_restored"] = device_fp_ok
         if not device_fp_ok:

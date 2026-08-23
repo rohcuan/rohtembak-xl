@@ -84,6 +84,9 @@
             <div><span>Pengguna dibuat</span><div class="val">{{ result.users_restored }}</div></div>
             <div><span>Nomor XL</span><div class="val">dipulihkan <strong>{{ result.xl_restored }}</strong>{% if result.xl_skipped %} · dilewati {{ result.xl_skipped }}{% endif %}</div></div>
             <div><span>Fee paket</span><div class="val">dipulihkan <strong>{{ result.fees_restored }}</strong></div></div>
+            {% if result.settings_applied is defined %}
+            <div><span>Pengaturan panel</span><div class="val">{% if result.settings_applied %}{{ result.settings_applied | join(', ') }}{% else %}tidak ada dalam file backup{% endif %}</div></div>
+            {% endif %}
             {% if result.device_fp_restored is defined %}
             <div><span>Identitas perangkat (ax.fp)</span><div class="val">{% if result.device_fp_restored %}dipulihkan{% else %}gagal{% endif %}{% if result.device_fp_error %} — {{ result.device_fp_error }}{% endif %}</div></div>
             {% endif %}
@@ -126,6 +129,7 @@
             <li>Riwayat transaksi</li>
             <li>Nomor XL</li>
             <li>Fee paket</li>
+            <li>Pengaturan panel (QRIS API, Bot Tele, jadwal auto backup, notif) — jika ada di file backup</li>
         </ul>
         <div class="warn-inline">Admin dikembalikan sesuai file backup. Jika file tidak memuat admin, akan dipakai admin/admin.</div>
         <div class="modal-actions">

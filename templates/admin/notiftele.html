@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Atur Notif Bot Tele - RohTembak (XL){% endblock %}
+{% block title %}Atur Notif Bot Telegram - RohTembak (XL){% endblock %}
 {% block head %}
 <style>
 .cfg-status {
@@ -24,10 +24,10 @@
 
 <div class="header-section">
     <div>
-        <div class="page-title">Atur Notif Bot Tele</div>
+        <div class="page-title">Atur Notif Bot Telegram</div>
         <div class="page-subtitle">Pilih notifikasi apa saja yang dikirim ke bot Telegram.</div>
         <span id="ab-status" class="cfg-status {% if configured %}on{% else %}off{% endif %}" style="margin-top:10px;">
-            {% if configured %}&#9679; Bot terkonfigurasi{% else %}&#9675; Bot belum terkonfigurasi &mdash; atur di <a href="/admin/bottele" style="color:#4361ee;">Atur Bot Tele</a>{% endif %}
+            {% if configured %}&#9679; Bot terkonfigurasi{% else %}&#9675; Bot belum terkonfigurasi &mdash; atur di <a href="/admin/bottele" style="color:#4361ee;">Atur Bot Telegram</a>{% endif %}
         </span>
     </div>
 </div>

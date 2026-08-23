@@ -1915,7 +1915,7 @@ def _apply_restore_settings(valid_settings: dict) -> list:
         st["chat_id"] = bt.get("chat_id") or ""
         st["token"] = bt.get("token") or ""
         touched_state = True
-        applied.append("Chat ID & Bot Tele")
+        applied.append("Chat ID & Bot Telegram")
 
     ab = valid_settings.get("autobackup")
     if isinstance(ab, dict):
@@ -1933,7 +1933,7 @@ def _apply_restore_settings(valid_settings: dict) -> list:
         st["notif_topup_admin"] = bool(nt.get("topup_admin"))
         st["notif_purchase"] = bool(nt.get("purchase"))
         touched_state = True
-        applied.append("Notif Tele")
+        applied.append("Notif Telegram")
 
     if touched_state:
         _ab_write_state(st)

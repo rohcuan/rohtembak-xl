@@ -143,9 +143,6 @@ TOPUP_QR_TTL_SECONDS = 5 * 60
 TOPUP_EXPIRE_GRACE_SECONDS = int(os.getenv("TOPUP_EXPIRE_GRACE_SECONDS", "60"))
 TOPUP_CHECK_INTERVAL = int(os.getenv("TOPUP_CHECK_INTERVAL", "20"))
 TOPUP_MAX_PENDING_PER_USER = 3
-# QRIS lebih tua dari ini dianggap pasti kedaluwarsa: tidak perlu panggilan
-# pending-detail per baris saat memuat riwayat (menghindari N+1 API call).
-_QRIS_DETAIL_MAX_AGE = int(os.getenv("QRIS_DETAIL_MAX_AGE_HOURS", "24")) * 3600
 _APP_START_TS = time.time()
 _reconcile_task = None
 
@@ -3627,12 +3624,6 @@ def _fetch_pending_qris(active_xl, tokens=None, transactions=None):
             code = trx.get("code") or ""
             if not code or code in matched_codes:
                 continue
-            raw_ts = trx.get("timestamp")
-            ts_epoch = (int(raw_ts) - 7 * 3600) if raw_ts else 0
-            # QRIS berumur > batas ini pasti sudah kedaluwarsa: lewati panggilan
-            # pending-detail dan biarkan tampil sebagai baris riwayat biasa.
-            if ts_epoch and time.time() - ts_epoch > _QRIS_DETAIL_MAX_AGE:
-                continue
             matched_codes.add(code)
             payload = {"transaction_id": code, "is_enterprise": False, "lang": "en", "status": ""}
             _api_delay()
@@ -3649,13 +3640,14 @@ def _fetch_pending_qris(active_xl, tokens=None, transactions=None):
             st_detail = (detail.get("status") or "").upper()
             pay_st = (trx.get("payment_status") or "").upper()
             expired = remaining <= 0 or st_detail == "EXPIRED" or pay_st == "EXPIRED"
+            raw_ts = trx.get("timestamp")
             qris_txs.append({
                 "transaction_id": detail.get("payment_id") or code,
                 "option_name": trx.get("title") or trx.get("product_name") or "Paket",
                 "amount": trx.get("raw_price") or 0,
                 "status": trx.get("status"),
                 "created_at": detail.get("formated_date") or trx.get("formated_date") or "",
-                "ts_epoch": ts_epoch,
+                "ts_epoch": (int(raw_ts) - 7 * 3600) if raw_ts else 0,
                 "expires_ts": expires_ts,
                 "expired": expired,
                 "img": _qris_png_data_uri(qris_b64),

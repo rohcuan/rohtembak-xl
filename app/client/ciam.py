@@ -78,52 +78,6 @@ def get_otp(contact: str, username: str) -> str:
         print(f"Error requesting OTP: {e}")
         return None
 
-def extend_session(subscriber_id: str, username: str) -> str:
-    b64_subscriber_id = base64.b64encode(subscriber_id.encode()).decode()
-    url = f"{BASE_CIAM_URL}/realms/xl-ciam/auth/extend-session"
-
-    querystring = {
-        "contact": b64_subscriber_id,
-        "contactType": "DEVICEID"
-    }
-    
-    now = datetime.now(timezone(timedelta(hours=7)))
-    ax_request_at = java_like_timestamp(now)
-    ax_request_id = str(uuid.uuid4())
-
-    device_id = get_user_ax_device_id(username)
-    fingerprint = get_user_ax_fp(username)
-    
-    headers = {
-        "Accept-Encoding": "gzip, deflate, br",
-        "Authorization": f"Basic {BASIC_AUTH}",
-        "Ax-Device-Id": device_id,
-        "Ax-Fingerprint": fingerprint,
-        "Ax-Request-At": ax_request_at,
-        "Ax-Request-Device": "samsung",
-        "Ax-Request-Device-Model": "SM-N935F",
-        "Ax-Request-Id": ax_request_id,
-        "Ax-Substype": "PREPAID",
-        "Content-Type": "application/json",
-        "Host": BASE_CIAM_URL.replace("https://", ""),
-        "User-Agent": UA,
-    }
-    
-    print("Extending session...")
-    try:
-        response = requests.get(url, headers=headers, params=querystring, timeout=20)
-        if response.status_code != 200:
-            print(f"Failed to extend session: {response.status_code} - {response.text}")
-            return None
-        
-        data = response.json()
-        exchange_code = data.get("data", {}).get("exchange_code")
-        
-        return exchange_code
-    except Exception as e:
-        print(f"Error extending session: {e}")
-        return None
-
 def submit_otp(
     api_key: str,
     contact_type: str,
@@ -139,13 +93,10 @@ def submit_otp(
             print("Invalid number")
             return None
         final_contact = contact
-    
+
         if not code or len(code) != 6:
             print("Invalid OTP code format")
             return None
-        final_code = code
-    elif contact_type == "DEVICEID":
-        final_contact = base64.b64encode(contact.encode()).decode()
         final_code = code
     else:
         print("Unsupported contact type")
@@ -191,7 +142,16 @@ def submit_otp(
         print(f"[Error submit_otp]: {e}")
         return None
 
-def get_new_token(api_key: str, refresh_token: str, subscriber_id: str, username: str) -> str:
+def get_new_token(api_key: str, refresh_token: str, username: str):
+    """Tukar refresh token ke pasangan token baru.
+
+    Kontrak dengan pemanggil (_get_xl_tokens):
+    - Sukses  -> dict token (access/id/refresh).
+    - Sesi mati (HTTP 400, termasuk "Session not active") -> None;
+      refresh token akan dibersihkan dan user diarahkan OTP ulang.
+    - Gangguan lain (jaringan, server XL) -> exception; refresh token
+      TIDAK dihapus supaya tidak re-OTP gara-gara masalah sementara.
+    """
     url = BASE_CIAM_URL + "/realms/xl-ciam/protocol/openid-connect/token"
 
     now = datetime.now(timezone(timedelta(hours=7)))
@@ -222,44 +182,21 @@ def get_new_token(api_key: str, refresh_token: str, subscriber_id: str, username
 
     print("Refreshing token...")
     resp = requests.post(url, headers=headers, data=data, timeout=20)
-    if resp.status_code == 400:
-        if resp.json().get("error_description") != "Session not active":
-            print(f"Failed to refresh token: {resp.status_code} - {resp.text}")
-            return None
 
-        if subscriber_id == "":
-            raise ValueError("Subscriber ID is missing")
-        
-        exchange_code = extend_session(subscriber_id, username)
-        if exchange_code is None:
-            raise ValueError("Failed to get exchange code")
-        
-        extend_result = submit_otp(
-            api_key,
-            "DEVICEID",
-            subscriber_id,
-            exchange_code,
-            username,
-        )
-        
-        if extend_result is None:
-            raise ValueError("Failed to submit OTP after extending session")
-        
-        if "id_token" not in extend_result:
-            print(f"extend_session: no id_token in response: {extend_result}")
-            return None
-        
-        return extend_result
+    if resp.status_code == 400:
+        # Sesi memang sudah habis: tidak diperpanjang diam-diam.
+        print(f"Session dead, re-OTP required: {resp.status_code} - {resp.text}")
+        return None
 
     resp.raise_for_status()
 
     body = resp.json()
-    
+
     if "id_token" not in body:
         raise ValueError("ID token not found in response")
     if "error" in body:
         raise ValueError(f"Error in response: {body['error']} - {body.get('error_description', '')}")
-    
+
     return body
 
 def get_auth_code(tokens: dict, pin: str, msisdn: str, username: str):

@@ -268,7 +268,7 @@ def _get_xl_tokens(active_xl, username=""):
             except Exception:
                 print("[_get_xl_tokens] Could not load username from active_xl.user")
                 return None
-        tokens = xl_refresh_token(API_KEY, active_xl.refresh_token, active_xl.subscriber_id, xl_username)
+        tokens = xl_refresh_token(API_KEY, active_xl.refresh_token, xl_username)
         if not tokens:
             _XL_TOKEN_CACHE.pop(key, None)
             try:

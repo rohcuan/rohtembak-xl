@@ -733,7 +733,7 @@ def admin_add_balance(
         u = db.query(User).filter(User.id == user_id).first()
         uname = u.username if u else f"id {user_id}"
         _notify(
-            "🟢  " + _tg_bold("PENYESUAIAN SALDO OLEH ADMIN") + "\n\n"
+            "🟢  " + _tg_bold("PENYESUAIAN SALDO") + "\n\n"
             "<blockquote>"
             + _tg_field("User", _tg_esc(uname))
             + _tg_field("Nominal", f"+{_fmt_thousand(amount)} IDR")
@@ -871,7 +871,7 @@ def admin_decrease_balance(
         u = db.query(User).filter(User.id == user_id).first()
         uname = u.username if u else f"id {user_id}"
         _notify(
-            "🟢  " + _tg_bold("PENYESUAIAN SALDO OLEH ADMIN") + "\n\n"
+            "🟢  " + _tg_bold("PENYESUAIAN SALDO") + "\n\n"
             "<blockquote>"
             + _tg_field("User", _tg_esc(uname))
             + _tg_field("Nominal", f"-{_fmt_thousand(amount)} IDR")
@@ -918,7 +918,7 @@ def admin_set_balance(
         uname = u.username if u else f"id {user_id}"
         sign = "+" if delta > 0 else "-"
         _notify(
-            "🟢  " + _tg_bold("PENYESUAIAN SALDO OLEH ADMIN") + "\n\n"
+            "🟢  " + _tg_bold("PENYESUAIAN SALDO") + "\n\n"
             "<blockquote>"
             + _tg_field("User", _tg_esc(uname))
             + _tg_field("Nominal", f"{sign}{_fmt_thousand(abs(delta))} IDR")

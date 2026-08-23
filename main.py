@@ -10,7 +10,7 @@ import asyncio
 import threading
 import zipfile
 import requests
-from contextlib import asynccontextmanager, contextmanager, redirect_stdout
+from contextlib import asynccontextmanager, redirect_stdout
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -1188,10 +1188,7 @@ def admin_backup(format: str = "zip", admin_user: User = Depends(get_current_use
         resp = JSONResponse(payload)
         resp.headers["Content-Disposition"] = 'attachment; filename="backup.json"'
         return resp
-    zip_bytes = _build_backup_zip_bytes(
-        admin_data, users_data, xl_data, fees, users,
-        zip_password=(admin.password or admin.password_hash or "").strip() or None,
-    )
+    zip_bytes = _build_backup_zip_bytes(admin_data, users_data, xl_data, fees, users)
     resp = Response(content=zip_bytes, media_type="application/zip")
     resp.headers["Content-Disposition"] = 'attachment; filename="backup.zip"'
     return resp
@@ -1222,12 +1219,8 @@ def _collect_backup_settings() -> dict:
     }
 
 
-def _build_backup_zip_bytes(admin_data: dict, users_data: list, xl_data: list, fees: dict, users: list, zip_password: str | None = None) -> bytes:
-    """Bangun backup.zip format manifest v3 — dipakai /admin/backup dan auto backup Telegram.
-
-    Saat zip_password diisi, ZIP dienkripsi AES-256 (pyzipper). Jika pyzipper
-    belum terpasang di server, backup tetap dibuat tanpa enkripsi + peringatan log.
-    """
+def _build_backup_zip_bytes(admin_data: dict, users_data: list, xl_data: list, fees: dict, users: list) -> bytes:
+    """Bangun backup.zip format manifest v3 — dipakai /admin/backup dan auto backup Telegram."""
     exported_at = datetime.now(WIB).strftime("%Y-%m-%d %H:%M:%S WIB")
     ax_fp = _read_ax_fp_file()
     settings_data = _collect_backup_settings()
@@ -1260,17 +1253,6 @@ def _build_backup_zip_bytes(admin_data: dict, users_data: list, xl_data: list, f
                 pass
 
     buf = io.BytesIO()
-    if zip_password:
-        try:
-            import pyzipper
-            with pyzipper.AESZipFile(buf, "w", compression=pyzipper.ZIP_DEFLATED, encryption=pyzipper.WZ_AES) as zf:
-                zf.setpassword(zip_password.encode("utf-8"))
-                for ename, econtent in entries:
-                    zf.writestr(ename, econtent)
-            buf.seek(0)
-            return buf.getvalue()
-        except ImportError:
-            print("[backup] pyzipper belum terpasang — backup disimpan TANPA password")
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for ename, econtent in entries:
             zf.writestr(ename, econtent)
@@ -1480,10 +1462,7 @@ def _autobackup_zip_bytes() -> bytes:
                     "is_active": bool(x.is_active),
                 })
         fees = _get_all_family_fees()
-        return _build_backup_zip_bytes(
-            admin_data, users_data, xl_data, fees, users,
-            zip_password=((admin.password or admin.password_hash or "").strip() if admin else None) or None,
-        )
+        return _build_backup_zip_bytes(admin_data, users_data, xl_data, fees, users)
     finally:
         db.close()
 
@@ -1745,32 +1724,6 @@ def _is_zip_bytes(raw_bytes: bytes) -> bool:
     return raw_bytes[:4] == b"PK\x03\x04"
 
 
-@contextmanager
-def _open_backup_zip(raw_bytes: bytes, password: str | None = None):
-    """Buka ZIP backup — mendukung polos maupun terenkripsi (AES via pyzipper)."""
-    pwd = password.encode("utf-8") if password else None
-    bio = io.BytesIO(raw_bytes)
-    zf = None
-    try:
-        import pyzipper  # type: ignore
-        zf = pyzipper.AESZipFile(bio)
-    except ImportError:
-        zf = zipfile.ZipFile(bio)
-    if pwd:
-        zf.setpassword(pwd)
-    try:
-        yield zf
-    finally:
-        zf.close()
-
-
-def _zip_is_encrypted(zf) -> bool:
-    try:
-        return any(info.flag_bits & 0x1 for info in zf.infolist())
-    except Exception:
-        return False
-
-
 def _norm_user_entry(entry) -> dict:
     return {
         "username": entry.get("username"),
@@ -1908,14 +1861,12 @@ def _parse_backup_entries(raw: str) -> list:
     return entries
 
 
-def _load_backup_data(raw_bytes: bytes, filename: str, password: str | None = None) -> dict:
+def _load_backup_data(raw_bytes: bytes, filename: str) -> dict:
     """Read backup from ZIP / JSON / TXT upload. Returns normalized sections."""
     name = (filename or "").lower()
     if name.endswith(".zip") or _is_zip_bytes(raw_bytes):
-        encrypted = {"flag": False}
         try:
-            with _open_backup_zip(raw_bytes, password) as zf:
-                encrypted["flag"] = _zip_is_encrypted(zf)
+            with zipfile.ZipFile(io.BytesIO(raw_bytes)) as zf:
                 data = _load_backup_v3(zf)
                 if data:
                     return data
@@ -1925,17 +1876,7 @@ def _load_backup_data(raw_bytes: bytes, filename: str, password: str | None = No
                     raise ValueError("ZIP tidak berisi file backup (manifest.json / backup.json).")
                 target = "backup.json" if "backup.json" in names else sorted(json_names)[0]
                 inner = zf.read(target).decode("utf-8")
-        except ValueError:
-            raise
-        except NotImplementedError:
-            raise ValueError("ZIP memakai enkripsi AES tetapi modul pyzipper belum terpasang di server.")
-        except (RuntimeError, zipfile.BadZipFile) as e:
-            if encrypted["flag"]:
-                if not password:
-                    raise ValueError("File backup terenkripsi. Isi kolom Password Backup lalu coba lagi.")
-                raise ValueError("Password backup salah.")
-            raise ValueError(f"File ZIP tidak valid atau rusak. ({e})")
-        except (UnicodeDecodeError, KeyError):
+        except (zipfile.BadZipFile, UnicodeDecodeError, RuntimeError, KeyError):
             raise ValueError("File ZIP tidak valid atau rusak.")
         try:
             return _parse_backup_json(json.loads(inner))
@@ -2102,7 +2043,6 @@ def admin_restore_page(request: Request, user: User = Depends(get_current_user))
 async def admin_restore_upload(
     request: Request,
     backup_file: UploadFile = File(...),
-    backup_password: str = Form(""),
     admin_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -2115,7 +2055,7 @@ async def admin_restore_upload(
     if len(raw_bytes) > MAX_BACKUP_RESTORE_SIZE:
         return _restore_render(request, admin_user, error="Ukuran file terlalu besar (maksimal 1 MB).")
     try:
-        data = _load_backup_data(raw_bytes, backup_file.filename or "", backup_password.strip() or None)
+        data = _load_backup_data(raw_bytes, backup_file.filename or "")
     except ValueError as e:
         return _restore_render(request, admin_user, error=str(e))
 

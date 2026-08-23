@@ -113,14 +113,6 @@
             <input type="file" name="backup_file" id="backup_file" accept=".zip,.json,.txt,application/zip,application/json,text/plain" onchange="updateDropzone(this)" style="display:none;">
         </div>
 
-        <div class="form-group">
-            <label>Password Backup <span style="font-weight:400;color:#888;">(opsional)</span></label>
-            <input type="password" name="backup_password" autocomplete="new-password"
-                   placeholder="Kosongkan jika file backup tidak terkunci"
-                   style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;">
-            <div class="restore-hint">Backup ZIP terbaru terenkripsi dengan password admin. File backup lama (tanpa password) tetap bisa direstore tanpa mengisi kolom ini.</div>
-        </div>
-
         <div style="display:flex;gap:8px;">
             <a href="/admin/dashboard" class="btn btn-outline">Batal</a>
             <button type="submit" class="btn btn-primary" id="submitBtn" disabled>Hapus &amp; Restore</button>

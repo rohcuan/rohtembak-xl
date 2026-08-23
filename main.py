@@ -3746,19 +3746,22 @@ def _topup_expiry_epoch(topup) -> int:
     return int(dt.timestamp())
 
 
-def _topup_same_wib_day(topup) -> bool:
-    """True bila QRIS topup dibuat pada tanggal WIB yang sama dengan sekarang.
+TOPUP_CHECK_WINDOW_HOURS = 24
 
-    Pengecekan pembayaran & credit dibatasi sampai tengah malam WIB hari
-    pembuatan QRIS (antisipasi mati listrik — pembayaran telat hari yang sama
-    tetap terdeteksi, setelah tengah malam tidak lagi).
+
+def _topup_within_window(topup) -> bool:
+    """True bila QRIS topup masih dalam jendela pengecekan (24 jam sejak dibuat).
+
+    Antisipasi mati listrik: pembayaran yang masuk saat panel mati tetap
+    terdeteksi saat panel hidup kembali — selama masih dalam 24 jam sejak
+    QRIS dibuat. Setelah 24 jam, pengecekan berhenti total.
     """
     if topup.created_at is None:
         return False
     dt = topup.created_at
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(WIB).date() == datetime.now(WIB).date()
+    return int(time.time()) <= int(dt.timestamp()) + TOPUP_CHECK_WINDOW_HOURS * 3600
 
 
 _topup_credit_lock = threading.Lock()
@@ -3772,8 +3775,8 @@ def _credit_topup(db: Session, topup: TopupTransaction):
         # expiry boundary. Both must credit exactly once; paid must never.
         if not row or row.status not in ("pending", "expired"):
             return None
-        # Belas kasih anti power-outage: credit hanya di hari WIB yang sama.
-        if not _topup_same_wib_day(row):
+        # Belas kasih anti power-outage: credit hanya dalam 24 jam pembuatan.
+        if not _topup_within_window(row):
             return None
         row.status = "paid"
         row.paid_at = datetime.now(timezone.utc)
@@ -3814,13 +3817,13 @@ def _credit_topup(db: Session, topup: TopupTransaction):
 
 def _check_and_settle_topup(db: Session, topup: TopupTransaction) -> dict:
     """Ask the gateway about one topup; settle (credit/mark expired) accordingly."""
-    # Pengecekan hanya sampai tengah malam WIB hari pembuatan QRIS.
-    if not _topup_same_wib_day(topup):
+    # Pengecekan hanya dalam 24 jam sejak QRIS dibuat (anti mati listrik).
+    if not _topup_within_window(topup):
         if topup.status == "pending":
             topup.status = "expired"
             db.commit()
         return {"ok": True, "status": "closed",
-                "message": "Masa pengecekan pembayaran berakhir (lewat tengah malam)."}
+                "message": "Masa pengecekan pembayaran berakhir (lebih dari 24 jam)."}
     # Only look for payments newer than this QRIS itself (small clock-skew
     # buffer), so a fresh QR can never claim an older unclaimed payment.
     start_iso = None
@@ -3857,9 +3860,9 @@ _EXPIRED_SWEEP_INTERVAL = 300
 def _reconcile_pending_topups():
     """Background sweep: settle paid topups and expire stale ones.
 
-    Baris yang sudah kedaluwarsa HARI INI tetap dicek berkala (tiap 5 menit)
-    sampai tengah malam WIB — antisipasi pembayaran yang masuk saat panel
-    mati listrik: begitu panel hidup lagi, credit terjadi otomatis.
+    Baris unpaid (pending/expired) yang masih dalam 24 jam pembuatan tetap
+    dicek berkala (tiap 5 menit) — antisipasi pembayaran yang masuk saat
+    panel mati listrik: begitu panel hidup lagi, credit terjadi otomatis.
     """
     if not gopay.is_configured():
         return
@@ -3876,12 +3879,12 @@ def _reconcile_pending_topups():
         now = time.time()
         if now - _last_expired_sweep >= _EXPIRED_SWEEP_INTERVAL:
             _last_expired_sweep = now
-            day_start_utc = datetime.now(WIB).replace(
-                hour=0, minute=0, second=0, microsecond=0
-            ).astimezone(timezone.utc).replace(tzinfo=None)
+            cutoff_utc = datetime.now(timezone.utc) - timedelta(hours=TOPUP_CHECK_WINDOW_HOURS)
+            if cutoff_utc.tzinfo is not None:
+                cutoff_utc = cutoff_utc.replace(tzinfo=None)
             expired_rows = db.query(TopupTransaction).filter(
                 TopupTransaction.status == "expired",
-                TopupTransaction.created_at >= day_start_utc,
+                TopupTransaction.created_at >= cutoff_utc,
             ).all()
             for row in expired_rows:
                 try:

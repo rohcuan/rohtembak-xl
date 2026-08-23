@@ -182,9 +182,9 @@ function xcpCardHtml(p, i) {
 function cardHtml(a, urlPrefix) {
   var muted = a.price === 0 ? ' muted' : '';
   var html = '<a class="pkg-card' + muted + '" href="/user/xl/beli-paket/' + urlPrefix + '-' + a.number + '/detail">' +
-    '<div class="pkg-number">#' + a.number + ' &middot; ' + a.variant_name + '</div>' +
-    '<div class="pkg-name">' + a.label + '</div>';
-  if (a.size) html += '<div class="pkg-size">' + a.size + '</div>';
+    '<div class="pkg-number">#' + a.number + ' &middot; ' + escHtml(a.variant_name) + '</div>' +
+    '<div class="pkg-name">' + escHtml(a.label) + '</div>';
+  if (a.size) html += '<div class="pkg-size">' + escHtml(a.size) + '</div>';
   html += '<div class="pkg-price">' + fmtRp(a.price) + '</div>' +
     '</a>';
   return html;
@@ -192,12 +192,12 @@ function cardHtml(a, urlPrefix) {
 
 function confCardHtml(a, method) {
   var muted = a.price === 0 ? ' muted' : '';
-  var size = a.size ? '<div class="pkg-size">' + a.size + '</div>' : '';
+  var size = a.size ? '<div class="pkg-size">' + escHtml(a.size) + '</div>' : '';
   var price = (method === 'qris') ? fmtRp(Number(a.price) + QRIS_DECOY_PRICE) : fmtRp(a.price);
   var via = (method === 'qris') ? 'qris' : 'pulsa';
   return '<a class="pkg-card' + muted + '" href="/user/xl/beli-paket/xtraconf-' + a.number + '/detail?via=' + via + '">' +
-    '<div class="pkg-number">#' + a.number + ' &middot; ' + a.variant_name + '</div>' +
-    '<div class="pkg-name">' + a.label + '</div>' + size +
+    '<div class="pkg-number">#' + a.number + ' &middot; ' + escHtml(a.variant_name) + '</div>' +
+    '<div class="pkg-name">' + escHtml(a.label) + '</div>' + size +
     '<div class="pkg-price">' + price + '</div>' +
     '</a>';
 }

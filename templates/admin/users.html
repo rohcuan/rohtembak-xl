@@ -58,13 +58,15 @@ function openSet() { document.getElementById('setModal').classList.add('show'); 
 function closeSet() { document.getElementById('setModal').classList.remove('show'); }
 function pickUser(inputId, hiddenId) {
   var username = document.getElementById(inputId).value;
-  var opt = document.querySelector('#users-list option[value="' + username + '"]');
-  if (!opt) {
-    alert('Pengguna tidak ditemukan.');
-    return false;
+  var opts = document.querySelectorAll('#users-list option');
+  for (var i = 0; i < opts.length; i++) {
+    if (opts[i].getAttribute('value') === username) {
+      document.getElementById(hiddenId).value = opts[i].getAttribute('data-id');
+      return true;
+    }
   }
-  document.getElementById(hiddenId).value = opt.getAttribute('data-id');
-  return true;
+  alert('Pengguna tidak ditemukan.');
+  return false;
 }
 function submitTopup() {
   if (pickUser('topup-user', 'topup-user-id')) document.getElementById('topupForm').submit();

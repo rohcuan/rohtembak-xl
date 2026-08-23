@@ -2292,6 +2292,8 @@ def remove_xl(
 def xl_otp_request_page(
     request: Request,
     xl_id: int = 0,
+    phone: str = "",
+    label: str = "",
     user: User = Depends(get_current_user),
 ):
     if user.role != "user":
@@ -2307,6 +2309,10 @@ def xl_otp_request_page(
     ctx["request"] = request
     ctx["existing"] = existing
     ctx["relogin"] = existing is not None
+    if not existing:
+        # Prefill dari link "Kirim ulang OTP" (alur nomor baru).
+        ctx["phone_number"] = phone.strip()[:15]
+        ctx["label"] = label.strip()[:50]
     return render("user/otp_request.html", context=ctx)
 
 

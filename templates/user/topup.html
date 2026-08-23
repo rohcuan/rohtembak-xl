@@ -206,11 +206,16 @@ function checkStatus(silent) {
         document.getElementById('success-added').textContent = '+' + fmtIdr(res.credited) + ' IDR';
         document.getElementById('success-balance').textContent = fmtIdr(res.new_balance) + ' IDR';
         setQrViewState('success');
-      } else if (!silent) {
-        alert(res.message || 'Belum ada pembayaran terdeteksi.');
-      } else if (res.status === 'expired') {
-        if (qrTimerInt) { clearInterval(qrTimerInt); qrTimerInt = null; }
+        return;
       }
+      if (res.status === 'expired') {
+        if (qrTimerInt) { clearInterval(qrTimerInt); qrTimerInt = null; }
+        var timerEl = document.getElementById('qr-timer');
+        if (timerEl) timerEl.textContent = 'Expired';
+        if (!silent) alert(res.message || 'QRIS kedaluwarsa dan tidak ada pembayaran masuk.');
+        return;
+      }
+      if (!silent) alert(res.message || 'Belum ada pembayaran terdeteksi.');
     })
     .catch(function() {
       if (btn) {

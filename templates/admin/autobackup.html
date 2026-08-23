@@ -23,6 +23,11 @@
 .info-box strong { color: #374151; }
 </style>
 <script>
+function abModeChange() {
+  var mode = document.getElementById('ab-mode').value;
+  document.getElementById('ab-row-weekday').style.display = (mode === 'weekly') ? '' : 'none';
+  document.getElementById('ab-row-monthday').style.display = (mode === 'monthly') ? '' : 'none';
+}
 function abRun() {
   var btn = document.getElementById('ab-run-btn'), out = document.getElementById('ab-output');
   var orig = btn.textContent;

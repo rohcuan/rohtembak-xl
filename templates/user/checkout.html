@@ -92,7 +92,7 @@ function payNow() {
         var body = out ? escapeHtml(out) : (res.message ? escapeHtml(res.message) : '');
         box.innerHTML = '<span class="t-title">result</span><span class="t-prompt">$</span> <span class="t-ok">SUKSES</span>\n'
           + body + '\n'
-          + '<span class="t-prompt">$</span> ' + (res.message || '') + '\n'
+          + '<span class="t-prompt">$</span> ' + escapeHtml(res.message || '') + '\n'
           + '<span class="t-prompt">$</span> saldo terpotong : ' + (res.deducted != null ? Number(res.deducted).toLocaleString('id-ID') + ' IDR' : '-') + '\n'
           + '<span class="t-prompt">$</span> sisa saldo      : ' + (res.new_balance != null ? Number(res.new_balance).toLocaleString('id-ID') + ' IDR' : '-');
         if (res.qris_img) showQr(res.qris_img, res.qris_expires_ts || 0);
@@ -100,7 +100,7 @@ function payNow() {
         var out = res.terminal_output || '';
         box.innerHTML = '<span class="t-title">result</span><span class="t-prompt">$</span> <span class="t-err">GAGAL</span>\n'
           + (out ? escapeHtml(out) : '') + '\n'
-          + '<span class="t-err">$</span> ' + (res.message || 'Terjadi kesalahan.');
+          + '<span class="t-err">$</span> ' + escapeHtml(res.message || 'Terjadi kesalahan.');
         btn.disabled = false;
         if (isMaxPendingError(res.message) || isMaxPendingError(out)) showPendingModal();
       }

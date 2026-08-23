@@ -124,6 +124,22 @@ function esc(s) {
     return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
   });
 }
+function sanitizeTnc(html) {
+  var t = document.createElement('template');
+  t.innerHTML = html || '';
+  var removeTags = {SCRIPT:1,STYLE:1,IFRAME:1,OBJECT:1,EMBED:1,LINK:1,META:1,FORM:1,INPUT:1,BUTTON:1,TEXTAREA:1,SELECT:1,VIDEO:1,AUDIO:1,SOURCE:1};
+  var okTags = {B:1,STRONG:1,I:1,EM:1,U:1,S:1,BR:1,P:1,DIV:1,SPAN:1,UL:1,OL:1,LI:1,H1:1,H2:1,H3:1,H4:1,H5:1,H6:1,SMALL:1,HR:1,TABLE:1,THEAD:1,TBODY:1,TR:1,TD:1,TH:1};
+  t.content.querySelectorAll('*').forEach(function(el) {
+    if (removeTags[el.tagName]) { el.remove(); return; }
+    if (!okTags[el.tagName]) {
+      while (el.firstChild) el.parentNode.insertBefore(el.firstChild, el);
+      el.remove();
+      return;
+    }
+    Array.prototype.slice.call(el.attributes).forEach(function(a) { el.removeAttribute(a.name); });
+  });
+  return t.innerHTML;
+}
 function fmtRp(v) {
   v = Number(v);
   if (isNaN(v)) return '';
@@ -191,7 +207,7 @@ function detailHtml(d) {
   if (d.tnc) {
     body += '<div>' +
       collapseHeader('tnc', 'Syarat &amp; Ketentuan') +
-      '<div class="collapse-body collapsed" id="tnc-body"><div class="tnc-box">' + d.tnc + '</div></div></div>';
+      '<div class="collapse-body collapsed" id="tnc-body"><div class="tnc-box">' + sanitizeTnc(d.tnc) + '</div></div></div>';
   }
   if (body) h += '<div style="padding:16px 24px;">' + body + '</div>';
 
@@ -225,7 +241,8 @@ function renderError(msg) {
   var root = document.getElementById('detail-root');
   if (!root) return;
   root.innerHTML = '<div class="card"><div class="empty-state">' + esc(msg) +
-    '<br><span style="font-size:.85rem;color:#888;">Tekan tombol <strong>Refresh Data</strong> untuk mencoba lagi.</span></div></div>';
+    '<br><button type="button" class="btn btn-sm btn-primary" style="margin-top:14px;" onclick="loadDetail()">Coba Lagi</button>' +
+    '<br><span style="font-size:.85rem;color:#888;">atau tekan tombol <strong>Refresh Data</strong> di atas.</span></div></div>';
 }
 function isFresh(d, ttl) {
   if (ttl === undefined) ttl = DETAIL_CACHE_TTL;
@@ -282,6 +299,12 @@ function loadDetail() {
   }).catch(function() { streamDetail('meta,detail'); });
 }
 document.addEventListener('DOMContentLoaded', loadDetail);
+function refreshPageData() {
+  DETAIL_RENDERED = false;
+  var root = document.getElementById('detail-root');
+  if (root) root.innerHTML = '<div class="card detail-loading"><div class="skel-spinner"></div><div class="detail-loading-text">Memuat detail paket...</div></div>';
+  loadDetail();
+}
 </script>
 {% endif %}
 

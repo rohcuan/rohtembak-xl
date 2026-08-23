@@ -2221,9 +2221,9 @@ def add_xl(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if not phone_number.startswith("628") or len(phone_number) < 10 or len(phone_number) > 15:
+    if not phone_number.startswith("628") or len(phone_number) < 10 or len(phone_number) > 14:
         ctx = get_user_context(user, db)
-        ctx.update({"request": request, "error": "Nomor tidak valid. Harus diawali 628 dan 10-15 digit"})
+        ctx.update({"request": request, "error": "Nomor tidak valid. Harus diawali 628 dan 10-14 digit"})
         return render("user/dashboard.html", context=ctx, status_code=400)
 
     xl_count = db.query(XLAccount).filter(XLAccount.user_id == user.id).count()
@@ -2324,8 +2324,8 @@ def xl_otp_request(
 
     ctx = get_user_context(user, db)
 
-    if not phone_number.startswith("628") or len(phone_number) < 10 or len(phone_number) > 15:
-        ctx.update({"request": request, "error": "Nomor tidak valid. Harus diawali 628 dan 10-15 digit"})
+    if not phone_number.startswith("628") or len(phone_number) < 10 or len(phone_number) > 14:
+        ctx.update({"request": request, "error": "Nomor tidak valid. Harus diawali 628 dan 10-14 digit"})
         return render("user/otp_request.html", context=ctx, status_code=400)
 
     if xl_id:
@@ -3254,11 +3254,6 @@ def _process_payment(active_xl, option_number, addon_spec, method):
                             pay_extra["qris_remaining"] = int(qris_remaining or 0)
                         else:
                             pay_error = "Gagal membuat QRIS."
-                    elif method == "ewallet":
-                        from app.client.purchase.ewallet import show_multipayment
-                        _api_delay()
-                        show_multipayment(API_KEY, tokens, items, detail["payment_for"], False)
-                        pay_success = "Silakan selesaikan pembayaran di aplikasi E-Wallet Anda."
                     else:
                         pay_error = "Metode pembayaran tidak dikenal."
                 except Exception as e:

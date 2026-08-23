@@ -3702,6 +3702,7 @@ def _pay_response(user, detail, pay_error, pay_success, method, family_key, pay_
             })
         if _ab_read_state().get("notif_purchase"):
             pkg_name = (detail or {}).get("option_name") or FAMILY_LABELS.get(family_key, family_key)
+            metode_label = {"balance": "via Pulsa XL", "qris": "via QRIS XL"}.get(method, method)
             _notify(
                 "🟢  " + _tg_bold("PEMBELIAN PAKET") + "\n\n"
                 "<blockquote>"
@@ -3709,6 +3710,7 @@ def _pay_response(user, detail, pay_error, pay_success, method, family_key, pay_
                     _tg_field("User", _tg_esc(user.username))
                     + _tg_field("Nomor", _tg_esc(phone_number) if phone_number else "-")
                     + _tg_field("Biaya admin", f"{_fmt_thousand(fee)} IDR")
+                    + _tg_field("Metode", metode_label)
                     + _tg_field("Paket", _tg_esc(pkg_name))
                 ).rstrip()
                 + "</blockquote>\n"

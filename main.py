@@ -1471,11 +1471,15 @@ def _telegram_send_backup(trigger: str) -> tuple[bool, str]:
                             "caption": (
                                 "🟢  " + _tg_bold("BACKUP BERHASIL") + "\n\n"
                                 "<blockquote>"
-                                + _tg_field("Mode", "Otomatis" if trigger == "auto" else "Manual")
-                                + _tg_field("File", fname)
-                                + _tg_field("Ukuran", f"{size / 1048576:.2f} MB")
-                                + "</blockquote>\n\n"
-                                f"<blockquote>{_tg_time_footer()}</blockquote>"
+                                + (
+                                    _tg_field("Mode", "Otomatis" if trigger == "auto" else "Manual")
+                                    + _tg_field("Ukuran", f"{size / 1048576:.2f} MB")
+                                    + _tg_field("File", fname)
+                                ).rstrip()
+                                + "</blockquote>\n"
+                                "<blockquote>"
+                                + _tg_time_footer()
+                                + "</blockquote>"
                             ),
                         },
                         files={"document": (fname, f)},

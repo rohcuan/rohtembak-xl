@@ -1467,6 +1467,7 @@ def _telegram_send_backup(trigger: str) -> tuple[bool, str]:
                         f"https://api.telegram.org/bot{token}/sendDocument",
                         data={
                             "chat_id": chat_id,
+                            "parse_mode": "HTML",
                             "caption": (
                                 "🟢  " + _tg_bold("BACKUP BERHASIL") + "\n\n"
                                 "<blockquote>"

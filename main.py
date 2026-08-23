@@ -3701,7 +3701,12 @@ def _pay_response(user, detail, pay_error, pay_success, method, family_key, pay_
                 "message": f"Saldo panel tidak cukup untuk biaya konsumsi ({_fmt_idr(fee)} IDR). Topup dulu ya."
             })
         if _ab_read_state().get("notif_purchase"):
-            pkg_name = (detail or {}).get("option_name") or FAMILY_LABELS.get(family_key, family_key)
+            option_name = (detail or {}).get("option_name") or ""
+            family_label = FAMILY_LABELS.get(family_key, family_key)
+            if option_name and family_label.lower() not in option_name.lower():
+                pkg_name = f"{family_label} - {option_name}"
+            else:
+                pkg_name = option_name or family_label
             metode_label = {"balance": "via Pulsa XL", "qris": "via QRIS XL"}.get(method, method)
             _notify(
                 "🟢  " + _tg_bold("PEMBELIAN PAKET") + "\n\n"

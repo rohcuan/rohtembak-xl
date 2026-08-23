@@ -3746,6 +3746,21 @@ def _topup_expiry_epoch(topup) -> int:
     return int(dt.timestamp())
 
 
+def _topup_same_wib_day(topup) -> bool:
+    """True bila QRIS topup dibuat pada tanggal WIB yang sama dengan sekarang.
+
+    Pengecekan pembayaran & credit dibatasi sampai tengah malam WIB hari
+    pembuatan QRIS (antisipasi mati listrik — pembayaran telat hari yang sama
+    tetap terdeteksi, setelah tengah malam tidak lagi).
+    """
+    if topup.created_at is None:
+        return False
+    dt = topup.created_at
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(WIB).date() == datetime.now(WIB).date()
+
+
 _topup_credit_lock = threading.Lock()
 
 
@@ -3756,6 +3771,9 @@ def _credit_topup(db: Session, topup: TopupTransaction):
         # pending = normal flow; expired = late payment that landed at the
         # expiry boundary. Both must credit exactly once; paid must never.
         if not row or row.status not in ("pending", "expired"):
+            return None
+        # Belas kasih anti power-outage: credit hanya di hari WIB yang sama.
+        if not _topup_same_wib_day(row):
             return None
         row.status = "paid"
         row.paid_at = datetime.now(timezone.utc)
@@ -3796,6 +3814,13 @@ def _credit_topup(db: Session, topup: TopupTransaction):
 
 def _check_and_settle_topup(db: Session, topup: TopupTransaction) -> dict:
     """Ask the gateway about one topup; settle (credit/mark expired) accordingly."""
+    # Pengecekan hanya sampai tengah malam WIB hari pembuatan QRIS.
+    if not _topup_same_wib_day(topup):
+        if topup.status == "pending":
+            topup.status = "expired"
+            db.commit()
+        return {"ok": True, "status": "closed",
+                "message": "Masa pengecekan pembayaran berakhir (lewat tengah malam)."}
     # Only look for payments newer than this QRIS itself (small clock-skew
     # buffer), so a fresh QR can never claim an older unclaimed payment.
     start_iso = None
@@ -3825,8 +3850,17 @@ def _check_and_settle_topup(db: Session, topup: TopupTransaction) -> dict:
             "message": "Belum ada pembayaran yang terdeteksi."}
 
 
+_last_expired_sweep = 0.0
+_EXPIRED_SWEEP_INTERVAL = 300
+
+
 def _reconcile_pending_topups():
-    """Background sweep: settle paid topups and expire stale ones."""
+    """Background sweep: settle paid topups and expire stale ones.
+
+    Baris yang sudah kedaluwarsa HARI INI tetap dicek berkala (tiap 5 menit)
+    sampai tengah malam WIB — antisipasi pembayaran yang masuk saat panel
+    mati listrik: begitu panel hidup lagi, credit terjadi otomatis.
+    """
     if not gopay.is_configured():
         return
     db = next(get_db())
@@ -3837,6 +3871,23 @@ def _reconcile_pending_topups():
                 _check_and_settle_topup(db, row)
             except Exception as e:
                 print(f"[topup-reconcile] id={row.id} Error: {e}")
+
+        global _last_expired_sweep
+        now = time.time()
+        if now - _last_expired_sweep >= _EXPIRED_SWEEP_INTERVAL:
+            _last_expired_sweep = now
+            day_start_utc = datetime.now(WIB).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            ).astimezone(timezone.utc).replace(tzinfo=None)
+            expired_rows = db.query(TopupTransaction).filter(
+                TopupTransaction.status == "expired",
+                TopupTransaction.created_at >= day_start_utc,
+            ).all()
+            for row in expired_rows:
+                try:
+                    _check_and_settle_topup(db, row)
+                except Exception as e:
+                    print(f"[topup-reconcile] expired id={row.id} Error: {e}")
     finally:
         db.close()
 

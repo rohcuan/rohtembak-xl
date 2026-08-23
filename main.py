@@ -3707,6 +3707,9 @@ def _pay_response(user, detail, pay_error, pay_success, method, family_key, pay_
                 pkg_name = f"{family_label} - {option_name}"
             else:
                 pkg_name = option_name or family_label
+            pkg_number = (detail or {}).get("number")
+            if pkg_number:
+                pkg_name = f"{pkg_name} (#{pkg_number})"
             metode_label = {"balance": "via Pulsa XL", "qris": "via QRIS XL"}.get(method, method)
             _notify(
                 "🟢  " + _tg_bold("PEMBELIAN PAKET") + "\n\n"

@@ -10,7 +10,7 @@ import asyncio
 import threading
 import zipfile
 import requests
-from contextlib import asynccontextmanager, redirect_stdout
+from contextlib import asynccontextmanager, contextmanager, redirect_stdout
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -1188,7 +1188,10 @@ def admin_backup(format: str = "zip", admin_user: User = Depends(get_current_use
         resp = JSONResponse(payload)
         resp.headers["Content-Disposition"] = 'attachment; filename="backup.json"'
         return resp
-    zip_bytes = _build_backup_zip_bytes(admin_data, users_data, xl_data, fees, users)
+    zip_bytes = _build_backup_zip_bytes(
+        admin_data, users_data, xl_data, fees, users,
+        zip_password=(admin.password or admin.password_hash or "").strip() or None,
+    )
     resp = Response(content=zip_bytes, media_type="application/zip")
     resp.headers["Content-Disposition"] = 'attachment; filename="backup.zip"'
     return resp
@@ -1219,37 +1222,58 @@ def _collect_backup_settings() -> dict:
     }
 
 
-def _build_backup_zip_bytes(admin_data: dict, users_data: list, xl_data: list, fees: dict, users: list) -> bytes:
-    """Bangun backup.zip format manifest v3 — dipakai /admin/backup dan auto backup Telegram."""
+def _build_backup_zip_bytes(admin_data: dict, users_data: list, xl_data: list, fees: dict, users: list, zip_password: str | None = None) -> bytes:
+    """Bangun backup.zip format manifest v3 — dipakai /admin/backup dan auto backup Telegram.
+
+    Saat zip_password diisi, ZIP dienkripsi AES-256 (pyzipper). Jika pyzipper
+    belum terpasang di server, backup tetap dibuat tanpa enkripsi + peringatan log.
+    """
     exported_at = datetime.now(WIB).strftime("%Y-%m-%d %H:%M:%S WIB")
     ax_fp = _read_ax_fp_file()
     settings_data = _collect_backup_settings()
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("manifest.json", json.dumps({
+
+    entries: list[tuple[str, str]] = [
+        ("manifest.json", json.dumps({
             "version": 3,
             "app": "RohTembak (XL)",
             "exported_at": exported_at,
             "counts": {"users": len(users_data), "xl_accounts": len(xl_data), "fees": len(fees), "settings": 1},
-        }, indent=2, ensure_ascii=False))
-        zf.writestr("admin.json", json.dumps(admin_data, indent=2, ensure_ascii=False))
-        zf.writestr("users.json", json.dumps(users_data, indent=2, ensure_ascii=False))
-        zf.writestr("xl_accounts.json", json.dumps(xl_data, indent=2, ensure_ascii=False))
-        zf.writestr("fees.json", json.dumps(fees, indent=2, ensure_ascii=False))
-        zf.writestr("settings.json", json.dumps(settings_data, indent=2, ensure_ascii=False))
-        if ax_fp:
-            zf.writestr("device.fp", ax_fp)
-        fp_dir = os.path.join(BASE_DIR, "data")
-        for u in users:
-            fp_path = os.path.join(fp_dir, f"ax.fp.{u.username}")
-            if os.path.exists(fp_path):
-                try:
-                    with open(fp_path, "r", encoding="utf-8") as f:
-                        fp_content = f.read().strip()
-                    if fp_content:
-                        zf.writestr(f"fingerprints/{u.username}.fp", fp_content)
-                except (OSError, UnicodeDecodeError):
-                    pass
+        }, indent=2, ensure_ascii=False)),
+        ("admin.json", json.dumps(admin_data, indent=2, ensure_ascii=False)),
+        ("users.json", json.dumps(users_data, indent=2, ensure_ascii=False)),
+        ("xl_accounts.json", json.dumps(xl_data, indent=2, ensure_ascii=False)),
+        ("fees.json", json.dumps(fees, indent=2, ensure_ascii=False)),
+        ("settings.json", json.dumps(settings_data, indent=2, ensure_ascii=False)),
+    ]
+    if ax_fp:
+        entries.append(("device.fp", ax_fp))
+    fp_dir = os.path.join(BASE_DIR, "data")
+    for u in users:
+        fp_path = os.path.join(fp_dir, f"ax.fp.{u.username}")
+        if os.path.exists(fp_path):
+            try:
+                with open(fp_path, "r", encoding="utf-8") as f:
+                    fp_content = f.read().strip()
+                if fp_content:
+                    entries.append((f"fingerprints/{u.username}.fp", fp_content))
+            except (OSError, UnicodeDecodeError):
+                pass
+
+    buf = io.BytesIO()
+    if zip_password:
+        try:
+            import pyzipper
+            with pyzipper.AESZipFile(buf, "w", compression=pyzipper.ZIP_DEFLATED, encryption=pyzipper.WZ_AES) as zf:
+                zf.setpassword(zip_password.encode("utf-8"))
+                for ename, econtent in entries:
+                    zf.writestr(ename, econtent)
+            buf.seek(0)
+            return buf.getvalue()
+        except ImportError:
+            print("[backup] pyzipper belum terpasang — backup disimpan TANPA password")
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for ename, econtent in entries:
+            zf.writestr(ename, econtent)
     buf.seek(0)
     return buf.getvalue()
 
@@ -1456,7 +1480,10 @@ def _autobackup_zip_bytes() -> bytes:
                     "is_active": bool(x.is_active),
                 })
         fees = _get_all_family_fees()
-        return _build_backup_zip_bytes(admin_data, users_data, xl_data, fees, users)
+        return _build_backup_zip_bytes(
+            admin_data, users_data, xl_data, fees, users,
+            zip_password=((admin.password or admin.password_hash or "").strip() if admin else None) or None,
+        )
     finally:
         db.close()
 
@@ -1718,6 +1745,32 @@ def _is_zip_bytes(raw_bytes: bytes) -> bool:
     return raw_bytes[:4] == b"PK\x03\x04"
 
 
+@contextmanager
+def _open_backup_zip(raw_bytes: bytes, password: str | None = None):
+    """Buka ZIP backup — mendukung polos maupun terenkripsi (AES via pyzipper)."""
+    pwd = password.encode("utf-8") if password else None
+    bio = io.BytesIO(raw_bytes)
+    zf = None
+    try:
+        import pyzipper  # type: ignore
+        zf = pyzipper.AESZipFile(bio)
+    except ImportError:
+        zf = zipfile.ZipFile(bio)
+    if pwd:
+        zf.setpassword(pwd)
+    try:
+        yield zf
+    finally:
+        zf.close()
+
+
+def _zip_is_encrypted(zf) -> bool:
+    try:
+        return any(info.flag_bits & 0x1 for info in zf.infolist())
+    except Exception:
+        return False
+
+
 def _norm_user_entry(entry) -> dict:
     return {
         "username": entry.get("username"),
@@ -1855,12 +1908,14 @@ def _parse_backup_entries(raw: str) -> list:
     return entries
 
 
-def _load_backup_data(raw_bytes: bytes, filename: str) -> dict:
+def _load_backup_data(raw_bytes: bytes, filename: str, password: str | None = None) -> dict:
     """Read backup from ZIP / JSON / TXT upload. Returns normalized sections."""
     name = (filename or "").lower()
     if name.endswith(".zip") or _is_zip_bytes(raw_bytes):
+        encrypted = {"flag": False}
         try:
-            with zipfile.ZipFile(io.BytesIO(raw_bytes)) as zf:
+            with _open_backup_zip(raw_bytes, password) as zf:
+                encrypted["flag"] = _zip_is_encrypted(zf)
                 data = _load_backup_v3(zf)
                 if data:
                     return data
@@ -1870,7 +1925,17 @@ def _load_backup_data(raw_bytes: bytes, filename: str) -> dict:
                     raise ValueError("ZIP tidak berisi file backup (manifest.json / backup.json).")
                 target = "backup.json" if "backup.json" in names else sorted(json_names)[0]
                 inner = zf.read(target).decode("utf-8")
-        except (zipfile.BadZipFile, UnicodeDecodeError, RuntimeError, KeyError):
+        except ValueError:
+            raise
+        except NotImplementedError:
+            raise ValueError("ZIP memakai enkripsi AES tetapi modul pyzipper belum terpasang di server.")
+        except (RuntimeError, zipfile.BadZipFile) as e:
+            if encrypted["flag"]:
+                if not password:
+                    raise ValueError("File backup terenkripsi. Isi kolom Password Backup lalu coba lagi.")
+                raise ValueError("Password backup salah.")
+            raise ValueError(f"File ZIP tidak valid atau rusak. ({e})")
+        except (UnicodeDecodeError, KeyError):
             raise ValueError("File ZIP tidak valid atau rusak.")
         try:
             return _parse_backup_json(json.loads(inner))
@@ -2037,6 +2102,7 @@ def admin_restore_page(request: Request, user: User = Depends(get_current_user))
 async def admin_restore_upload(
     request: Request,
     backup_file: UploadFile = File(...),
+    backup_password: str = Form(""),
     admin_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -2049,7 +2115,7 @@ async def admin_restore_upload(
     if len(raw_bytes) > MAX_BACKUP_RESTORE_SIZE:
         return _restore_render(request, admin_user, error="Ukuran file terlalu besar (maksimal 1 MB).")
     try:
-        data = _load_backup_data(raw_bytes, backup_file.filename or "")
+        data = _load_backup_data(raw_bytes, backup_file.filename or "", backup_password.strip() or None)
     except ValueError as e:
         return _restore_render(request, admin_user, error=str(e))
 
@@ -2081,6 +2147,17 @@ async def admin_restore_upload(
             valid_fees[key] = fee
 
     valid_settings = _validate_restore_settings(data.get("settings"))
+    legacy_backup = False
+    if valid_settings is None and data.get("kind") == "full":
+        # Backup lama (tanpa settings.json): reset pengaturan ke nilai netral,
+        # bukan mempertahankan pengaturan milik mesin saat ini.
+        legacy_backup = True
+        valid_settings = {
+            "qris_gateway": {"url": "", "api_key": ""},
+            "bot_tele": {"chat_id": "", "token": ""},
+            "autobackup": {"mode": "daily", "time": "03:00", "weekday": 0, "monthday": 1},
+            "notif": {"topup_qris": False, "topup_admin": False, "purchase": False},
+        }
 
     admin_section = data.get("admin")
     a_username = str(admin_section.get("username") or "").strip().lower() if admin_section else ""
@@ -2201,6 +2278,8 @@ async def admin_restore_upload(
     }
     if valid_settings is not None:
         result["settings_applied"] = settings_applied
+        if legacy_backup:
+            result["settings_reset_default"] = True
     if device_fp_ok is not None:
         result["device_fp_restored"] = device_fp_ok
         if not device_fp_ok:
@@ -3393,20 +3472,22 @@ def _checkout_detail(active_xl, fetch_fn):
 
 
 _decoy_price_cache: dict = {}
-_DECOY_PRICE_TTL = 3600
+# Cache harga decoy mengikuti masa sesi login (ACCESS_TOKEN_EXPIRE_MINUTES),
+# selaras dengan TTL cache paket di sisi browser (570 detik utk 9.5 menit).
+_DECOY_PRICE_TTL = int(float(ACCESS_TOKEN_EXPIRE_MINUTES) * 60)
 
 
 def _qris_decoy_price(active_xl=None):
-    """Harga decoy QRIS yang dipakai di settlement (live dari API), dicache 1 jam.
+    """Harga decoy QRIS yang dipakai di settlement (live dari API).
 
     Checkout menampilkan harga ini agar total QRIS di layar == total yang
-    benar-benar ditagih. Saat cache kosong (atau tanpa akun XL aktif) dipakai
-    harga dari decoy-default-qris.json sebagai fallback.
+    benar-benar ditagih. Hanya harga hasil fetch live yang di-cache; nilai
+    fallback config TIDAK di-cache supaya begitu ada akun XL aktif,
+    checkout berikutnya langsung memakai harga live.
     """
     entry = _decoy_price_cache.get("qris")
     if entry and entry[1] > time.time():
         return entry[0]
-    price = 0
     try:
         from app.service.decoy import build_decoy_item, load_decoy_config
         config = load_decoy_config("qris") or {}
@@ -3419,9 +3500,10 @@ def _qris_decoy_price(active_xl=None):
                 item = build_decoy_item(API_KEY, tokens, "qris")
                 if item:
                     price = int(item["item_price"] or 0)
+                    _decoy_price_cache["qris"] = (price, time.time() + _DECOY_PRICE_TTL)
+                    return price
     except Exception:
         pass
-    _decoy_price_cache["qris"] = (price, time.time() + _DECOY_PRICE_TTL)
     return price
 
 

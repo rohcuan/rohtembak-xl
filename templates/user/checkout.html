@@ -200,6 +200,9 @@ function closePendingModal() {
         {% if insufficient %}
         <div class="saldo-warn">Saldo panel tidak mencukupi untuk paket ini.</div>
         {% endif %}
+        {% if method == "qris" %}
+        <div class="saldo-warn">Biaya saldo panel dipotong langsung saat QRIS dibuat dan <strong>tidak dapat dikembalikan</strong>, termasuk jika QRIS tidak jadi dibayar.</div>
+        {% endif %}
       </div>
 
     <div style="margin-top:18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">

@@ -85,7 +85,7 @@
             <div><span>Nomor XL</span><div class="val">dipulihkan <strong>{{ result.xl_restored }}</strong>{% if result.xl_skipped %} · dilewati {{ result.xl_skipped }}{% endif %}</div></div>
             <div><span>Fee paket</span><div class="val">dipulihkan <strong>{{ result.fees_restored }}</strong></div></div>
             {% if result.settings_applied is defined %}
-            <div><span>Pengaturan panel</span><div class="val">{% if result.settings_applied %}{{ result.settings_applied | join(', ') }}{% else %}tidak ada dalam file backup{% endif %}</div></div>
+            <div><span>Pengaturan panel</span><div class="val">{% if result.settings_applied %}{{ result.settings_applied | join(', ') }}{% else %}tidak ada dalam file backup{% endif %}{% if result.settings_reset_default %} <em>&mdash; direset ke default (backup lama tanpa pengaturan)</em>{% endif %}</div></div>
             {% endif %}
             {% if result.device_fp_restored is defined %}
             <div><span>Identitas perangkat (ax.fp)</span><div class="val">{% if result.device_fp_restored %}dipulihkan{% else %}gagal{% endif %}{% if result.device_fp_error %} — {{ result.device_fp_error }}{% endif %}</div></div>
@@ -113,6 +113,14 @@
             <input type="file" name="backup_file" id="backup_file" accept=".zip,.json,.txt,application/zip,application/json,text/plain" onchange="updateDropzone(this)" style="display:none;">
         </div>
 
+        <div class="form-group">
+            <label>Password Backup <span style="font-weight:400;color:#888;">(opsional)</span></label>
+            <input type="password" name="backup_password" autocomplete="new-password"
+                   placeholder="Kosongkan jika file backup tidak terkunci"
+                   style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;">
+            <div class="restore-hint">Backup ZIP terbaru terenkripsi dengan password admin. File backup lama (tanpa password) tetap bisa direstore tanpa mengisi kolom ini.</div>
+        </div>
+
         <div style="display:flex;gap:8px;">
             <a href="/admin/dashboard" class="btn btn-outline">Batal</a>
             <button type="submit" class="btn btn-primary" id="submitBtn" disabled>Hapus &amp; Restore</button>
@@ -129,7 +137,7 @@
             <li>Riwayat transaksi</li>
             <li>Nomor XL</li>
             <li>Fee paket</li>
-            <li>Pengaturan panel (QRIS API, Bot Tele, jadwal auto backup, notif) — jika ada di file backup</li>
+            <li>Pengaturan panel (QRIS API, Bot Tele, jadwal auto backup, notif) &mdash; ikut isi backup; backup lama direset ke default</li>
         </ul>
         <div class="warn-inline">Admin dikembalikan sesuai file backup. Jika file tidak memuat admin, akan dipakai admin/admin.</div>
         <div class="modal-actions">

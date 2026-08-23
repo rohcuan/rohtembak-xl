@@ -735,12 +735,18 @@ def admin_add_balance(
         _notify(
             "🟢  " + _tg_bold("PENYESUAIAN SALDO") + "\n\n"
             "<blockquote>"
-            + _tg_field("User", _tg_esc(uname))
-            + _tg_field("Nominal", f"+{_fmt_thousand(amount)} IDR")
-            + _tg_field("Metode", "Admin")
-            + "</blockquote>\n\n"
-            f"<blockquote>{_tg_field('Saldo', f'{_fmt_thousand(bal.balance)} IDR')}</blockquote>\n\n"
-            f"<blockquote>{_tg_time_footer()}</blockquote>"
+            + (
+                _tg_field("User", _tg_esc(uname))
+                + _tg_field("Nominal", f"+{_fmt_thousand(amount)} IDR")
+                + _tg_field("Metode", "Admin")
+            ).rstrip()
+            + "</blockquote>\n"
+            "<blockquote>"
+            + _tg_field("Saldo", f"{_fmt_thousand(bal.balance)} IDR").rstrip()
+            + "</blockquote>\n"
+            "<blockquote>"
+            + _tg_time_footer()
+            + "</blockquote>"
         )
     return RedirectResponse(url="/admin/users", status_code=303)
 
@@ -873,12 +879,18 @@ def admin_decrease_balance(
         _notify(
             "🟢  " + _tg_bold("PENYESUAIAN SALDO") + "\n\n"
             "<blockquote>"
-            + _tg_field("User", _tg_esc(uname))
-            + _tg_field("Nominal", f"-{_fmt_thousand(amount)} IDR")
-            + _tg_field("Metode", "Admin")
-            + "</blockquote>\n\n"
-            f"<blockquote>{_tg_field('Saldo', f'{_fmt_thousand(bal.balance)} IDR')}</blockquote>\n\n"
-            f"<blockquote>{_tg_time_footer()}</blockquote>"
+            + (
+                _tg_field("User", _tg_esc(uname))
+                + _tg_field("Nominal", f"-{_fmt_thousand(amount)} IDR")
+                + _tg_field("Metode", "Admin")
+            ).rstrip()
+            + "</blockquote>\n"
+            "<blockquote>"
+            + _tg_field("Saldo", f"{_fmt_thousand(bal.balance)} IDR").rstrip()
+            + "</blockquote>\n"
+            "<blockquote>"
+            + _tg_time_footer()
+            + "</blockquote>"
         )
     return RedirectResponse(url="/admin/users", status_code=303)
 
@@ -920,12 +932,18 @@ def admin_set_balance(
         _notify(
             "🟢  " + _tg_bold("PENYESUAIAN SALDO") + "\n\n"
             "<blockquote>"
-            + _tg_field("User", _tg_esc(uname))
-            + _tg_field("Nominal", f"{sign}{_fmt_thousand(abs(delta))} IDR")
-            + _tg_field("Metode", "Admin")
-            + "</blockquote>\n\n"
-            f"<blockquote>{_tg_field('Saldo', f'{_fmt_thousand(bal.balance)} IDR')}</blockquote>\n\n"
-            f"<blockquote>{_tg_time_footer()}</blockquote>"
+            + (
+                _tg_field("User", _tg_esc(uname))
+                + _tg_field("Nominal", f"{sign}{_fmt_thousand(abs(delta))} IDR")
+                + _tg_field("Metode", "Admin")
+            ).rstrip()
+            + "</blockquote>\n"
+            "<blockquote>"
+            + _tg_field("Saldo", f"{_fmt_thousand(bal.balance)} IDR").rstrip()
+            + "</blockquote>\n"
+            "<blockquote>"
+            + _tg_time_footer()
+            + "</blockquote>"
         )
     return RedirectResponse(url="/admin/users", status_code=303)
 
@@ -3687,13 +3705,19 @@ def _pay_response(user, detail, pay_error, pay_success, method, family_key, pay_
             _notify(
                 "🟢  " + _tg_bold("PEMBELIAN PAKET") + "\n\n"
                 "<blockquote>"
-                + _tg_field("User", _tg_esc(user.username))
-                + _tg_field("Nomor", _tg_esc(phone_number) if phone_number else "-")
-                + _tg_field("Biaya admin", f"{_fmt_thousand(fee)} IDR")
-                + _tg_field("Paket", _tg_esc(pkg_name))
-                + "</blockquote>\n\n"
-                f"<blockquote>{_tg_field('Saldo', f'{_fmt_thousand(new_balance)} IDR')}</blockquote>\n\n"
-                f"<blockquote>{_tg_time_footer()}</blockquote>"
+                + (
+                    _tg_field("User", _tg_esc(user.username))
+                    + _tg_field("Nomor", _tg_esc(phone_number) if phone_number else "-")
+                    + _tg_field("Biaya admin", f"{_fmt_thousand(fee)} IDR")
+                    + _tg_field("Paket", _tg_esc(pkg_name))
+                ).rstrip()
+                + "</blockquote>\n"
+                "<blockquote>"
+                + _tg_field("Saldo", f"{_fmt_thousand(new_balance)} IDR").rstrip()
+                + "</blockquote>\n"
+                "<blockquote>"
+                + _tg_time_footer()
+                + "</blockquote>"
             )
         resp = {"ok": True, "message": pay_success, "deducted": fee, "new_balance": new_balance}
         qris_b64 = (pay_extra or {}).get("qris_b64")
@@ -3772,12 +3796,18 @@ def _credit_topup(db: Session, topup: TopupTransaction):
             _notify(
                 "🟢  " + _tg_bold("TOPUP QRIS") + "\n\n"
                 "<blockquote>"
-                + _tg_field("User", _tg_esc(uname))
-                + _tg_field("Nominal", f"+{_fmt_thousand(row.amount)} IDR")
-                + _tg_field("Metode", "QRIS")
-                + "</blockquote>\n\n"
-                f"<blockquote>{_tg_field('Saldo', f'{_fmt_thousand(bal.balance)} IDR')}</blockquote>\n\n"
-                f"<blockquote>{_tg_time_footer()}</blockquote>"
+                + (
+                    _tg_field("User", _tg_esc(uname))
+                    + _tg_field("Nominal", f"+{_fmt_thousand(row.amount)} IDR")
+                    + _tg_field("Metode", "QRIS")
+                ).rstrip()
+                + "</blockquote>\n"
+                "<blockquote>"
+                + _tg_field("Saldo", f"{_fmt_thousand(bal.balance)} IDR").rstrip()
+                + "</blockquote>\n"
+                "<blockquote>"
+                + _tg_time_footer()
+                + "</blockquote>"
             )
         return bal.balance
 

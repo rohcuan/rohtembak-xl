@@ -44,21 +44,26 @@ if [ -f "${INSTALL_DIR}/main.py" ] && [ -d "${INSTALL_DIR}/.git" ]; then
     fi
 else
     log "Fresh install - cloning ${REPO_URL} (branch ${REPO_BRANCH})..."
-    # INSTALL_DIR is usually a mount point: never delete the dir itself,
-    # populate it via git init/fetch/checkout instead.
+    # Jangan pernah menghapus isi volume. Clone ke temp, lalu copy kode masuk.
+    # - Gagal jaringan -> exit SEBELUM menyentuh isi volume (.env/data aman)
+    # - .git korup di volume tidak relevan (sejarah datang dari clone baru)
     mkdir -p "${INSTALL_DIR}"
-    _clone_into() {
-        git -C "${INSTALL_DIR}" init -q 2>/dev/null || true
-        git -C "${INSTALL_DIR}" remote remove origin 2>/dev/null || true
-        git -C "${INSTALL_DIR}" remote add origin "${REPO_URL}"
-        git -C "${INSTALL_DIR}" fetch --depth 1 -q origin "${REPO_BRANCH}"
-        git -C "${INSTALL_DIR}" checkout -q -B "${REPO_BRANCH}" "origin/${REPO_BRANCH}"
-    }
-    if ! _clone_into; then
-        warn "Checkout conflicted with existing files - clearing contents (dir kept)..."
-        find "${INSTALL_DIR}" -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
-        _clone_into
+    tmp="$(mktemp -d)"
+    if ! git clone --depth 1 -b "${REPO_BRANCH}" "${REPO_URL}" "${tmp}/repo"; then
+        rm -rf "${tmp}"
+        warn "Clone gagal (jaringan?). Tidak ada data yang disentuh — coba lagi nanti."
+        exit 1
     fi
+    ENV_KEEP=""
+    if [ -f "${INSTALL_DIR}/.env" ]; then
+        cp "${INSTALL_DIR}/.env" "${tmp}/.env.keep"
+        ENV_KEEP=1
+    fi
+    cp -a "${tmp}/repo/." "${INSTALL_DIR}/"
+    if [ -n "${ENV_KEEP}" ]; then
+        mv "${tmp}/.env.keep" "${INSTALL_DIR}/.env"
+    fi
+    rm -rf "${tmp}"
 fi
 cd "${INSTALL_DIR}"
 

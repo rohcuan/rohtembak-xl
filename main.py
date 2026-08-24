@@ -32,7 +32,7 @@ from auth import (
 
 from datetime import datetime, timezone, timedelta
 from app.client.ciam import get_otp as xl_get_otp, submit_otp as xl_submit_otp, get_new_token as xl_refresh_token
-from app.client.encrypt import API_KEY, load_ax_fp, copy_shared_fp_to_user, remove_user_ax_fp, get_user_ax_fp
+from app.client.encrypt import API_KEY, load_ax_fp, copy_shared_fp_to_user, remove_user_ax_fp, get_user_ax_fp, _safe_username
 from app.client.engsel import login_info as xl_login_info, get_balance as xl_get_balance, get_transaction_history as xl_get_transactions, get_tiering_info as xl_get_tiering, send_api_request, get_family as xl_get_family, get_package as xl_get_package, get_addons as xl_get_addons
 from app.menus.util import format_quota_byte
 from app.type_dict import PaymentItem
@@ -323,7 +323,7 @@ async def lifespan(app: FastAPI):
     fp_dir = os.path.join(BASE_DIR, "data")
     for u in existing_users:
         old_fp = os.path.join(fp_dir, f"ax.fp.{u.id}")
-        new_fp = os.path.join(fp_dir, f"ax.fp.{u.username}")
+        new_fp = os.path.join(fp_dir, f"ax.fp.{_safe_username(u.username)}")
         if os.path.exists(old_fp) and not os.path.exists(new_fp):
             try:
                 os.rename(old_fp, new_fp)
@@ -1191,7 +1191,7 @@ def _build_backup_zip_bytes(admin_data: dict, users_data: list, xl_data: list, f
         entries.append(("device.fp", ax_fp))
     fp_dir = os.path.join(BASE_DIR, "data")
     for u in users:
-        fp_path = os.path.join(fp_dir, f"ax.fp.{u.username}")
+        fp_path = os.path.join(fp_dir, f"ax.fp.{_safe_username(u.username)}")
         if os.path.exists(fp_path):
             try:
                 with open(fp_path, "r", encoding="utf-8") as f:
@@ -2116,7 +2116,7 @@ async def admin_restore_upload(
         if fp_content:
             fp_dir = os.path.join(BASE_DIR, "data")
             os.makedirs(fp_dir, exist_ok=True)
-            fp_path = os.path.join(fp_dir, f"ax.fp.{u.username}")
+            fp_path = os.path.join(fp_dir, f"ax.fp.{_safe_username(u.username)}")
             try:
                 with open(fp_path, "w", encoding="utf-8") as f:
                     f.write(fp_content)
@@ -3419,6 +3419,10 @@ def _checkout_context(active_xl, user, detail, method, family_key):
         "family_label": FAMILY_LABELS.get(family_key, family_key),
         "remaining": remaining,
         "insufficient": remaining < 0,
+        # XtraConf via pulsa: item decoy (bundle) sengaja dibuat gagal, jadi
+        # pulsa nomor harus DI BAWAH harga decoy — kalau lebih, decoy ikut
+        # terpotong sungguhan.
+        "decoy_pulsa_notice": family_key == "xtraconf" and method != "qris",
         "pay_url": f"/user/xl/beli-paket/{detail.get('url_id')}/pay/{method}",
     }
 
@@ -3734,37 +3738,43 @@ _topup_credit_lock = threading.Lock()
 
 
 def _credit_topup(db: Session, topup: TopupTransaction):
-    """Credit a paid topup exactly once (guarded by pending→paid transition)."""
+    """Credit a paid topup exactly once (atomic pending/expired → paid flip)."""
     with _topup_credit_lock:
-        row = db.query(TopupTransaction).filter(TopupTransaction.id == topup.id).first()
-        # pending = alur normal (auto-sweep); expired = hanya lewat cek manual
-        # di riwayat (grace manual). Keduanya harus credit tepat sekali.
-        if not row or row.status not in ("pending", "expired"):
+        # Atomic guard: UPDATE only matches while the row is still unpaid.
+        # Jangan percaya atribut objek sesi ini (identity map bisa stale
+        # ketika path lain baru saja commit 'paid' untuk baris yang sama).
+        updated = db.query(TopupTransaction).filter(
+            TopupTransaction.id == topup.id,
+            TopupTransaction.status.in_(("pending", "expired")),
+        ).update({
+            "status": "paid",
+            "paid_at": datetime.now(timezone.utc),
+        }, synchronize_session=False)
+        db.commit()
+        if not updated:
             return None
-        row.status = "paid"
-        row.paid_at = datetime.now(timezone.utc)
         with _balance_lock:
-            bal = db.query(Balance).filter(Balance.user_id == row.user_id).first()
+            bal = db.query(Balance).filter(Balance.user_id == topup.user_id).first()
             if not bal:
-                bal = Balance(user_id=row.user_id, balance=0)
+                bal = Balance(user_id=topup.user_id, balance=0)
                 db.add(bal)
-            bal.balance += row.amount
+            bal.balance += topup.amount
             db.add(BalanceTransaction(
-                user_id=row.user_id,
-                amount=row.amount,
+                user_id=topup.user_id,
+                amount=topup.amount,
                 type="topup",
-                description=f"Topup saldo via QRIS ({_fmt_idr(row.total)} IDR, termasuk biaya admin {_fmt_idr(row.fee)} IDR)"
+                description=f"Topup saldo via QRIS ({_fmt_idr(topup.total)} IDR, termasuk biaya admin {_fmt_idr(topup.fee)} IDR)"
             ))
             db.commit()
         if _ab_read_state().get("notif_topup_qris"):
-            u = db.query(User).filter(User.id == row.user_id).first()
-            uname = u.username if u else f"id {row.user_id}"
+            u = db.query(User).filter(User.id == topup.user_id).first()
+            uname = u.username if u else f"id {topup.user_id}"
             _notify(
                 "🟢  " + _tg_bold("TOPUP QRIS") + "\n\n"
                 "<blockquote>"
                 + (
                     _tg_field("User", _tg_esc(uname))
-                    + _tg_field("Nominal", f"+{_fmt_thousand(row.amount)} IDR")
+                    + _tg_field("Nominal", f"+{_fmt_thousand(topup.amount)} IDR")
                     + _tg_field("Metode", "QRIS")
                 ).rstrip()
                 + "</blockquote>\n"
@@ -3792,9 +3802,24 @@ def _check_and_settle_topup(db: Session, topup: TopupTransaction) -> dict:
     now_ts = time.time()
     exp_ts = _topup_expiry_epoch(topup)
     if now_ts > exp_ts:
-        if topup.status == "pending":
-            topup.status = "expired"
-            db.commit()
+        # Conditional update: jangan pernah menimpa 'paid' yang di-commit
+        # path lain secara konkuren (stale attribute protection).
+        marked = db.query(TopupTransaction).filter(
+            TopupTransaction.id == topup.id,
+            TopupTransaction.status == "pending",
+        ).update({"status": "expired"}, synchronize_session=False)
+        db.commit()
+        if not marked:
+            fresh = db.query(TopupTransaction).filter(
+                TopupTransaction.id == topup.id
+            ).first()
+            st = fresh.status if fresh else "pending"
+            if st == "paid":
+                return {"ok": True, "status": "paid",
+                        "credited": topup.amount,
+                        "message": "Pembayaran sudah dikonfirmasi sebelumnya."}
+            return {"ok": True, "status": st,
+                    "message": "Belum ada pembayaran yang terdeteksi."}
         return {"ok": True, "status": "expired",
                 "message": "QRIS kedaluwarsa dan tidak ada pembayaran masuk."}
     return {"ok": True, "status": "pending",
@@ -3820,10 +3845,12 @@ def _reconcile_pending_topups():
             TopupTransaction.status == "pending",
             TopupTransaction.expires_at <= cutoff,
         ).all()
+        db.expire_all()  # refresh identity-map objects; jangan percaya atribut stale
         for row in rows:
             try:
                 _check_and_settle_topup(db, row)
             except Exception as e:
+                db.rollback()  # session rusak -> jangan biarkan sisa batch ikut gagal
                 print(f"[topup-reconcile] id={row.id} Error: {e}")
     finally:
         db.close()

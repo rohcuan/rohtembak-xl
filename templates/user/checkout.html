@@ -200,6 +200,11 @@ function closePendingModal() {
         {% if insufficient %}
         <div class="saldo-warn">Saldo panel tidak mencukupi untuk paket ini.</div>
         {% endif %}
+        {% if decoy_pulsa_notice %}
+        <div style="margin-top:10px;padding:10px 12px;border-radius:8px;background:#fffbeb;border:1px solid #fde68a;color:#92400e;font-size:.8rem;line-height:1.5;">
+          <strong>Penting (paket konferensi via pulsa):</strong> pastikan sisa pulsa nomor kamu <strong>KURANG dari Rp800.000</strong>. Sistem memvalidasi pembelian dengan item bundle yang sengaja gagal — jika pulsa melebihi batas itu, nominal bundle ikut terpotong sungguhan.
+        </div>
+        {% endif %}
         {% if method == "qris" %}
         <div class="saldo-warn">Biaya saldo panel dipotong langsung saat QRIS dibuat dan <strong>tidak dapat dikembalikan</strong>, termasuk jika QRIS tidak jadi dibayar.</div>
         {% endif %}

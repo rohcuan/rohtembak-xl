@@ -63,21 +63,26 @@ if [ -f "${INSTALL_DIR}/main.py" ] && [ -d "${INSTALL_DIR}/.git" ]; then
     fi
 else
     log "Fresh install - cloning ${REPO_URL} (branch ${REPO_BRANCH})..."
-    # INSTALL_DIR is usually a mount point: never delete the dir itself,
-    # populate it via git init/fetch/checkout instead.
+    # Jangan pernah menghapus isi volume. Clone ke temp, lalu copy kode masuk.
+    # - Gagal jaringan -> exit SEBELUM menyentuh isi volume (.env/data aman)
+    # - .git korup di volume tidak relevan (sejarah datang dari clone baru)
     mkdir -p "${INSTALL_DIR}"
-    _clone_into() {
-        git -C "${INSTALL_DIR}" init -q 2>/dev/null || true
-        git -C "${INSTALL_DIR}" remote remove origin 2>/dev/null || true
-        git -C "${INSTALL_DIR}" remote add origin "${REPO_URL}"
-        git -C "${INSTALL_DIR}" fetch --depth 1 -q origin "${REPO_BRANCH}"
-        git -C "${INSTALL_DIR}" checkout -q -B "${REPO_BRANCH}" "origin/${REPO_BRANCH}"
-    }
-    if ! _clone_into; then
-        warn "Checkout conflicted with existing files - clearing contents (dir kept)..."
-        find "${INSTALL_DIR}" -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
-        _clone_into
+    tmp="$(mktemp -d)"
+    if ! git clone --depth 1 -b "${REPO_BRANCH}" "${REPO_URL}" "${tmp}/repo"; then
+        rm -rf "${tmp}"
+        warn "Clone gagal (jaringan?). Tidak ada data yang disentuh — coba lagi nanti."
+        exit 1
     fi
+    ENV_KEEP=""
+    if [ -f "${INSTALL_DIR}/.env" ]; then
+        cp "${INSTALL_DIR}/.env" "${tmp}/.env.keep"
+        ENV_KEEP=1
+    fi
+    cp -a "${tmp}/repo/." "${INSTALL_DIR}/"
+    if [ -n "${ENV_KEEP}" ]; then
+        mv "${tmp}/.env.keep" "${INSTALL_DIR}/.env"
+    fi
+    rm -rf "${tmp}"
 fi
 cd "${INSTALL_DIR}"
 
@@ -121,12 +126,20 @@ fi
 
 # --- 5. Configuration (.env) -----------------------------------------------------
 # Repo ships a ready-to-run .env (tracked). Override paths below.
+ENV_PROVIDED=0
+for key in "${SECRET_KEYS[@]}"; do
+    if [ -n "${!key:-}" ]; then
+        ENV_PROVIDED=1
+        break
+    fi
+done
+
 ENV_WRITTEN=0
 if [ -n "${ROHTEMBAK_ENV_FILE:-}" ] && [ -f "${ROHTEMBAK_ENV_FILE}" ]; then
     log "Using env file: ${ROHTEMBAK_ENV_FILE}"
     cp "${ROHTEMBAK_ENV_FILE}" "${INSTALL_DIR}/.env"
     ENV_WRITTEN=1
-elif [ -n "${API_KEY:-}${BASIC_AUTH:-}${BASE_CIAM_URL:-}" ]; then
+elif [ "${ENV_PROVIDED}" -eq 1 ]; then
     # Fill provided values line-by-line (delete + append: immune to | & \ in values)
     log "Applying secrets from environment variables..."
     touch "${INSTALL_DIR}/.env"

@@ -52,7 +52,7 @@
     </form>
 
     <div style="margin-top:16px;text-align:center;">
-        <a href="/user/xl/otp/request?phone={{ phone_number }}&label={{ label }}{% if xl_id %}&xl_id={{ xl_id }}{% endif %}" style="font-size:13px;">Kirim ulang OTP</a>
+        <a href="/user/xl/otp/request?phone={{ phone_number|urlencode }}&label={{ label|urlencode }}{% if xl_id %}&xl_id={{ xl_id }}{% endif %}" style="font-size:13px;">Kirim ulang OTP</a>
     </div>
 </div>
 

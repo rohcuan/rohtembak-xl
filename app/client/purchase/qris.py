@@ -37,7 +37,7 @@ def settlement_qris(
     
     if overwrite_amount != -1:
         amount_int = overwrite_amount
-    elif amount_idx == -1:
+    elif amount_idx != -1:
         amount_int = items[amount_idx]["item_price"]
 
     if ask_overwrite:
@@ -134,8 +134,7 @@ def settlement_qris(
     xtime = int(encrypted_payload["encrypted_body"]["xtime"])
     sig_time_sec = (xtime // 1000)
     x_requested_at = datetime.fromtimestamp(sig_time_sec, tz=timezone.utc).astimezone()
-    settlement_payload["timestamp"] = ts_to_sign
-    
+
     body = encrypted_payload["encrypted_body"]
     x_sig = get_x_signature_payment(
             api_key,

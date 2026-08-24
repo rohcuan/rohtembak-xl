@@ -29,8 +29,9 @@ def get_config() -> tuple[str, str]:
             db.close()
         url = stored.get(SETTING_URL_KEY) or url
         key = stored.get(SETTING_API_KEY) or key
-    except Exception:
-        pass
+    except Exception as e:
+        # Jangan diam-diam jatuh ke env — bisa menyembunyikan masalah konfigurasi.
+        print(f"[gopay.get_config] gagal baca DB settings, pakai fallback env: {e}")
     return (url or "").rstrip("/"), key or ""
 
 

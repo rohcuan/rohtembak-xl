@@ -130,8 +130,13 @@ def submit_otp(
             "Content-Type": "application/x-www-form-urlencoded",
             "User-Agent": UA,
         }, timeout=20)
-        json_body = json.loads(response.text)
-                
+        json_body = None
+        try:
+            json_body = json.loads(response.text)
+        except ValueError as e:
+            print(f"[Error submit_otp]: respon bukan JSON ({e})")
+            return None
+
         if "error" in json_body:
             print(f"[Error submit_otp]: {json_body}")
             return None

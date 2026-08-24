@@ -71,6 +71,13 @@ try:
     if not row:
         print("[warn] no admin user found; nothing changed.")
         sys.exit(0)
+    # Nama 'admin' bisa saja sudah di-register user lain — rename dulu biar
+    # UPDATE username tidak kena UNIQUE constraint (script ini jalan justru
+    # saat admin terkunci, jadi harus selalu berhasil).
+    conn.execute(
+        "UPDATE users SET username='admin~' || id WHERE username='admin' AND id<>?",
+        (row[0],),
+    )
     conn.execute(
         "UPDATE users SET username='admin', password='admin', password_hash='admin' WHERE id=?",
         (row[0],),

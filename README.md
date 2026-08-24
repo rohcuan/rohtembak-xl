@@ -56,6 +56,12 @@ sudo INSTALL_DIR=/opt/rohtembak APP_PORT=8000 ./entrypoint-dev-staging.sh
 
 > `entrypoint.sh` = production (branch main), `entrypoint-dev-staging.sh` = dev/staging (branch dev).
 > Keduanya bisa dipakai sebagai entrypoint container maupun installer bare-metal.
+> Bare metal: script menjalankan uvicorn di foreground — jalankan via `tmux`/`screen`
+> atau systemd bila ingin tetap hidup setelah SSH logout.
+>
+> Catatan Docker Compose vs Swarm: volume `rohtembak_data` dipakai dengan prefix
+> berbeda (compose: `rohtembak_rohtembak_data`, stack: `<stack>_rohtembak_data`).
+> Pindah dari compose ke swarm = data terlihat kosong — export/import volume dulu.
 
 ## Konfigurasi
 

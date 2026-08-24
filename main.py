@@ -10,6 +10,7 @@ import asyncio
 import threading
 import zipfile
 import requests
+from urllib.parse import quote as _urlquote
 from contextlib import asynccontextmanager, redirect_stdout
 from dotenv import load_dotenv
 
@@ -176,7 +177,10 @@ def _login_record_failure(key: str) -> None:
     rec = _login_failures.get(key)
     if not rec or now - rec[1] > _LOGIN_WINDOW_SECONDS:
         if len(_login_failures) > 10000:
-            _login_failures.clear()
+            # Prune entri basi saja — clear() semua akan melepas lockout aktif
+            # (attacker bisa sengaja membanjiri map buat reset rate-limit).
+            for k in [k for k, v in list(_login_failures.items()) if v[1] < now - _LOGIN_WINDOW_SECONDS]:
+                _login_failures.pop(k, None)
         _login_failures[key] = [1, now]
     else:
         rec[0] += 1
@@ -251,12 +255,31 @@ def _get_xl_tokens(active_xl, username=""):
     key = active_xl.subscriber_id or active_xl.id
     now = time.time()
     entry = _XL_TOKEN_CACHE.get(key)
-    if entry and entry.get("expires_at", 0) > now:
+    if isinstance(entry, dict) and not entry.get("refreshing") and entry.get("expires_at", 0) > now:
         return entry["tokens"]
-    with _token_lock:
-        entry = _XL_TOKEN_CACHE.get(key)
-        if entry and entry.get("expires_at", 0) > now:
-            return entry["tokens"]
+
+    # Klaim tugas refresh (global lock hanya sesaat — JANGAN memegang lock
+    # selama sleep + network call; itu pernah bikin seluruh panel stall).
+    mine = False
+    deadline = time.time() + 30
+    while True:
+        with _token_lock:
+            entry = _XL_TOKEN_CACHE.get(key)
+            if isinstance(entry, dict) and not entry.get("refreshing") and entry.get("expires_at", 0) > time.time():
+                return entry["tokens"]  # thread lain selesai refresh duluan
+            if isinstance(entry, dict) and entry.get("refreshing"):
+                mine = False
+            else:
+                _XL_TOKEN_CACHE[key] = {"refreshing": True, "expires_at": 0}
+                mine = True
+        if mine:
+            break
+        if time.time() >= deadline:
+            print(f"[_get_xl_tokens] timeout menunggu refresh akun {key}")
+            return None
+        time.sleep(0.5)
+
+    try:
         _api_delay()
         xl_username = username or ""
         if not xl_username:
@@ -267,7 +290,10 @@ def _get_xl_tokens(active_xl, username=""):
                 return None
         tokens = xl_refresh_token(API_KEY, active_xl.refresh_token, xl_username)
         if not tokens:
-            _XL_TOKEN_CACHE.pop(key, None)
+            with _token_lock:
+                cur = _XL_TOKEN_CACHE.get(key)
+                if isinstance(cur, dict) and cur.get("refreshing"):
+                    _XL_TOKEN_CACHE.pop(key, None)
             try:
                 db2 = next(get_db())
                 acct = db2.query(XLAccount).filter(XLAccount.id == active_xl.id).first()
@@ -293,8 +319,16 @@ def _get_xl_tokens(active_xl, username=""):
             tokens.get("refresh_token"),
             tokens.get("refresh_expires_in") and int(time.time()) + int(tokens["refresh_expires_in"]),
         )
-        _XL_TOKEN_CACHE[key] = {"tokens": tokens, "expires_at": now + ttl}
+        with _token_lock:
+            _XL_TOKEN_CACHE[key] = {"tokens": tokens, "expires_at": time.time() + ttl}
         return tokens
+    except Exception:
+        # Lepas klaim refresh supaya caller berikutnya bisa mencoba lagi.
+        with _token_lock:
+            cur = _XL_TOKEN_CACHE.get(key)
+            if isinstance(cur, dict) and cur.get("refreshing"):
+                _XL_TOKEN_CACHE.pop(key, None)
+        raise
 
 
 def render(template_name: str, status_code: int = 200, context: dict | None = None, cache_control: str = "no-store"):
@@ -526,7 +560,7 @@ def api_session(user: User = Depends(get_current_user)):
 def admin_home(request: Request, user: User = Depends(get_current_user)):
     if user.role != "admin":
         return RedirectResponse(url="/user/dashboard", status_code=303)
-    first_login = user.username == "admin" and verify_password("admin", user.password_hash)
+    first_login = verify_password("admin", user.password_hash)
 
     if gopay.is_configured():
         tok = gopay.token_status(timeout=8)
@@ -604,7 +638,7 @@ def admin_users_page(request: Request, user: User = Depends(get_current_user)):
         })
     admin_bal = db.query(Balance).filter(Balance.user_id == user.id).first()
     db.close()
-    first_login = user.username == "admin" and verify_password("admin", user.password_hash)
+    first_login = verify_password("admin", user.password_hash)
     return render("admin/users.html", context={
         "request": request,
         "user": user,
@@ -664,7 +698,7 @@ def admin_credentials_update(
     if mode == "password":
         if new_password != confirm_password:
             return RedirectResponse(url="/admin/credentials?error=password_tidak_cocok&mode=password", status_code=303)
-        if len(new_password) < 4:
+        if len(new_password) < 6:
             return RedirectResponse(url="/admin/credentials?error=password_pendek&mode=password", status_code=303)
         user.password_hash = hash_password(new_password)
         user.password = new_password
@@ -672,7 +706,7 @@ def admin_credentials_update(
         new_username = new_username.strip().lower()
         if not new_username:
             return RedirectResponse(url="/admin/credentials?error=username_kosong", status_code=303)
-        if db.query(User).filter(User.username.ilike(new_username), User.id != user.id).first():
+        if db.query(User).filter(func.lower(User.username) == new_username.lower(), User.id != user.id).first():
             return RedirectResponse(url="/admin/credentials?error=username_dipakai", status_code=303)
         # NOTE: Not renaming ax.fp.{old_username} here is intentional.
         # The admin does not login as a user and does not use XL API directly,
@@ -1169,7 +1203,11 @@ def _collect_backup_settings() -> dict:
 
 
 def _build_backup_zip_bytes(admin_data: dict, users_data: list, xl_data: list, fees: dict, users: list) -> bytes:
-    """Bangun backup.zip format manifest v3 — dipakai /admin/backup dan auto backup Telegram."""
+    """Bangun backup.zip format manifest v3 — dipakai /admin/backup dan auto backup Telegram.
+
+    Isi: users, xl_accounts, saldo, fee, pengaturan, fingerprint per user,
+    device.fp. CATATAN: database (*.db) dan riwayat topup TIDAK ikut — restore
+    mengembalikan akun & saldo, bukan riwayat transaksi."""
     exported_at = datetime.now(WIB).strftime("%Y-%m-%d %H:%M:%S WIB")
     ax_fp = _read_ax_fp_file()
     settings_data = _collect_backup_settings()
@@ -1227,6 +1265,9 @@ def _ab_state_path() -> str:
     return os.path.join(BASE_DIR, "data", "autobackup.json")
 
 
+_ab_state_lock = threading.Lock()
+
+
 def _ab_read_state() -> dict:
     state = {
         "chat_id": "",
@@ -1243,20 +1284,22 @@ def _ab_read_state() -> dict:
         "last_run_ok": None,
         "last_output": "",
     }
-    try:
-        with open(_ab_state_path(), "r", encoding="utf-8") as f:
-            data = json.load(f)
-        if isinstance(data, dict):
-            state.update({k: v for k, v in data.items() if k in state})
-    except (OSError, ValueError):
-        pass
+    with _ab_state_lock:
+        try:
+            with open(_ab_state_path(), "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                state.update({k: v for k, v in data.items() if k in state})
+        except (OSError, ValueError):
+            pass
     return state
 
 
 def _ab_write_state(state: dict) -> None:
-    os.makedirs(os.path.dirname(_ab_state_path()), exist_ok=True)
-    with open(_ab_state_path(), "w", encoding="utf-8") as f:
-        json.dump(state, f, indent=2, ensure_ascii=False)
+    with _ab_state_lock:
+        os.makedirs(os.path.dirname(_ab_state_path()), exist_ok=True)
+        with open(_ab_state_path(), "w", encoding="utf-8") as f:
+            json.dump(state, f, indent=2, ensure_ascii=False)
 
 
 def _ab_next_run_after(base_dt, st: dict):
@@ -1727,9 +1770,15 @@ def _parse_backup_json(data) -> dict:
     raise ValueError("Format JSON tidak dikenali. Gunakan file hasil backup.")
 
 
+_MAX_BACKUP_DECOMPRESSED = 20 * 1024 * 1024  # 20MB — cegah zip bomb
+
+
 def _load_backup_v3(zf) -> dict | None:
     """Read v3 multi-file ZIP. Returns normalized sections or None if not v3."""
     try:
+        total_uncompressed = sum(i.file_size for i in zf.infolist())
+        if total_uncompressed > _MAX_BACKUP_DECOMPRESSED:
+            raise ValueError("Backup terlalu besar saat diekstrak (zip bomb?).")
         manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
     except (KeyError, json.JSONDecodeError, UnicodeDecodeError):
         return None
@@ -1873,7 +1922,9 @@ def _validate_restore_settings(raw) -> dict | None:
             parts = str(ab.get("time") or "03:00").split(":")
             hh, mm = int(parts[0]), int(parts[1])
         except (ValueError, IndexError):
-            pass
+            hh, mm = 3, 0
+        hh = min(max(hh, 0), 23)   # clamp — jam invalid dari backup tidak boleh crash restore
+        mm = min(max(mm, 0), 59)
         try:
             wd = min(max(int(ab.get("weekday")), 0), 6)
         except (TypeError, ValueError):
@@ -2133,12 +2184,17 @@ async def admin_restore_upload(
         if not owner or owner.role != "user":
             xl_skipped += 1
             continue
+        _r_exp = a.get("refresh_expires_at")
+        try:
+            _r_exp = int(_r_exp) if _r_exp is not None else None
+        except (TypeError, ValueError):
+            _r_exp = None
         db.add(XLAccount(
             user_id=owner.id,
             phone_number=str(a.get("phone_number") or "").strip(),
             label=str(a.get("label") or "")[:50],
             refresh_token=str(a.get("refresh_token") or ""),
-            refresh_expires_at=a.get("refresh_expires_at"),
+            refresh_expires_at=_r_exp,
             subscriber_id=str(a.get("subscriber_id") or "")[:100],
             subscription_type=str(a.get("subscription_type") or "PREPAID")[:20],
             is_active=bool(a.get("is_active")),
@@ -2221,7 +2277,8 @@ def add_xl(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if not phone_number.startswith("628") or len(phone_number) < 10 or len(phone_number) > 14:
+    if (not phone_number.startswith("628") or len(phone_number) < 10 or len(phone_number) > 14
+            or not phone_number.isdigit()):
         ctx = get_user_context(user, db)
         ctx.update({"request": request, "error": "Nomor tidak valid. Harus diawali 628 dan 10-14 digit"})
         return render("user/dashboard.html", context=ctx, status_code=400)
@@ -2275,6 +2332,7 @@ def remove_xl(
             ctx.update({"request": request, "error": "Tidak bisa menghapus satu-satunya nomor XL"})
             return render("user/dashboard.html", context=ctx, status_code=400)
         was_active = xl.is_active
+        _XL_TOKEN_CACHE.pop(xl.subscriber_id or xl.id, None)  # jangan pakai token basi
         db.delete(xl)
         if was_active:
             first_remaining = db.query(XLAccount).filter(
@@ -2330,7 +2388,8 @@ def xl_otp_request(
 
     ctx = get_user_context(user, db)
 
-    if not phone_number.startswith("628") or len(phone_number) < 10 or len(phone_number) > 14:
+    if (not phone_number.startswith("628") or len(phone_number) < 10 or len(phone_number) > 14
+            or not phone_number.isdigit()):
         ctx.update({"request": request, "error": "Nomor tidak valid. Harus diawali 628 dan 10-14 digit"})
         return render("user/otp_request.html", context=ctx, status_code=400)
 
@@ -2368,7 +2427,7 @@ def xl_otp_request(
         ctx.update({"request": request, "error": "Gagal mengirim OTP. Periksa nomor atau tunggu beberapa saat."})
         return render("user/otp_request.html", context=ctx, status_code=400)
 
-    url = f"/user/xl/otp/submit?phone={phone_number}&label={label}&sid={subscriber_id}"
+    url = f"/user/xl/otp/submit?phone={_urlquote(str(phone_number))}&label={_urlquote(str(label))}&sid={_urlquote(str(subscriber_id))}"
     if xl_id:
         url += f"&xl_id={xl_id}"
     return RedirectResponse(url=url, status_code=303)
@@ -2871,19 +2930,28 @@ async def user_xl_beli_paket_stream(request: Request, user: User = Depends(get_c
     want = {x for x in (request.query_params.get("families") or "").split(",") if x in ("meta", "xcp", "addon10", "addon15", "xtraconf")}
     disconnected = threading.Event()
     async def _watch():
+        # is_disconnected() = poll non-blocking. Loop + sleep supaya benar-
+        # benar mendeteksi client pergi (kalau sekali panggil, langsung beres).
+        while not await request.is_disconnected():
+            await asyncio.sleep(1)
+        disconnected.set()
+    task = asyncio.create_task(_watch())
+
+    async def _stream_guard():
+        # Bungkus generator: cancel watcher tepat saat stream beneran selesai
+        # (client pergi / server selesai) — bukan pas endpoint return.
         try:
-            await request.is_disconnected()
+            async for chunk in _stream_beli_paket_events(ctx.get("active_xl"), want, disconnected):
+                yield chunk
         finally:
             disconnected.set()
-    task = asyncio.create_task(_watch())
-    try:
-        return StreamingResponse(
-            _stream_beli_paket_events(ctx.get("active_xl"), want, disconnected),
-            media_type="text/event-stream",
-            headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
-        )
-    finally:
-        task.cancel()
+            task.cancel()
+
+    return StreamingResponse(
+        _stream_guard(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+    )
 
 
 _FAMILY_FETCHERS = {
@@ -3067,19 +3135,24 @@ async def user_xl_detail_stream(request: Request, family: str, n: int, user: Use
     want = {x for x in (request.query_params.get("families") or "meta,detail").split(",") if x in ("meta", "detail")}
     disconnected = threading.Event()
     async def _watch():
+        while not await request.is_disconnected():
+            await asyncio.sleep(1)
+        disconnected.set()
+    task = asyncio.create_task(_watch())
+
+    async def _stream_guard():
         try:
-            await request.is_disconnected()
+            async for chunk in _stream_detail_events(family, n, ctx.get("active_xl"), want, disconnected):
+                yield chunk
         finally:
             disconnected.set()
-    task = asyncio.create_task(_watch())
-    try:
-        return StreamingResponse(
-            _stream_detail_events(family, n, ctx.get("active_xl"), want, disconnected),
-            media_type="text/event-stream",
-            headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
-        )
-    finally:
-        task.cancel()
+            task.cancel()
+
+    return StreamingResponse(
+        _stream_guard(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.get("/user/xl/banner-info")
@@ -3282,6 +3355,23 @@ def _deduct_token_balance(user, amount, description):
                 return None
             bal.balance -= amount
             db.add(BalanceTransaction(user_id=user.id, amount=-amount, type="purchase", description=description))
+            db.commit()
+            return bal.balance
+    finally:
+        db.close()
+
+
+def _refund_token_balance(user, amount, description):
+    """Kembalikan biaya konsumsi panel saat pembelian gagal (mirror of deduct)."""
+    db = next(get_db())
+    try:
+        with _balance_lock:
+            bal = db.query(Balance).filter(Balance.user_id == user.id).first()
+            if not bal:
+                bal = Balance(user_id=user.id, balance=0)
+                db.add(bal)
+            bal.balance += amount
+            db.add(BalanceTransaction(user_id=user.id, amount=amount, type="refund", description=description))
             db.commit()
             return bal.balance
     finally:
@@ -3531,9 +3621,9 @@ def pay_paket(request: Request, option_number: int, method: str, user: User = De
     db = next(get_db())
     ctx = get_user_context(user, db)
     db.close()
-    detail, pay_error, pay_success, pay_extra = _process_payment(ctx.get("active_xl"), option_number, False, method)
-    return _pay_response(user, detail, pay_error, pay_success, method, "xcp", pay_extra,
-                         phone_number=getattr(ctx.get("active_xl"), "phone_number", "") or "")
+    return _pay_with_fee(user, ctx,
+                         lambda: _process_payment(ctx.get("active_xl"), option_number, False, method),
+                         "xcp", method)
 
 
 @app.post("/user/xl/beli-paket/addon10-xcp-{option_number}/pay/{method}")
@@ -3548,9 +3638,9 @@ def pay_addon(request: Request, option_number: int, method: str, user: User = De
     db = next(get_db())
     ctx = get_user_context(user, db)
     db.close()
-    detail, pay_error, pay_success, pay_extra = _process_payment(ctx.get("active_xl"), option_number, ADDON_SPEC_10, method)
-    return _pay_response(user, detail, pay_error, pay_success, method, "addon10", pay_extra,
-                         phone_number=getattr(ctx.get("active_xl"), "phone_number", "") or "")
+    return _pay_with_fee(user, ctx,
+                         lambda: _process_payment(ctx.get("active_xl"), option_number, ADDON_SPEC_10, method),
+                         "addon10", method)
 
 
 @app.post("/user/xl/beli-paket/addon15-xcp-{option_number}/pay/{method}")
@@ -3565,9 +3655,9 @@ def pay_addon15(request: Request, option_number: int, method: str, user: User = 
     db = next(get_db())
     ctx = get_user_context(user, db)
     db.close()
-    detail, pay_error, pay_success, pay_extra = _process_payment(ctx.get("active_xl"), option_number, ADDON_SPEC_15, method)
-    return _pay_response(user, detail, pay_error, pay_success, method, "addon15", pay_extra,
-                         phone_number=getattr(ctx.get("active_xl"), "phone_number", "") or "")
+    return _pay_with_fee(user, ctx,
+                         lambda: _process_payment(ctx.get("active_xl"), option_number, ADDON_SPEC_15, method),
+                         "addon15", method)
 
 
 @app.post("/user/xl/beli-paket/xtraconf-{option_number}/pay/{method}")
@@ -3582,9 +3672,9 @@ def pay_xtraconf(request: Request, option_number: int, method: str, user: User =
     db = next(get_db())
     ctx = get_user_context(user, db)
     db.close()
-    detail, pay_error, pay_success, pay_extra = _process_payment(ctx.get("active_xl"), option_number, XTRA_CONF_SPEC, method)
-    return _pay_response(user, detail, pay_error, pay_success, method, "xtraconf", pay_extra,
-                         phone_number=getattr(ctx.get("active_xl"), "phone_number", "") or "")
+    return _pay_with_fee(user, ctx,
+                         lambda: _process_payment(ctx.get("active_xl"), option_number, XTRA_CONF_SPEC, method),
+                         "xtraconf", method)
 
 
 def _qris_png_data_uri(qris_b64):
@@ -3663,19 +3753,41 @@ def _fetch_pending_qris(active_xl, tokens=None, transactions=None):
     return qris_txs, matched_codes
 
 
-def _pay_response(user, detail, pay_error, pay_success, method, family_key, pay_extra=None, phone_number=""):
+def _pay_with_fee(user, ctx, run_purchase, family_key, method):
+    """Bayar biaya konsumsi panel SEBELUM purchase XL, refund kalau gagal.
+
+    Menutup celah: dua order konkuren yang sama-sama lolos precheck tidak
+    lagi bisa mengantre paket tanpa fee — saldo sudah terpotong di depan.
+    """
+    fee = _get_family_fee(_fee_key(family_key, method))
+    desc = f"Konsumsi saldo panel {FAMILY_LABELS.get(family_key, family_key)} via {PAY_METHOD_LABELS.get(method, method)}"
+    if _deduct_token_balance(user, fee, desc) is None:
+        return JSONResponse({
+            "ok": False,
+            "message": f"Saldo panel tidak cukup untuk biaya konsumsi ({_fmt_idr(fee)} IDR). Topup dulu ya."
+        }, status_code=400)
+    detail, pay_error, pay_success, pay_extra = run_purchase()
+    if not pay_success:
+        _refund_token_balance(user, fee, f"Refund {desc} (pembelian gagal)")
+    return _pay_response(user, detail, pay_error, pay_success, method, family_key, pay_extra,
+                         phone_number=getattr(ctx.get("active_xl"), "phone_number", "") or "",
+                         fee_charged=True)
+
+
+def _pay_response(user, detail, pay_error, pay_success, method, family_key, pay_extra=None, phone_number="", fee_charged=False):
     if pay_success:
         fee = _get_family_fee(_fee_key(family_key, method))
-        new_balance = _deduct_token_balance(
-            user,
-            fee,
-            f"Konsumsi saldo panel {FAMILY_LABELS.get(family_key, family_key)} via {PAY_METHOD_LABELS.get(method, method)}"
-        )
-        if new_balance is None:
-            return JSONResponse({
-                "ok": False,
-                "message": f"Saldo panel tidak cukup untuk biaya konsumsi ({_fmt_idr(fee)} IDR). Topup dulu ya."
-            })
+        if not fee_charged:
+            new_balance = _deduct_token_balance(
+                user,
+                fee,
+                f"Konsumsi saldo panel {FAMILY_LABELS.get(family_key, family_key)} via {PAY_METHOD_LABELS.get(method, method)}"
+            )
+            if new_balance is None:
+                return JSONResponse({
+                    "ok": False,
+                    "message": f"Saldo panel tidak cukup untuk biaya konsumsi ({_fmt_idr(fee)} IDR). Topup dulu ya."
+                })
         if _ab_read_state().get("notif_purchase"):
             option_name = (detail or {}).get("option_name") or ""
             family_label = FAMILY_LABELS.get(family_key, family_key)

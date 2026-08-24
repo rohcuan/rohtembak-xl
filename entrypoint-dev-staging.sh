@@ -29,6 +29,22 @@ APP_PORT="${APP_PORT:-8000}"
 log()  { echo -e "\033[1;32m[entrypoint]\033[0m $*"; }
 warn() { echo -e "\033[1;33m[entrypoint]\033[0m $*"; }
 
+# Retry dengan backoff untuk langkah yang rawan blip jaringan (apt/pip/git).
+# PID 1 tidak boleh langsung mati gara-gara gangguan sesaat → restart-loop.
+retry() {
+    local max=4 wait=10 n=1
+    until "$@"; do
+        if [ "${n}" -ge "${max}" ]; then
+            warn "Gagal permanen setelah ${n} percobaan: $*"
+            return 1
+        fi
+        warn "Transient failure (${n}/${max}), coba lagi dalam ${wait}s: $*"
+        sleep "${wait}"
+        n=$((n + 1))
+    done
+    return 0
+}
+
 SECRET_KEYS=(
     BASE_API_URL
     BASE_CIAM_URL
@@ -49,17 +65,21 @@ if ! command -v git >/dev/null 2>&1 || ! command -v python3 >/dev/null 2>&1 \
    || ! command -v curl >/dev/null 2>&1; then
     log "Installing system dependencies (git, python3-venv, curl)..."
     export DEBIAN_FRONTEND=noninteractive
-    apt-get update -y >/dev/null
-    apt-get install -y git python3 python3-venv python3-pip curl ca-certificates >/dev/null
+    retry apt-get update -y >/dev/null
+    retry apt-get install -y git python3 python3-venv python3-pip curl ca-certificates >/dev/null
 fi
 
 # --- 2. Source: clone dev, or pull latest ---------------------------------------
 if [ -f "${INSTALL_DIR}/main.py" ] && [ -d "${INSTALL_DIR}/.git" ]; then
     log "Existing install found - pulling latest dev..."
-    if ! git -C "${INSTALL_DIR}" pull --ff-only origin dev 2>/dev/null; then
+    if ! retry git -C "${INSTALL_DIR}" pull --ff-only origin dev 2>/dev/null; then
         warn "Fast-forward pull failed (local patches?). Hard-resetting to origin/dev..."
-        git -C "${INSTALL_DIR}" fetch origin dev
+        # .env di-track repo & link-patch bikin tree kotor — lindungi isinya
+        # sebelum reset supaya nilai custom tidak hilang.
+        cp "${INSTALL_DIR}/.env" /tmp/.env.keep 2>/dev/null || true
+        retry git -C "${INSTALL_DIR}" fetch origin dev
         git -C "${INSTALL_DIR}" reset --hard origin/dev
+        mv /tmp/.env.keep "${INSTALL_DIR}/.env" 2>/dev/null || true
     fi
 else
     log "Fresh install - cloning ${REPO_URL} (branch ${REPO_BRANCH})..."
@@ -68,7 +88,7 @@ else
     # - .git korup di volume tidak relevan (sejarah datang dari clone baru)
     mkdir -p "${INSTALL_DIR}"
     tmp="$(mktemp -d)"
-    if ! git clone --depth 1 -b "${REPO_BRANCH}" "${REPO_URL}" "${tmp}/repo"; then
+    if ! retry git clone --depth 1 -b "${REPO_BRANCH}" "${REPO_URL}" "${tmp}/repo"; then
         rm -rf "${tmp}"
         warn "Clone gagal (jaringan?). Tidak ada data yang disentuh — coba lagi nanti."
         exit 1
@@ -102,8 +122,8 @@ else
 fi
 if [ "${NEED_PIP}" -eq 1 ]; then
     log "Installing Python dependencies..."
-    venv/bin/pip install --upgrade pip --quiet
-    venv/bin/pip install -r requirements.txt --quiet
+    retry venv/bin/pip install --upgrade pip --quiet
+    retry venv/bin/pip install -r requirements.txt --quiet
     sha256sum requirements.txt | cut -d' ' -f1 > .venv-requirements.sha
 fi
 

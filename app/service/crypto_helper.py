@@ -8,6 +8,23 @@ AX_API_SIG_KEY=os.getenv("AX_API_SIG_KEY")
 X_API_BASE_SECRET=os.getenv("X_API_BASE_SECRET")
 ENCRYPTED_FIELD_KEY=os.getenv("ENCRYPTED_FIELD_KEY")
 
+
+def _check_aes_key(name: str, val: str | None) -> None:
+    """Fail fast di startup kalau panjang AES key salah (16/24/32 byte)."""
+    if not val:
+        raise RuntimeError(f"Env {name} belum diset di .env")
+    n = len(val.encode("utf-8"))
+    if n not in (16, 24, 32):
+        raise RuntimeError(
+            f"Env {name} panjangnya {n} byte — AES butuh 16/24/32 byte. "
+            "Periksa .env kamu."
+        )
+
+
+_check_aes_key("XDATA_KEY", XDATA_KEY)
+_check_aes_key("AX_API_SIG_KEY", AX_API_SIG_KEY)
+_check_aes_key("ENCRYPTED_FIELD_KEY", ENCRYPTED_FIELD_KEY)
+
 def derive_iv(xtime_ms: int) -> bytes:
     sha = hashlib.sha256(str(xtime_ms).encode()).hexdigest()
     return sha[:16].encode()

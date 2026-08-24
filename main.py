@@ -3808,6 +3808,7 @@ def _pay_with_fee(user, ctx, run_purchase, family_key, method):
 
 
 def _pay_response(user, detail, pay_error, pay_success, method, family_key, pay_extra=None, phone_number="", fee_charged=False):
+    new_balance = None
     if pay_success:
         fee = _get_family_fee(_fee_key(family_key, method))
         if not fee_charged:
@@ -3821,6 +3822,15 @@ def _pay_response(user, detail, pay_error, pay_success, method, family_key, pay_
                     "ok": False,
                     "message": f"Saldo panel tidak cukup untuk biaya konsumsi ({_fmt_idr(fee)} IDR). Topup dulu ya."
                 })
+        if new_balance is None:
+            # Jalur fee_charged (dipotong sebelum purchase): ambil saldo segar
+            # untuk notif — kalau tidak, NameError saat notif_purchase aktif.
+            dbn = next(get_db())
+            try:
+                bn = dbn.query(Balance).filter(Balance.user_id == user.id).first()
+                new_balance = bn.balance if bn else 0
+            finally:
+                dbn.close()
         if _ab_read_state().get("notif_purchase"):
             option_name = (detail or {}).get("option_name") or ""
             family_label = FAMILY_LABELS.get(family_key, family_key)

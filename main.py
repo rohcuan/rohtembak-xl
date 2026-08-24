@@ -28,7 +28,8 @@ from database import init_db, get_db
 from models import User, XLAccount, Balance, BalanceTransaction, FamilyFee, TopupTransaction
 from auth import (
     verify_password, create_access_token, decode_token,
-    get_current_user, seed_users, hash_password, ACCESS_TOKEN_EXPIRE_MINUTES
+    get_current_user, seed_users, hash_password, ACCESS_TOKEN_EXPIRE_MINUTES,
+    rotate_jwt_secret
 )
 
 from datetime import datetime, timezone, timedelta
@@ -2225,6 +2226,9 @@ async def admin_restore_upload(
         result["settings_applied"] = settings_applied
         if legacy_backup:
             result["settings_reset_default"] = True
+    # Rotasi JWT secret: user id bisa bergeser setelah restore — cookie lama
+    # yang masih menunjuk id lama HARUS mati seketika (anti cross-account).
+    result["sessions_invalidated"] = rotate_jwt_secret()
     if device_fp_ok is not None:
         result["device_fp_restored"] = device_fp_ok
         if not device_fp_ok:
@@ -3448,7 +3452,13 @@ def _get_all_family_fees():
 def _checkout_detail(active_xl, fetch_fn):
     if not (active_xl and active_xl.refresh_token):
         return None
-    return fetch_fn()
+    try:
+        return fetch_fn()
+    except Exception as e:
+        # XL blip / refresh gagal -> balik ke halaman detail dengan pesan,
+        # bukan 500 mentah di halaman checkout.
+        print(f"[checkout_detail] Error: {e}")
+        return None
 
 
 _decoy_price_cache: dict = {}

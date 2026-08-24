@@ -1,4 +1,5 @@
 import os
+import time
 
 import requests
 
@@ -9,9 +10,17 @@ GOPAY_TIMEOUT = int(os.getenv("GOPAY_TIMEOUT", "30"))
 SETTING_URL_KEY = "gopay_gateway_url"
 SETTING_API_KEY = "gopay_api_key"
 
+# Cache config DB 5 detik — qr_page_url dipanggil per baris riwayat;
+# tanpa cache itu = buka session DB baru untuk tiap baris.
+_CFG_TTL = 5.0
+_cfg_cache = {"ts": 0.0, "url": "", "key": ""}
+
 
 def get_config() -> tuple[str, str]:
     """Resolve (gateway_url, api_key): DB settings first, env as fallback."""
+    now = time.time()
+    if now - _cfg_cache["ts"] < _CFG_TTL:
+        return _cfg_cache["url"], _cfg_cache["key"]
     url = GOPAY_GATEWAY_URL
     key = GOPAY_API_KEY
     try:
@@ -32,11 +41,13 @@ def get_config() -> tuple[str, str]:
     except Exception as e:
         # Jangan diam-diam jatuh ke env — bisa menyembunyikan masalah konfigurasi.
         print(f"[gopay.get_config] gagal baca DB settings, pakai fallback env: {e}")
-    return (url or "").rstrip("/"), key or ""
+    _cfg_cache.update(ts=now, url=(url or "").rstrip("/"), key=key or "")
+    return _cfg_cache["url"], _cfg_cache["key"]
 
 
 def set_config(url: str, api_key: str) -> None:
     """Persist gateway config to DB (empty value clears the override)."""
+    _cfg_cache.update(ts=0.0)  # invalidasi cache — perubahan admin harus langsung efektif
     from database import get_db
     from models import AppSetting
     db = next(get_db())

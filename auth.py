@@ -21,24 +21,65 @@ _PUBLIC_FALLBACKS = {
 }
 
 
-def _load_jwt_secret() -> str:
+_jwt_secret_cache: str | None = None
+_jwt_secret_mtime: float | None = None
+
+
+def _secret_file_path() -> str:
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "jwt_secret")
+
+
+def _current_jwt_secret() -> str:
+    """Secret aktif saat ini. Env non-fallback selalu menang; kalau tidak,
+    baca data/jwt_secret dengan cache berbasis mtime supaya rotasi file
+    langsung efektif tanpa restart proses."""
+    global _jwt_secret_cache, _jwt_secret_mtime
     env_val = os.getenv("JWT_SECRET", "").strip()
     if env_val and env_val not in _PUBLIC_FALLBACKS:
         return env_val
-    secret_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "jwt_secret")
-    os.makedirs(os.path.dirname(secret_file), exist_ok=True)
-    if os.path.isfile(secret_file):
-        val = open(secret_file, encoding="utf-8").read().strip()
-        if val:
-            return val
-    val = secrets.token_urlsafe(48)
-    with open(secret_file, "w", encoding="utf-8") as f:
-        f.write(val)
-        f.write("\n")
+    path = _secret_file_path()
+    try:
+        mtime = os.stat(path).st_mtime
+    except OSError:
+        mtime = None
+    if _jwt_secret_cache is not None and mtime == _jwt_secret_mtime:
+        return _jwt_secret_cache
+    val = None
+    if mtime is not None:
+        with open(path, encoding="utf-8") as f:
+            val = f.read().strip()
+    if not val:
+        val = secrets.token_urlsafe(48)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(val)
+            f.write("\n")
+        mtime = os.stat(path).st_mtime
+    _jwt_secret_cache = val
+    _jwt_secret_mtime = mtime
     return val
 
 
-SECRET_KEY = _load_jwt_secret()
+def rotate_jwt_secret() -> bool:
+    """Buang secret lama -> cookie sesi semua user langsung invalid.
+
+    Dipakai setelah restore backup (user id bisa bergeser). Return False
+    bila JWT_SECRET di-set via env (rotasi file tidak berpengaruh).
+    """
+    global _jwt_secret_cache, _jwt_secret_mtime
+    env_val = os.getenv("JWT_SECRET", "").strip()
+    if env_val and env_val not in _PUBLIC_FALLBACKS:
+        return False
+    try:
+        os.remove(_secret_file_path())
+    except FileNotFoundError:
+        pass
+    _jwt_secret_cache = None
+    _jwt_secret_mtime = None
+    # Regenerasi segera agar file baru sudah ada untuk boot berikutnya.
+    _current_jwt_secret()
+    return True
+
+
 ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = float(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "9.5"))
 
@@ -66,12 +107,12 @@ def create_access_token(data: dict) -> str:
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return jwt.encode(to_encode, _current_jwt_secret(), algorithm=ALGORITHM)
 
 
 def decode_token(token: str) -> dict | None:
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, _current_jwt_secret(), algorithms=[ALGORITHM])
         return payload
     except JWTError:
         return None

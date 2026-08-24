@@ -24,9 +24,8 @@ Web UI untuk mengelola akun XL / paket XL (beli paket, info paket, riwayat, pemb
 ├── templates/            # Jinja2 templates
 ├── static/               # CSS / JS
 ├── requirements.txt
-├── install-dev-staging.sh    # dev/staging installer (apt + venv + uvicorn)
-├── reinstall-dev-staging.sh  # dev/staging clean reinstall (retain data)
-├── entrypoint.sh         # production Docker entrypoint (install + run)
+├── entrypoint.sh             # PRODUCTION Docker entrypoint (branch main)
+├── entrypoint-dev-staging.sh # DEV/STAGING entrypoint + installer (branch dev)
 ├── docker-compose.yml    # production container
 ├── .env                  # konfigurasi kredensial XL API (sudah terisi)
 └── .env.example          # template konfigurasi
@@ -46,24 +45,17 @@ Buka `http://localhost:8000` — login `admin` / `admin`.
 
 ## Dev / Staging (bare metal, Debian 12)
 
-Install atau reinstall ke `/opt/rohtembak`, start uvicorn di port 8000:
+Install / update / reinstall ke `/opt/rohtembak` via entrypoint dev/staging
+(track branch `dev`). Jalankan ulang = pull latest + re-sync deps, data tetap:
 
 ```bash
-wget -O install-dev-staging.sh https://raw.githubusercontent.com/rohcuan/rohtembak-xl/main/install-dev-staging.sh
-chmod +x install-dev-staging.sh
-sudo ./install-dev-staging.sh
+wget -O entrypoint-dev-staging.sh https://raw.githubusercontent.com/rohcuan/rohtembak-xl/dev/entrypoint-dev-staging.sh
+chmod +x entrypoint-dev-staging.sh
+sudo INSTALL_DIR=/opt/rohtembak APP_PORT=8000 ./entrypoint-dev-staging.sh
 ```
 
-## Update / reinstall (retain data)
-
-Untuk perubahan besar di repo: reinstall bersih tapi tetap menyimpan data
-(`.env`, `data/` termasuk fingerprint per user). **Dev/staging only** — untuk production, backup volume lalu recreate container.
-
-```bash
-wget -O reinstall-dev-staging.sh https://raw.githubusercontent.com/rohcuan/rohtembak-xl/main/reinstall-dev-staging.sh
-chmod +x reinstall-dev-staging.sh
-sudo ./reinstall-dev-staging.sh
-```
+> `entrypoint.sh` = production (branch main), `entrypoint-dev-staging.sh` = dev/staging (branch dev).
+> Keduanya bisa dipakai sebagai entrypoint container maupun installer bare-metal.
 
 ## Konfigurasi
 

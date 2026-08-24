@@ -3419,10 +3419,10 @@ def _checkout_context(active_xl, user, detail, method, family_key):
         "family_label": FAMILY_LABELS.get(family_key, family_key),
         "remaining": remaining,
         "insufficient": remaining < 0,
-        # XtraConf via pulsa: item decoy (bundle) sengaja dibuat gagal, jadi
-        # pulsa nomor harus DI BAWAH harga decoy — kalau lebih, decoy ikut
-        # terpotong sungguhan.
-        "decoy_pulsa_notice": family_key == "xtraconf" and method != "qris",
+        # XtraConf via pulsa (balance): item decoy (bundle) sengaja dibuat gagal,
+        # jadi pulsa nomor harus DI BAWAH harga decoy — kalau lebih, decoy ikut
+        # terpotong sungguhan. QRIS tidak berlaku (harga tampil sudah termasuk).
+        "decoy_pulsa_notice": family_key == "xtraconf" and method == "balance",
         "pay_url": f"/user/xl/beli-paket/{detail.get('url_id')}/pay/{method}",
     }
 

@@ -50,6 +50,7 @@ def _current_jwt_secret() -> str:
             val = f.read().strip()
     if not val:
         val = secrets.token_urlsafe(48)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             f.write(val)
             f.write("\n")

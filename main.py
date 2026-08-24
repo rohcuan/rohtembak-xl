@@ -2966,8 +2966,9 @@ async def user_xl_beli_paket_stream(request: Request, user: User = Depends(get_c
     async def _stream_guard():
         # Bungkus generator: cancel watcher tepat saat stream beneran selesai
         # (client pergi / server selesai) — bukan pas endpoint return.
+        # Generator ini SYNC — iterasi pakai for biasa, lalu yield per chunk.
         try:
-            async for chunk in _stream_beli_paket_events(ctx.get("active_xl"), want, disconnected):
+            for chunk in _stream_beli_paket_events(ctx.get("active_xl"), want, disconnected):
                 yield chunk
         finally:
             disconnected.set()
@@ -3168,7 +3169,7 @@ async def user_xl_detail_stream(request: Request, family: str, n: int, user: Use
 
     async def _stream_guard():
         try:
-            async for chunk in _stream_detail_events(family, n, ctx.get("active_xl"), want, disconnected):
+            for chunk in _stream_detail_events(family, n, ctx.get("active_xl"), want, disconnected):
                 yield chunk
         finally:
             disconnected.set()

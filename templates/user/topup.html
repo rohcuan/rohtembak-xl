@@ -34,14 +34,28 @@
 .status-badge.paid { background: #d1fae5; color: #065f46; }
 .status-badge.expired { background: #f3f4f6; color: #6b7280; }
 
-.topup-table { width: 100%; border-collapse: collapse; font-size: .84rem; }
-.topup-table th {
-  text-align: left; padding: 8px 10px; color: #6b7280; font-weight: 600;
-  font-size: .72rem; text-transform: uppercase; letter-spacing: .4px;
-  border-bottom: 1px solid #e5e7eb;
+.topup-list { display: grid; gap: 10px; }
+.topup-card {
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
+  padding: 12px 14px;
 }
-.topup-table td { padding: 10px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
-.topup-table tr:last-child td { border-bottom: none; }
+.tc-head {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 8px; margin-bottom: 8px;
+}
+.tc-time { font-size: .78rem; color: #6b7280; }
+.tc-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 3px 0; font-size: .86rem; gap: 12px;
+}
+.tc-row .k { color: #6b7280; white-space: nowrap; }
+.tc-row .v { font-weight: 600; color: #111; text-align: right; }
+.tc-actions {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 10px; margin-top: 10px; padding-top: 10px;
+  border-top: 1px solid #f3f4f6; flex-wrap: wrap;
+}
+.tc-link { color: #047857; font-weight: 600; font-size: .82rem; white-space: nowrap; }
 
 .btn-mini {
   background: #047857; color: #fff; border: none; border-radius: 6px;
@@ -243,32 +257,25 @@ document.addEventListener('DOMContentLoaded', armCheckButtons);
 <div class="card" style="margin-top:24px;">
   <div style="font-size:.85rem;text-transform:uppercase;letter-spacing:.5px;color:#6b7280;font-weight:600;margin-bottom:14px;">Riwayat Topup Terakhir</div>
   {% if topups %}
-  <div style="overflow-x:auto;">
-    <table class="topup-table">
-      <thead>
-        <tr><th>Waktu</th><th>Nominal</th><th>Total Bayar</th><th>Status</th><th>QRIS</th><th>Cek</th></tr>
-      </thead>
-      <tbody>
-        {% for t in topups %}
-        <tr>
-          <td>{{ t.created_fmt }}</td>
-          <td><strong>{{ t.amount|rupiah }}</strong> IDR</td>
-          <td>{{ t.total|rupiah }} IDR</td>
-          <td><span class="status-badge {{ t.status }}">{{ t.status_label }}</span></td>
-          <td>
-            {% if t.pay_url %}
-            <a href="{{ t.pay_url }}" target="_blank" rel="noopener" style="color:#047857;font-weight:600;white-space:nowrap;">Lihat kode QRIS</a>
-            {% else %}&mdash;{% endif %}
-          </td>
-          <td>
-            {% if t.status != 'paid' %}
-            <button type="button" class="btn-mini check-btn" data-id="{{ t.id }}" data-left="{{ t.check_left }}" onclick="manualCheck(this)">Cek Pembayaran</button>
-            {% else %}&mdash;{% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  <div class="topup-list">
+    {% for t in topups %}
+    <div class="topup-card">
+      <div class="tc-head">
+        <span class="tc-time">{{ t.created_fmt }}</span>
+        <span class="status-badge {{ t.status }}">{{ t.status_label }}</span>
+      </div>
+      <div class="tc-row"><span class="k">Nominal</span><span class="v">{{ t.amount|rupiah }} IDR</span></div>
+      <div class="tc-row"><span class="k">Total Bayar</span><span class="v">{{ t.total|rupiah }} IDR</span></div>
+      <div class="tc-actions">
+        {% if t.pay_url %}
+        <a href="{{ t.pay_url }}" target="_blank" rel="noopener" class="tc-link">Lihat kode QRIS</a>
+        {% else %}<span></span>{% endif %}
+        {% if t.status != 'paid' %}
+        <button type="button" class="btn-mini check-btn" data-id="{{ t.id }}" data-left="{{ t.check_left }}" onclick="manualCheck(this)">Cek Pembayaran</button>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
   </div>
   {% else %}
   <div class="empty-state">Belum ada transaksi topup.</div>

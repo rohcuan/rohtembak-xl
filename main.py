@@ -140,9 +140,9 @@ TOPUP_MAX_AMOUNT = int(os.getenv("TOPUP_MAX_AMOUNT", "1000000"))
 TOPUP_FEE_MIN = int(os.getenv("TOPUP_FEE_MIN", "1"))
 TOPUP_FEE_MAX = int(os.getenv("TOPUP_FEE_MAX", "250"))
 TOPUP_QR_TTL_SECONDS = 5 * 60
-TOPUP_EXPIRE_GRACE_SECONDS = int(os.getenv("TOPUP_EXPIRE_GRACE_SECONDS", "60"))
 TOPUP_CHECK_INTERVAL = int(os.getenv("TOPUP_CHECK_INTERVAL", "20"))
 TOPUP_MAX_PENDING_PER_USER = 3
+TOPUP_MANUAL_CHECK_COOLDOWN = 5 * 60
 _APP_START_TS = time.time()
 _reconcile_task = None
 
@@ -3721,22 +3721,6 @@ def _pay_response(user, detail, pay_error, pay_success, method, family_key, pay_
 # ─── Topup Saldo (QRIS via GoPay gateway) ──────────────────────────────────
 
 
-def _qris_text_png_data_uri(text):
-    import base64 as _b64
-    import io as _io
-    import qrcode as _qrcode
-    try:
-        qr = _qrcode.QRCode(error_correction=_qrcode.constants.ERROR_CORRECT_M)
-        qr.add_data(text)
-        qr.make(fit=True)
-        img = qr.make_image(fill_color="black", back_color="white")
-        buf = _io.BytesIO()
-        img.save(buf, format="PNG")
-        return "data:image/png;base64," + _b64.b64encode(buf.getvalue()).decode()
-    except Exception:
-        return None
-
-
 def _topup_expiry_epoch(topup) -> int:
     dt = topup.expires_at
     if dt is None:
@@ -3746,24 +3730,6 @@ def _topup_expiry_epoch(topup) -> int:
     return int(dt.timestamp())
 
 
-TOPUP_CHECK_WINDOW_HOURS = 24
-
-
-def _topup_within_window(topup) -> bool:
-    """True bila QRIS topup masih dalam jendela pengecekan (24 jam sejak dibuat).
-
-    Antisipasi mati listrik: pembayaran yang masuk saat panel mati tetap
-    terdeteksi saat panel hidup kembali — selama masih dalam 24 jam sejak
-    QRIS dibuat. Setelah 24 jam, pengecekan berhenti total.
-    """
-    if topup.created_at is None:
-        return False
-    dt = topup.created_at
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return int(time.time()) <= int(dt.timestamp()) + TOPUP_CHECK_WINDOW_HOURS * 3600
-
-
 _topup_credit_lock = threading.Lock()
 
 
@@ -3771,12 +3737,9 @@ def _credit_topup(db: Session, topup: TopupTransaction):
     """Credit a paid topup exactly once (guarded by pending→paid transition)."""
     with _topup_credit_lock:
         row = db.query(TopupTransaction).filter(TopupTransaction.id == topup.id).first()
-        # pending = normal flow; expired = late payment that landed at the
-        # expiry boundary. Both must credit exactly once; paid must never.
+        # pending = alur normal (auto-sweep); expired = hanya lewat cek manual
+        # di riwayat (grace manual). Keduanya harus credit tepat sekali.
         if not row or row.status not in ("pending", "expired"):
-            return None
-        # Belas kasih anti power-outage: credit hanya dalam 24 jam pembuatan.
-        if not _topup_within_window(row):
             return None
         row.status = "paid"
         row.paid_at = datetime.now(timezone.utc)
@@ -3817,22 +3780,7 @@ def _credit_topup(db: Session, topup: TopupTransaction):
 
 def _check_and_settle_topup(db: Session, topup: TopupTransaction) -> dict:
     """Ask the gateway about one topup; settle (credit/mark expired) accordingly."""
-    # Pengecekan hanya dalam 24 jam sejak QRIS dibuat (anti mati listrik).
-    if not _topup_within_window(topup):
-        if topup.status == "pending":
-            topup.status = "expired"
-            db.commit()
-        return {"ok": True, "status": "closed",
-                "message": "Masa pengecekan pembayaran berakhir (lebih dari 24 jam)."}
-    # Only look for payments newer than this QRIS itself (small clock-skew
-    # buffer), so a fresh QR can never claim an older unclaimed payment.
-    start_iso = None
-    if topup.created_at is not None:
-        created = topup.created_at
-        if created.tzinfo is None:
-            created = created.replace(tzinfo=timezone.utc)
-        start_iso = (created - timedelta(seconds=60)).isoformat()
-    res = gopay.check_payment(topup.total, topup.trx_id, start_time=start_iso)
+    res = gopay.check_payment(topup.total, topup.trx_id)
     if res.get("success") and res.get("paid"):
         new_balance = _credit_topup(db, topup)
         if new_balance is not None:
@@ -3843,7 +3791,7 @@ def _check_and_settle_topup(db: Session, topup: TopupTransaction) -> dict:
                 "message": "Pembayaran sudah dikonfirmasi sebelumnya."}
     now_ts = time.time()
     exp_ts = _topup_expiry_epoch(topup)
-    if now_ts > exp_ts + TOPUP_EXPIRE_GRACE_SECONDS:
+    if now_ts > exp_ts:
         if topup.status == "pending":
             topup.status = "expired"
             db.commit()
@@ -3853,44 +3801,30 @@ def _check_and_settle_topup(db: Session, topup: TopupTransaction) -> dict:
             "message": "Belum ada pembayaran yang terdeteksi."}
 
 
-_last_expired_sweep = 0.0
-_EXPIRED_SWEEP_INTERVAL = 300
-
-
 def _reconcile_pending_topups():
-    """Background sweep: settle paid topups and expire stale ones.
+    """Background sweep — hemat panggilan gateway (anti-ban).
 
-    Baris unpaid (pending/expired) yang masih dalam 24 jam pembuatan tetap
-    dicek berkala (tiap 5 menit) — antisipasi pembayaran yang masuk saat
-    panel mati listrik: begitu panel hidup lagi, credit terjadi otomatis.
+    Baris pending TIDAK dipolling selama QR masih berlaku. Satu-satunya cek
+    otomatis terjadi tepat setelah kedaluwarsa: satu panggilan /check-payment
+    per baris untuk menangkap pembayaran yang sudah masuk, lalu selesai
+    (paid atau expired). Sebelum itu, deteksi hanya lewat Cek Pembayaran manual.
     """
     if not gopay.is_configured():
         return
     db = next(get_db())
     try:
-        rows = db.query(TopupTransaction).filter(TopupTransaction.status == "pending").all()
+        cutoff = datetime.now(timezone.utc)
+        if cutoff.tzinfo is not None:
+            cutoff = cutoff.replace(tzinfo=None)
+        rows = db.query(TopupTransaction).filter(
+            TopupTransaction.status == "pending",
+            TopupTransaction.expires_at <= cutoff,
+        ).all()
         for row in rows:
             try:
                 _check_and_settle_topup(db, row)
             except Exception as e:
                 print(f"[topup-reconcile] id={row.id} Error: {e}")
-
-        global _last_expired_sweep
-        now = time.time()
-        if now - _last_expired_sweep >= _EXPIRED_SWEEP_INTERVAL:
-            _last_expired_sweep = now
-            cutoff_utc = datetime.now(timezone.utc) - timedelta(hours=TOPUP_CHECK_WINDOW_HOURS)
-            if cutoff_utc.tzinfo is not None:
-                cutoff_utc = cutoff_utc.replace(tzinfo=None)
-            expired_rows = db.query(TopupTransaction).filter(
-                TopupTransaction.status == "expired",
-                TopupTransaction.created_at >= cutoff_utc,
-            ).all()
-            for row in expired_rows:
-                try:
-                    _check_and_settle_topup(db, row)
-                except Exception as e:
-                    print(f"[topup-reconcile] expired id={row.id} Error: {e}")
     finally:
         db.close()
 
@@ -3918,16 +3852,30 @@ def topup_page(request: Request, user: User = Depends(get_current_user)):
         .all()
     )
     status_labels = {"pending": "Menunggu Pembayaran", "paid": "Berhasil", "expired": "Kedaluwarsa"}
-    topups = [{
-        "id": t.id,
-        "amount": t.amount,
-        "fee": t.fee,
-        "total": t.total,
-        "status": t.status,
-        "status_label": status_labels.get(t.status, t.status),
-        "created_fmt": _fmt_wib(t.created_at),
-        "is_pending": t.status == "pending" and time.time() <= _topup_expiry_epoch(t) + TOPUP_EXPIRE_GRACE_SECONDS,
-    } for t in rows]
+    now_ts = time.time()
+    topups = []
+    for t in rows:
+        check_left = 0
+        if t.last_checked_at is not None:
+            last = t.last_checked_at
+            if last.tzinfo is None:
+                last = last.replace(tzinfo=timezone.utc)
+            check_left = max(0, int(last.timestamp()) + TOPUP_MANUAL_CHECK_COOLDOWN - int(now_ts))
+        topups.append({
+            "id": t.id,
+            "amount": t.amount,
+            "fee": t.fee,
+            "total": t.total,
+            "status": t.status,
+            "status_label": status_labels.get(t.status, t.status),
+            "created_fmt": _fmt_wib(t.created_at),
+            "is_pending": t.status == "pending" and now_ts <= _topup_expiry_epoch(t),
+            # Halaman pembayaran milik gateway (qr/:id). Gateway sendiri yang
+            # menampilkan info kedaluwarsa, jadi link tetap ditampilkan untuk
+            # semua status termasuk expired.
+            "pay_url": gopay.qr_page_url(t.qris_id),
+            "check_left": check_left,
+        })
     ctx.update({
         "request": request,
         "topups": topups,
@@ -4017,8 +3965,8 @@ def topup_create(amount: int = Form(...), user: User = Depends(get_current_user)
 
         data = res.get("data") or {}
         trx_id = data.get("trx_id") or ""
-        qris_code = data.get("qris_code") or ""
-        if not trx_id or not qris_code:
+        qris_id = str(data.get("qris_id") or "")
+        if not trx_id or not qris_id:
             db.delete(row)
             db.commit()
             return JSONResponse({
@@ -4036,8 +3984,7 @@ def topup_create(amount: int = Form(...), user: User = Depends(get_current_user)
             pass
 
         row.trx_id = trx_id
-        row.qris_id = str(data.get("qris_id") or "")
-        row.qris_code = qris_code
+        row.qris_id = qris_id
         row.expires_at = datetime.fromtimestamp(expires_ts, tz=timezone.utc)
         db.add(row)
         db.commit()
@@ -4045,8 +3992,7 @@ def topup_create(amount: int = Form(...), user: User = Depends(get_current_user)
         return JSONResponse({
             "ok": True,
             "id": row.id,
-            "qr_img": _qris_text_png_data_uri(qris_code),
-            "expires_ts": expires_ts,
+            "pay_url": gopay.qr_page_url(qris_id),
             "amount": amount,
             "fee": row.fee,
             "total": total,
@@ -4078,9 +4024,25 @@ def topup_check(topup_id: int = Form(...), user: User = Depends(get_current_user
                 "credited": row.amount,
                 "message": "Pembayaran sudah dikonfirmasi sebelumnya."
             })
-        # Expired rows still get one gateway ask: a payment that landed right
-        # at the expiry boundary must still credit, never silently vanish.
-        return JSONResponse(_check_and_settle_topup(db, row))
+        # Grace manual: baris unpaid (termasuk yang sudah kedaluwarsa) boleh
+        # dicek ulang manual dengan cooldown 5 menit antar klik. Auto-sweep
+        # hanya menyentuh baris pending, jadi ini satu-satunya jalan bagi
+        # pembayaran yang terlambat masuk setelah kedaluwarsa.
+        if row.last_checked_at is not None:
+            last = row.last_checked_at
+            if last.tzinfo is None:
+                last = last.replace(tzinfo=timezone.utc)
+            left = int(last.timestamp()) + TOPUP_MANUAL_CHECK_COOLDOWN - int(time.time())
+            if left > 0:
+                return JSONResponse({
+                    "ok": False, "cooldown": left,
+                    "message": f"Tunggu {left // 60}m {left % 60}s sebelum cek pembayaran lagi."
+                })
+        row.last_checked_at = datetime.now(timezone.utc)
+        db.commit()
+        result = _check_and_settle_topup(db, row)
+        result["cooldown"] = TOPUP_MANUAL_CHECK_COOLDOWN
+        return JSONResponse(result)
     finally:
         db.close()
 

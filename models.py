@@ -85,6 +85,7 @@ class TopupTransaction(Base):
     status = Column(String(20), default="pending", index=True)
     expires_at = Column(DateTime, nullable=False)
     paid_at = Column(DateTime, default=None)
+    last_checked_at = Column(DateTime, default=None)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 

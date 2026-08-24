@@ -111,6 +111,18 @@ def create_qris(amount: int) -> dict:
     return data
 
 
+def qr_page_url(qris_id: str) -> str:
+    """Hosted payment page URL (gateway /qr/:id) for a QRIS.
+
+    The gateway page handles QR display, countdown, status checking, and
+    expiry messaging on its own. Returns "" when not configurable.
+    """
+    url, _ = get_config()
+    if not url or not qris_id:
+        return ""
+    return f"{url}/qr/{qris_id}"
+
+
 def check_payment(amount: int, trx_id: str, start_time: str | None = None) -> dict:
     """Server-to-server payment check scoped by trx_id (anti double-claim).
 

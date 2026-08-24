@@ -26,45 +26,6 @@
   background: #fffbeb; border: 1px solid #fde68a; color: #92400e; font-size: .8rem; line-height: 1.5;
 }
 
-.qr-overlay {
-  position: fixed; inset: 0; z-index: 1000;
-  background: rgba(0,0,0,.55); display: none;
-  align-items: center; justify-content: center; padding: 20px;
-}
-.qr-overlay.show { display: flex; }
-.qr-window {
-  background: #fff; border-radius: 14px; padding: 24px;
-  max-width: 360px; width: 100%; text-align: center;
-  box-shadow: 0 20px 50px rgba(0,0,0,.35); position: relative;
-}
-.qr-window .qr-close {
-  position: absolute; top: 10px; right: 14px;
-  background: none; border: none; font-size: 1.4rem;
-  color: #6b7280; cursor: pointer; line-height: 1;
-}
-.qr-window .qr-close:hover { color: #111; }
-.qr-window h3 { margin: 0 0 4px; font-size: 1rem; color: #111; }
-.qr-window p { margin: 0 0 14px; font-size: .8rem; color: #6b7280; }
-.qr-window img.qr-img {
-  width: 240px; height: 240px; border-radius: 8px;
-  border: 1px solid #e5e7eb; background: #fff;
-}
-.qr-window .qr-total { margin-top: 12px; font-size: .95rem; color: #111; }
-.qr-window .qr-total strong { color: #059669; font-size: 1.1rem; }
-.qr-hint { margin-top: 14px; font-size: .72rem; color: #9ca3af; line-height: 1.5; }
-.qr-window .success-title { color: #059669; font-size: 1.15rem; margin-bottom: 6px; }
-.success-box {
-  text-align: left; background: #f8f9fa; border: 1px solid #e5e7eb;
-  border-radius: 10px; padding: 14px 16px; margin-top: 16px;
-}
-.success-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; font-size: .88rem; }
-.success-row .k { color: #6b7280; }
-.success-row .v { font-weight: 600; color: #111; }
-.success-row .v.added { color: #059669; font-size: 1.05rem; }
-.success-row.total { border-top: 1px solid #e5e7eb; margin-top: 6px; padding-top: 12px; }
-.success-row.total .k { color: #111; font-weight: 600; }
-.success-row.total .v { color: #059669; font-size: 1.15rem; }
-
 .status-badge {
   display: inline-block; padding: 3px 10px; border-radius: 999px;
   font-size: .72rem; font-weight: 600; white-space: nowrap;
@@ -81,12 +42,16 @@
 }
 .topup-table td { padding: 10px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
 .topup-table tr:last-child td { border-bottom: none; }
+
+.btn-mini {
+  background: #047857; color: #fff; border: none; border-radius: 6px;
+  padding: 5px 10px; font-size: .74rem; font-weight: 600; cursor: pointer;
+  white-space: nowrap;
+}
+.btn-mini:hover { background: #065f46; }
+.btn-mini:disabled { background: #9ca3af; cursor: not-allowed; }
 </style>
 <script>
-var currentTopupId = null;
-var qrExpires = 0;
-var qrTimerInt = null;
-
 function fmtIdr(n) {
   return Number(n || 0).toLocaleString('id-ID');
 }
@@ -131,13 +96,18 @@ function createTopup() {
     .then(function(res) {
       btn.disabled = false;
       btn.textContent = 'Buat Kode QRIS';
-      if (res.ok) {
-        currentTopupId = res.id;
-        showQr(res.qr_img, res.expires_ts, res.amount, res.fee, res.total);
-      } else {
+      if (!res.ok) {
         msgEl.textContent = res.message || 'Gagal membuat QRIS.';
         msgEl.style.display = 'block';
+        return;
       }
+      if (!res.pay_url) {
+        msgEl.textContent = 'Gagal mendapatkan halaman pembayaran. Coba lagi.';
+        msgEl.style.display = 'block';
+        return;
+      }
+      window.open(res.pay_url, '_blank');
+      showPayLink(res.pay_url, res.total);
     })
     .catch(function(e) {
       btn.disabled = false;
@@ -147,95 +117,58 @@ function createTopup() {
     });
 }
 
-function showQr(src, expires, amount, fee, total) {
-  qrExpires = parseInt(expires, 10) || 0;
-  document.getElementById('qr-img').src = src || '';
-  document.getElementById('qr-img').style.display = src ? '' : 'none';
-  document.getElementById('qr-nominal').textContent = fmtIdr(amount) + ' IDR';
-  document.getElementById('qr-fee').textContent = fmtIdr(fee) + ' IDR';
-  document.getElementById('qr-total').textContent = fmtIdr(total) + ' IDR';
-  setQrViewState('pay');
-  var ov = document.getElementById('qr-overlay');
-  ov.classList.add('show');
-  tickQrTimer();
-  if (qrTimerInt) clearInterval(qrTimerInt);
-  qrTimerInt = setInterval(tickQrTimer, 1000);
+function showPayLink(url, total) {
+  document.getElementById('pay-link').href = url;
+  document.getElementById('pay-link-total').textContent = fmtIdr(total) + ' IDR';
+  document.getElementById('pay-link-note').style.display = '';
 }
 
-function setQrViewState(state) {
-  document.getElementById('qr-view-pay').style.display = state === 'pay' ? '' : 'none';
-  document.getElementById('qr-view-success').style.display = state === 'success' ? '' : 'none';
+function fmtLeft(s) {
+  var m = Math.floor(s / 60), r = s % 60;
+  return m > 0 ? m + 'm ' + (r < 10 ? '0' : '') + r + 's' : r + 's';
 }
 
-function tickQrTimer() {
-  var el = document.getElementById('qr-timer');
-  if (!el) return;
-  if (!qrExpires) { el.textContent = '—'; return; }
-  var left = qrExpires - Math.floor(Date.now() / 1000);
+function tickCheckBtn(b) {
+  var dl = parseInt(b.dataset.deadline || '0', 10);
+  var left = Math.max(0, Math.round((dl - Date.now()) / 1000));
   if (left <= 0) {
-    el.textContent = 'Expired';
-    var img = document.getElementById('qr-img');
-    if (img) img.style.display = 'none';
-    var note = document.getElementById('qr-expired-note');
-    if (note) note.style.display = '';
-    if (qrTimerInt) { clearInterval(qrTimerInt); qrTimerInt = null; }
+    b.disabled = false;
+    b.textContent = 'Cek Pembayaran';
     return;
   }
-  var m = Math.floor(left / 60), s = left % 60;
-  el.textContent = (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+  b.textContent = 'Tunggu ' + fmtLeft(left);
+  setTimeout(function() { tickCheckBtn(b); }, 1000);
 }
 
-function checkStatus(silent) {
-  var btn = document.getElementById('check-btn');
-  if (!currentTopupId) return;
-  if (btn && !silent) {
-    btn.disabled = true;
-    btn.textContent = 'Mengecek...';
-  }
+function armCheckButtons() {
+  document.querySelectorAll('button.check-btn').forEach(function(b) {
+    var left = parseInt(b.dataset.left || '0', 10);
+    if (left <= 0) return;
+    b.disabled = true;
+    b.dataset.deadline = Date.now() + left * 1000;
+    tickCheckBtn(b);
+  });
+}
+
+function manualCheck(btn) {
+  if (btn.disabled) return;
+  btn.disabled = true;
+  btn.textContent = 'Mengecek...';
   var fd = new FormData();
-  fd.append('topup_id', currentTopupId);
+  fd.append('topup_id', btn.dataset.id);
   fetch('/user/topup/check', { method: 'POST', body: fd, credentials: 'same-origin' })
     .then(function(r) { return r.json(); })
     .then(function(res) {
-      if (btn) {
-        btn.disabled = false;
-        btn.textContent = 'Cek Status Pembayaran';
-      }
-      if (!res.ok) {
-        if (!silent) alert(res.message || 'Gagal mengecek status.');
-        return;
-      }
-      if (res.status === 'paid') {
-        if (qrTimerInt) { clearInterval(qrTimerInt); qrTimerInt = null; }
-        document.getElementById('success-added').textContent = '+' + fmtIdr(res.credited) + ' IDR';
-        document.getElementById('success-balance').textContent = fmtIdr(res.new_balance) + ' IDR';
-        setQrViewState('success');
-        return;
-      }
-      if (res.status === 'expired') {
-        if (qrTimerInt) { clearInterval(qrTimerInt); qrTimerInt = null; }
-        var timerEl = document.getElementById('qr-timer');
-        if (timerEl) timerEl.textContent = 'Expired';
-        if (!silent) alert(res.message || 'QRIS kedaluwarsa dan tidak ada pembayaran masuk.');
-        return;
-      }
-      if (!silent) alert(res.message || 'Belum ada pembayaran terdeteksi.');
+      alert(res.message || (res.ok ? 'Belum ada pembayaran terdeteksi.' : 'Gagal mengecek status.'));
+      location.reload();
     })
     .catch(function() {
-      if (btn) {
-        btn.disabled = false;
-        btn.textContent = 'Cek Status Pembayaran';
-      }
+      btn.disabled = false;
+      btn.textContent = 'Cek Pembayaran';
     });
 }
 
-function closeQr(reload) {
-  var ov = document.getElementById('qr-overlay');
-  var wasPaid = document.getElementById('qr-view-success').style.display !== 'none';
-  ov.classList.remove('show');
-  if (qrTimerInt) { clearInterval(qrTimerInt); qrTimerInt = null; }
-  if (reload && wasPaid) location.reload();
-}
+document.addEventListener('DOMContentLoaded', armCheckButtons);
 </script>
 {% endblock %}
 {% block content %}
@@ -286,6 +219,11 @@ function closeQr(reload) {
 
       <div id="form-msg" style="display:none;margin-top:12px;padding:10px 12px;border-radius:8px;background:#fef2f2;color:#991b1b;font-size:.82rem;"></div>
 
+      <div id="pay-link-note" style="display:none;margin-top:12px;padding:10px 12px;border-radius:8px;background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;font-size:.82rem;line-height:1.5;">
+        Halaman pembayaran QRIS (total <strong id="pay-link-total">&mdash;</strong>) dibuka di tab baru. Selesaikan pembayaran di sana &mdash; saldo dicek otomatis saat QRIS berakhir, atau langsung lewat <strong>Cek Pembayaran</strong> di riwayat.<br>
+        Tidak terbuka? <a id="pay-link" href="#" target="_blank" rel="noopener" style="color:#047857;font-weight:600;">Lihat kode QRIS</a>
+      </div>
+
       <div style="margin-top:16px;">
         <button class="btn btn-success" id="create-btn" onclick="createTopup()">Buat Kode QRIS</button>
       </div>
@@ -308,7 +246,7 @@ function closeQr(reload) {
   <div style="overflow-x:auto;">
     <table class="topup-table">
       <thead>
-        <tr><th>Waktu</th><th>Nominal</th><th>Total Bayar</th><th>Status</th></tr>
+        <tr><th>Waktu</th><th>Nominal</th><th>Total Bayar</th><th>Status</th><th>QRIS</th><th>Cek</th></tr>
       </thead>
       <tbody>
         {% for t in topups %}
@@ -317,6 +255,16 @@ function closeQr(reload) {
           <td><strong>{{ t.amount|rupiah }}</strong> IDR</td>
           <td>{{ t.total|rupiah }} IDR</td>
           <td><span class="status-badge {{ t.status }}">{{ t.status_label }}</span></td>
+          <td>
+            {% if t.pay_url %}
+            <a href="{{ t.pay_url }}" target="_blank" rel="noopener" style="color:#047857;font-weight:600;white-space:nowrap;">Lihat kode QRIS</a>
+            {% else %}&mdash;{% endif %}
+          </td>
+          <td>
+            {% if t.status != 'paid' %}
+            <button type="button" class="btn-mini check-btn" data-id="{{ t.id }}" data-left="{{ t.check_left }}" onclick="manualCheck(this)">Cek Pembayaran</button>
+            {% else %}&mdash;{% endif %}
+          </td>
         </tr>
         {% endfor %}
       </tbody>
@@ -325,50 +273,6 @@ function closeQr(reload) {
   {% else %}
   <div class="empty-state">Belum ada transaksi topup.</div>
   {% endif %}
-</div>
-
-<div class="qr-overlay" id="qr-overlay" onclick="if(event.target===this)closeQr(true)">
-  <div class="qr-window">
-    <button class="qr-close" onclick="closeQr(true)">&times;</button>
-
-    <div id="qr-view-pay">
-      <h3>Scan QRIS</h3>
-      <p>Selesaikan pembayaran sebelum waktu habis.</p>
-      <img class="qr-img" id="qr-img" alt="QRIS" src="">
-      <div class="qr-total">
-        Nominal: <span id="qr-nominal">—</span> &middot; Kode unik: <span id="qr-fee">—</span><br>
-        Total: <strong id="qr-total">—</strong>
-      </div>
-      <div style="margin-top:10px;font-size:.85rem;color:#374151;">
-        Sisa waktu: <strong id="qr-timer" style="font-family:ui-monospace,monospace;">—</strong>
-      </div>
-      <div id="qr-expired-note" style="display:none;margin-top:8px;padding:10px 12px;border-radius:8px;background:#fef2f2;color:#991b1b;font-size:.8rem;line-height:1.5;">
-        QRIS sudah kedaluwarsa dan tidak dapat dipindai lagi. Jika kamu sudah membayar, saldo tetap masuk otomatis dalam 24 jam sejak pembuatan — tekan <strong>Cek Status Pembayaran</strong> untuk memastikan.
-      </div>
-      <div style="margin-top:14px;">
-        <button class="btn btn-primary" id="check-btn" onclick="checkStatus(false)" style="width:100%;">Cek Status Pembayaran</button>
-      </div>
-      <div class="qr-hint">Sudah bayar tapi status belum berubah? Tunggu sebentar lalu cek lagi. Sistem juga memeriksa otomatis setiap saat meski kamu menutup halaman ini.</div>
-    </div>
-
-    <div id="qr-view-success" style="display:none;">
-      <h3 class="success-title">Topup Berhasil!</h3>
-      <p>Pembayaran terkonfirmasi dan saldo sudah ditambahkan ke akunmu.</p>
-      <div class="success-box">
-        <div class="success-row">
-          <span class="k">Saldo ditambahkan</span>
-          <span class="v added" id="success-added">—</span>
-        </div>
-        <div class="success-row total">
-          <span class="k">Saldo panel sekarang</span>
-          <span class="v" id="success-balance">—</span>
-        </div>
-      </div>
-      <div style="margin-top:16px;">
-        <button class="btn btn-primary" onclick="closeQr(true)" style="width:100%;">Selesai</button>
-      </div>
-    </div>
-  </div>
 </div>
 
 {% endblock %}

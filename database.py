@@ -39,6 +39,10 @@ def init_db():
         if "refresh_expires_at" not in xl_cols:
             conn.execute(__import__("sqlalchemy").text("ALTER TABLE xl_accounts ADD COLUMN refresh_expires_at INTEGER DEFAULT NULL"))
             conn.commit()
+        topup_cols = [row[1] for row in conn.execute(__import__("sqlalchemy").text("PRAGMA table_info(topup_transactions)"))]
+        if "last_checked_at" not in topup_cols:
+            conn.execute(__import__("sqlalchemy").text("ALTER TABLE topup_transactions ADD COLUMN last_checked_at DATETIME DEFAULT NULL"))
+            conn.commit()
         idx = conn.execute(__import__("sqlalchemy").text(
             "SELECT name FROM sqlite_master WHERE type='index' AND name='uq_topup_pending_total'"
         )).fetchone()

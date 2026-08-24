@@ -1110,7 +1110,16 @@ def admin_payment_test(
     # mode == "api": reachability + API key accepted
     if data.get("success"):
         return JSONResponse({"ok": True, "message": "API gateway berjalan dan API key diterima."})
-    err = data.get("error") or data.get("detail") or "Respon tidak dikenal"
+    # Gateway menaruh alasan gagal di beberapa tempat tergantung versinya:
+    # top-level error/detail, data.message, atau data.data.token_status/message.
+    inner = data.get("data") if isinstance(data.get("data"), dict) else {}
+    err = (
+        data.get("error")
+        or data.get("detail")
+        or inner.get("message")
+        or inner.get("token_status")
+        or "Respon tidak dikenal"
+    )
     return JSONResponse({"ok": False, "message": f"Gateway merespons tapi gagal: {err}"})
 
 

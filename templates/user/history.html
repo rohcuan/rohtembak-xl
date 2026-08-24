@@ -30,6 +30,8 @@
   <span style="color:#10b981;font-weight:500;font-size:.8rem;">Penambahan Saldo</span>
   {%- elif t.type == "set" -%}
   <span style="color:#6366f1;font-weight:500;font-size:.8rem;">Penyesuaian Saldo</span>
+  {%- elif t.type == "refund" -%}
+  <span style="color:#10b981;font-weight:500;font-size:.8rem;">Pengembalian Saldo</span>
   {%- else -%}
   <span style="color:#ef4444;font-weight:500;font-size:.8rem;">Pengurangan Saldo</span>
   {%- endif -%}

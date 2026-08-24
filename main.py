@@ -19,7 +19,7 @@ load_dotenv()
 from fastapi import FastAPI, Request, Depends, Form, File, UploadFile, HTTPException, status
 from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse, Response
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 from jinja2 import Environment, FileSystemLoader
@@ -823,6 +823,19 @@ def admin_delete_user(
     db.query(TopupTransaction).filter(TopupTransaction.user_id == u.id).delete()
     remove_user_ax_fp(u.username)
     db.delete(u)
+    # Double-check terakhir: create-topup paralel bisa saja menyisipkan baris
+    # pending baru setelah pengecekan awal. SQLite menserialisasi writer,
+    # jadi cek di transaksi yang sama dengan delete ini menutup hampir semua
+    # jendela race.
+    if db.query(TopupTransaction).filter(
+        TopupTransaction.user_id == u.id,
+        TopupTransaction.status == "pending"
+    ).count():
+        db.rollback()
+        raise HTTPException(
+            status_code=400,
+            detail="User masih punya topup QRIS menunggu pembayaran. Tunggu kedaluwarsa dulu (maks ~6 menit)."
+        )
     db.commit()
     return RedirectResponse(url="/admin/users", status_code=303)
 
@@ -4112,6 +4125,17 @@ def topup_create(amount: int = Form(...), user: User = Depends(get_current_user)
                 "message": "Semua kode unik sedang terpakai. Coba lagi beberapa menit."
             }, status_code=409)
 
+        # Guard race hapus-user: kalau admin menghapus user ini tepat ketika
+        # kita membuat QRIS, jangan serahkan QRIS hidup ke akun yang sudah
+        # tiada — buang barisnya dan tolak.
+        if not db.query(User).filter(User.id == user.id).first():
+            db.delete(row)
+            db.commit()
+            return JSONResponse({
+                "ok": False,
+                "message": "Akun tidak ditemukan."
+            }, status_code=403)
+
         res = gopay.create_qris(total)
         if not res.get("success"):
             db.delete(row)
@@ -4145,7 +4169,18 @@ def topup_create(amount: int = Form(...), user: User = Depends(get_current_user)
         row.qris_id = qris_id
         row.expires_at = datetime.fromtimestamp(expires_ts, tz=timezone.utc)
         db.add(row)
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError:
+            # trx_id duplikat dari gateway — buang barisnya, jangan tinggalkan
+            # pending yatim yang menahan slot unique-fee.
+            db.rollback()
+            db.delete(row)
+            db.commit()
+            return JSONResponse({
+                "ok": False,
+                "message": "Gateway mengirim QRIS duplikat. Coba lagi."
+            }, status_code=502)
 
         return JSONResponse({
             "ok": True,
@@ -4186,18 +4221,31 @@ def topup_check(topup_id: int = Form(...), user: User = Depends(get_current_user
         # dicek ulang manual dengan cooldown 5 menit antar klik. Auto-sweep
         # hanya menyentuh baris pending, jadi ini satu-satunya jalan bagi
         # pembayaran yang terlambat masuk setelah kedaluwarsa.
-        if row.last_checked_at is not None:
-            last = row.last_checked_at
-            if last.tzinfo is None:
-                last = last.replace(tzinfo=timezone.utc)
-            left = int(last.timestamp()) + TOPUP_MANUAL_CHECK_COOLDOWN - int(time.time())
-            if left > 0:
-                return JSONResponse({
-                    "ok": False, "cooldown": left,
-                    "message": f"Tunggu {left // 60}m {left % 60}s sebelum cek pembayaran lagi."
-                })
-        row.last_checked_at = datetime.now(timezone.utc)
+        #
+        # Klaim cooldown ATOMIK: dua request paralel (dobel-klik / 2 tab)
+        # hanya satu yang lolos — sisanya dapat sisa cooldown.
+        now_dt = datetime.now(timezone.utc)
+        cooldown_cutoff = (now_dt - timedelta(seconds=TOPUP_MANUAL_CHECK_COOLDOWN)).replace(tzinfo=None)
+        claimed = db.query(TopupTransaction).filter(
+            TopupTransaction.id == row.id,
+            or_(
+                TopupTransaction.last_checked_at.is_(None),
+                TopupTransaction.last_checked_at <= cooldown_cutoff,
+            ),
+        ).update({"last_checked_at": now_dt.replace(tzinfo=None)}, synchronize_session=False)
         db.commit()
+        if not claimed:
+            db.expire_all()
+            fresh_last = row.last_checked_at
+            left = TOPUP_MANUAL_CHECK_COOLDOWN
+            if fresh_last is not None:
+                if fresh_last.tzinfo is None:
+                    fresh_last = fresh_last.replace(tzinfo=timezone.utc)
+                left = max(0, int(fresh_last.timestamp()) + TOPUP_MANUAL_CHECK_COOLDOWN - int(time.time()))
+            return JSONResponse({
+                "ok": False, "cooldown": left,
+                "message": f"Tunggu {left // 60}m {left % 60}s sebelum cek pembayaran lagi."
+            })
         result = _check_and_settle_topup(db, row)
         result["cooldown"] = TOPUP_MANUAL_CHECK_COOLDOWN
         return JSONResponse(result)

@@ -63,7 +63,8 @@ if not os.path.isfile(db_path):
     sys.exit(1)
 
 import sqlite3
-conn = sqlite3.connect(db_path)
+# timeout=10: tunggu lock DB yang sedang dipakai uvicorn, jangan langsung gagal
+conn = sqlite3.connect(db_path, timeout=10)
 try:
     row = conn.execute(
         "SELECT id FROM users WHERE role='admin' ORDER BY id LIMIT 1"

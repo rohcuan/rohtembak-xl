@@ -111,10 +111,10 @@ function updateSummary() {
   document.getElementById('sum-total').textContent = amount > 0 ? fmtIdr(amount) + ' + kode unik' : '0 IDR';
 }
 
+var PENDING_TOPUP_AMOUNT = 0;
+
 function createTopup() {
-  var btn = document.getElementById('create-btn');
   var msgEl = document.getElementById('form-msg');
-  if (btn.disabled) return;
   var amount = parseInt(document.getElementById('topup-amount').value.trim(), 10);
   if (!amount || amount < {{ topup_min }} || amount > {{ topup_max }}) {
     msgEl.textContent = 'Nominal harus antara {{ topup_min|rupiah }} dan {{ topup_max|rupiah }} IDR.';
@@ -122,48 +122,48 @@ function createTopup() {
     return;
   }
   msgEl.style.display = 'none';
+  PENDING_TOPUP_AMOUNT = amount;
+  showQrisNotice(amount);
+}
+
+function showQrisNotice(amount) {
+  var err = document.getElementById('qris-notice-err');
+  if (err) err.style.display = 'none';
+  document.getElementById('qris-notice-msg').innerHTML =
+    'Nominal topup: <strong>' + fmtIdr(amount) + ' IDR</strong> (ditambah kode unik acak ' +
+    fmtIdr({{ topup_fee_min }}) + '&ndash;' + fmtIdr({{ topup_fee_max }}) + ' IDR).<br>' +
+    'QRIS baru dibuat saat kamu klik <strong>"Lanjut bayar"</strong>.<br>' +
+    'Setelah pembayaran berhasil, kembali ke halaman ini lalu klik <strong>"Cek Pembayaran"</strong> di <strong>Riwayat Saldo Panel</strong> untuk menambahkan saldo ke panel.';
+  document.getElementById('qrisNoticeModal').classList.add('show');
+}
+
+function confirmPay(btn) {
+  if (btn.disabled) return;
   btn.disabled = true;
   btn.textContent = 'Membuat QRIS...';
-
   var fd = new FormData();
-  fd.append('amount', amount);
+  fd.append('amount', PENDING_TOPUP_AMOUNT);
   fetch('/user/topup/create', { method: 'POST', body: fd, credentials: 'same-origin' })
     .then(function(r) { return r.json(); })
     .then(function(res) {
-      btn.disabled = false;
-      btn.textContent = 'Buat Kode QRIS';
-      if (!res.ok) {
-        msgEl.textContent = res.message || 'Gagal membuat QRIS.';
-        msgEl.style.display = 'block';
+      if (!res.ok || !res.pay_url) {
+        btn.disabled = false;
+        btn.textContent = 'Lanjut bayar';
+        showQrisError(res.message || 'Gagal membuat QRIS. Coba lagi.');
         return;
       }
-      if (!res.pay_url) {
-        msgEl.textContent = 'Gagal mendapatkan halaman pembayaran. Coba lagi.';
-        msgEl.style.display = 'block';
-        return;
-      }
-      showPayLink(res.pay_url, res.total);
+      location.href = res.pay_url;
     })
     .catch(function(e) {
       btn.disabled = false;
-      btn.textContent = 'Buat Kode QRIS';
-      msgEl.textContent = 'Terjadi kesalahan: ' + e.message;
-      msgEl.style.display = 'block';
+      btn.textContent = 'Lanjut bayar';
+      showQrisError('Terjadi kesalahan: ' + e.message);
     });
 }
 
-function showPayLink(url, total) {
-  showQrisNotice(total, url);
-}
-
-function showQrisNotice(total, url) {
-  document.getElementById('qris-notice-msg').textContent =
-    'Total yang harus dibayar: ' + fmtIdr(total) + ' IDR. ' +
-    'Setelah pembayaran berhasil, kembali ke halaman ini lalu klik "Cek Pembayaran" di Riwayat Saldo Panel untuk menambahkan saldo ke panel.';
-  document.getElementById('qris-notice-btn').onclick = function() {
-    location.href = url;
-  };
-  document.getElementById('qrisNoticeModal').classList.add('show');
+function showQrisError(msg) {
+  var err = document.getElementById('qris-notice-err');
+  if (err) { err.textContent = msg; err.style.display = 'block'; }
 }
 
 function closeQrisNotice() {
@@ -367,11 +367,12 @@ document.addEventListener('DOMContentLoaded', armCheckButtons);
 
 <div class="modal-overlay" id="qrisNoticeModal" onclick="if(event.target===this)closeQrisNotice()">
     <div class="modal">
-        <h3>QRIS berhasil dibuat</h3>
+        <h3>Konfirmasi Topup</h3>
         <p class="modal-body" id="qris-notice-msg"></p>
+        <div id="qris-notice-err" style="display:none;margin-bottom:12px;padding:8px 12px;border-radius:8px;background:#fef2f2;color:#991b1b;font-size:.82rem;"></div>
         <div class="modal-actions">
             <button type="button" class="btn btn-outline" onclick="closeQrisNotice()">Batal</button>
-            <button type="button" class="btn" id="qris-notice-btn">Lanjut bayar</button>
+            <button type="button" class="btn" id="qris-notice-btn" onclick="confirmPay(this)">Lanjut bayar</button>
         </div>
     </div>
 </div>

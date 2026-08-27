@@ -1281,6 +1281,8 @@ def _build_backup_zip_bytes(admin_data: dict, users_data: list, xl_data: list, f
 
 AUTOBACKUP_TIME = "03:00"  # WIB
 TG_MAX_BYTES = 50 * 1024 * 1024  # batas upload dokumen Bot API
+AUTOBACKUP_MAX_RETRIES = 3   # jumlah retry otomatis bila backup gagal
+AUTOBACKUP_RETRY_MINUTES = 15  # jeda antar retry
 
 _AUTOBACKUP_LOCK = threading.Lock()
 
@@ -1301,6 +1303,7 @@ def _ab_read_state() -> dict:
         "weekday": 0,
         "monthday": 1,
         "next_run_ts": 0,
+        "retry_left": 0,
         "notif_topup_qris": False,
         "notif_topup_admin": False,
         "notif_purchase": False,
@@ -1374,6 +1377,7 @@ def _ab_next_run_after(base_dt, st: dict):
 
 
 def _ab_set_next_run(st: dict, base_dt=None) -> None:
+    st["retry_left"] = 0
     st["next_run_ts"] = int(_ab_next_run_after(base_dt or datetime.now(WIB), st).timestamp())
 
 
@@ -1547,7 +1551,13 @@ def _telegram_send_backup(trigger: str) -> tuple[bool, str]:
     cfg["last_run_at"] = now_str
     cfg["last_run_ok"] = ok
     cfg["last_output"] = out[-2000:]
-    _ab_set_next_run(cfg)
+    if ok:
+        _ab_set_next_run(cfg)
+    elif trigger == "auto" and int(cfg.get("retry_left") or 0) < AUTOBACKUP_MAX_RETRIES:
+        cfg["retry_left"] = int(cfg.get("retry_left") or 0) + 1
+        cfg["next_run_ts"] = int((datetime.now(WIB) + timedelta(minutes=AUTOBACKUP_RETRY_MINUTES)).timestamp())
+    else:
+        _ab_set_next_run(cfg)
     _ab_write_state(cfg)
     return ok, out
 
@@ -1584,6 +1594,9 @@ def admin_autobackup_page(request: Request, admin_user: User = Depends(get_curre
         "st": st, "configured": configured,
         "saved": request.query_params.get("saved") == "1",
         "next_run_label": next_run_label,
+        "retry_left": int(st.get("retry_left") or 0),
+        "retry_minutes": AUTOBACKUP_RETRY_MINUTES,
+        "retry_max": AUTOBACKUP_MAX_RETRIES,
     })
 
 

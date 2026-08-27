@@ -78,7 +78,8 @@ function showQrisNotice(amount) {
   var err = document.getElementById('qris-notice-err');
   if (err) err.style.display = 'none';
   document.getElementById('qris-notice-msg').innerHTML =
-    'Setelah pembayaran berhasil, buka menu <strong>"Riwayat Saldo Panel"</strong> di dashboard lalu klik <strong>"Cek Pembayaran"</strong> untuk menambahkan saldo ke panel.';
+    'Setelah pembayaran berhasil, buka menu <strong>"Riwayat Saldo Panel"</strong> di dashboard lalu klik <strong>"Cek Pembayaran"</strong> untuk menambahkan saldo ke panel.<br>' +
+    'Atau tunggu 5 menit, saldo akan masuk secara otomatis';
   document.getElementById('qrisNoticeModal').classList.add('show');
 }
 

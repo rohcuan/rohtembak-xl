@@ -82,6 +82,16 @@
                             <span class="dropdown-label">Saldo Panel</span>
                             <span class="dropdown-value">{{ (balance or 0)|rupiah }} IDR</span>
                         </div>
+                        <div class="has-sub">
+                            <div class="dropdown-row" style="cursor:pointer;" onclick="toggleSubmenu(this)">
+                                <span class="dropdown-label" style="font-weight:600;color:#1a1a2e;">Minta Bantuan</span>
+                                <svg class="chevron sub-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                            </div>
+                            <div class="submenu">
+                                <a class="dropdown-item" href="https://t.me/rohcuan" target="_blank" rel="noopener">Telegram</a>
+                                <a class="dropdown-item" href="https://wa.me/6289512992313" target="_blank" rel="noopener">WhatsApp</a>
+                            </div>
+                        </div>
                         {% else %}
                         <div class="dropdown-row" style="cursor:pointer;" onclick="location.href='/admin/credentials'">
                             <span class="dropdown-label">Edit Admin Credentials</span>

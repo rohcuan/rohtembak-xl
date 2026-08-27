@@ -4060,6 +4060,10 @@ def topup_page(request: Request, user: User = Depends(get_current_user)):
         created = t.created_at
         if created.tzinfo is None:
             created = created.replace(tzinfo=timezone.utc)
+        # Topup kedaluwarsa: aksi (Lihat kode QRIS / Cek Pembayaran) hanya
+        # relevan selama 24 jam setelah masa berlaku QRIS berakhir.
+        exp_ts = _topup_expiry_epoch(t)
+        show_actions = not (t.status == "expired" and exp_ts and now_ts > exp_ts + 24 * 3600)
         history.append({
             "kind": "topup",
             "id": t.id,
@@ -4074,6 +4078,7 @@ def topup_page(request: Request, user: User = Depends(get_current_user)):
             # semua status termasuk expired.
             "pay_url": gopay.qr_page_url(t.qris_id),
             "check_left": check_left,
+            "show_actions": show_actions,
         })
 
     transactions = db.query(BalanceTransaction).filter(

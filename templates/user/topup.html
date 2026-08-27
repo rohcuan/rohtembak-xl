@@ -314,7 +314,7 @@ document.addEventListener('DOMContentLoaded', armCheckButtons);
           </td>
           <td>{{ t.desc }}</td>
           <td>
-            {% if t.kind == 'topup' %}
+            {% if t.kind == 'topup' and t.show_actions %}
               <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                 {% if t.pay_url %}
                 <a href="{{ t.pay_url }}" target="_blank" rel="noopener" style="color:#047857;font-weight:600;white-space:nowrap;">Lihat kode QRIS</a>
@@ -345,7 +345,7 @@ document.addEventListener('DOMContentLoaded', armCheckButtons);
       <div class="tc-row"><span class="k">Jumlah</span><span class="v" style="color:{{ '#059669' if t.amount >= 0 else '#dc2626' }};">{{ "+" if t.amount >= 0 else "-" }}{{ t.amount|abs|rupiah }} IDR</span></div>
       <div class="tc-row"><span class="k">Keterangan</span><span class="v">{{ t.desc }}</span></div>
       <div class="tc-actions">
-        {% if t.kind == 'topup' %}
+        {% if t.kind == 'topup' and t.show_actions %}
           {% if t.pay_url %}
           <a href="{{ t.pay_url }}" target="_blank" rel="noopener" class="tc-link">Lihat kode QRIS</a>
           {% else %}<span></span>{% endif %}

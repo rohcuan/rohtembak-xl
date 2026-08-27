@@ -2588,19 +2588,77 @@ def xl_otp_submit(
 
 @app.get("/user/detail-saldo-token", response_class=HTMLResponse)
 def user_history(request: Request, user: User = Depends(get_current_user)):
+    if user.role != "user":
+        return RedirectResponse(url="/admin/dashboard", status_code=303)
     db = next(get_db())
     ctx = get_user_context(user, db)
+    now_ts = time.time()
+    history = []
+
+    topups = db.query(TopupTransaction).filter(
+        TopupTransaction.user_id == user.id
+    ).order_by(TopupTransaction.id.desc()).limit(10).all()
+    for t in topups:
+        check_left = 0
+        if t.last_checked_at is not None:
+            last = t.last_checked_at
+            if last.tzinfo is None:
+                last = last.replace(tzinfo=timezone.utc)
+            check_left = max(0, int(last.timestamp()) + TOPUP_MANUAL_CHECK_COOLDOWN - int(now_ts))
+        created = t.created_at
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+        # Topup paid/kedaluwarsa: aksi (Lihat kode QRIS / Cek Pembayaran) hanya
+        # relevan selama 24 jam sejak dibayar (paid_at) / masa berlaku berakhir.
+        exp_ts = _topup_expiry_epoch(t)
+        ref_ts = exp_ts
+        if t.status == "paid" and t.paid_at is not None:
+            paid = t.paid_at
+            if paid.tzinfo is None:
+                paid = paid.replace(tzinfo=timezone.utc)
+            ref_ts = int(paid.timestamp())
+        show_actions = not (t.status in ("paid", "expired") and ref_ts and now_ts > ref_ts + 24 * 3600)
+        history.append({
+            "kind": "topup",
+            "id": t.id,
+            "ts": _fmt_wib(t.created_at),
+            "ts_sort": int(created.timestamp()),
+            "amount": t.amount,
+            "desc": _topup_desc(t),
+            "status": t.status,
+            # Halaman pembayaran milik gateway (qr/:id). Gateway sendiri yang
+            # menampilkan info kedaluwarsa, jadi link tetap ditampilkan untuk
+            # semua status termasuk expired.
+            "pay_url": gopay.qr_page_url(t.qris_id),
+            "check_left": check_left,
+            "show_actions": show_actions,
+        })
+
     transactions = db.query(BalanceTransaction).filter(
         BalanceTransaction.user_id == user.id
     ).order_by(BalanceTransaction.created_at.desc()).all()
+    for bt in transactions:
+        # Topup QRIS yang sudah terbayar sudah diwakili baris kind="topup"
+        # di atas (status paid), jadi jangan ditampilkan dua kali.
+        if bt.type == "topup" and "QRIS" in (bt.description or ""):
+            continue
+        created = bt.created_at
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+        history.append({
+            "kind": "saldo",
+            "id": bt.id,
+            "ts": _fmt_wib(bt.created_at),
+            "ts_sort": int(created.timestamp()),
+            "amount": bt.amount,
+            "type": bt.type,
+            "desc": bt.description or "—",
+        })
+
+    history.sort(key=lambda r: r["ts_sort"], reverse=True)
+    history = history[:20]
     db.close()
-    rows = [{
-        "ts": _fmt_wib(t.created_at),
-        "type": t.type,
-        "amount": t.amount,
-        "description": t.description or "—",
-    } for t in transactions]
-    ctx.update({"request": request, "transactions": rows})
+    ctx.update({"request": request, "history": history})
     return render("user/history.html", context=ctx)
 
 
@@ -4045,79 +4103,9 @@ def topup_page(request: Request, user: User = Depends(get_current_user)):
         return RedirectResponse(url="/admin/dashboard", status_code=303)
     db = next(get_db())
     ctx = get_user_context(user, db)
-    rows = (
-        db.query(TopupTransaction)
-        .filter(TopupTransaction.user_id == user.id)
-        .order_by(TopupTransaction.id.desc())
-        .limit(10)
-        .all()
-    )
-    status_labels = {"pending": "Menunggu Pembayaran", "paid": "Berhasil", "expired": "Kedaluwarsa"}
-    now_ts = time.time()
-    history = []
-    for t in rows:
-        check_left = 0
-        if t.last_checked_at is not None:
-            last = t.last_checked_at
-            if last.tzinfo is None:
-                last = last.replace(tzinfo=timezone.utc)
-            check_left = max(0, int(last.timestamp()) + TOPUP_MANUAL_CHECK_COOLDOWN - int(now_ts))
-        created = t.created_at
-        if created.tzinfo is None:
-            created = created.replace(tzinfo=timezone.utc)
-        # Topup paid/kedaluwarsa: aksi (Lihat kode QRIS / Cek Pembayaran) hanya
-        # relevan selama 24 jam sejak dibayar (paid_at) / masa berlaku berakhir.
-        exp_ts = _topup_expiry_epoch(t)
-        ref_ts = exp_ts
-        if t.status == "paid" and t.paid_at is not None:
-            paid = t.paid_at
-            if paid.tzinfo is None:
-                paid = paid.replace(tzinfo=timezone.utc)
-            ref_ts = int(paid.timestamp())
-        show_actions = not (t.status in ("paid", "expired") and ref_ts and now_ts > ref_ts + 24 * 3600)
-        history.append({
-            "kind": "topup",
-            "id": t.id,
-            "ts": _fmt_wib(t.created_at),
-            "ts_sort": int(created.timestamp()),
-            "amount": t.amount,
-            "desc": _topup_desc(t),
-            "status": t.status,
-            "status_label": status_labels.get(t.status, t.status),
-            # Halaman pembayaran milik gateway (qr/:id). Gateway sendiri yang
-            # menampilkan info kedaluwarsa, jadi link tetap ditampilkan untuk
-            # semua status termasuk expired.
-            "pay_url": gopay.qr_page_url(t.qris_id),
-            "check_left": check_left,
-            "show_actions": show_actions,
-        })
-
-    transactions = db.query(BalanceTransaction).filter(
-        BalanceTransaction.user_id == user.id
-    ).order_by(BalanceTransaction.created_at.desc()).all()
-    for bt in transactions:
-        # Topup QRIS yang sudah terbayar sudah diwakili baris kind="topup"
-        # di atas (status paid), jadi jangan ditampilkan dua kali.
-        if bt.type == "topup" and "QRIS" in (bt.description or ""):
-            continue
-        created = bt.created_at
-        if created.tzinfo is None:
-            created = created.replace(tzinfo=timezone.utc)
-        history.append({
-            "kind": "saldo",
-            "id": bt.id,
-            "ts": _fmt_wib(bt.created_at),
-            "ts_sort": int(created.timestamp()),
-            "amount": bt.amount,
-            "type": bt.type,
-            "desc": bt.description or "—",
-        })
-    history.sort(key=lambda r: r["ts_sort"], reverse=True)
-    history = history[:20]
     db.close()
     ctx.update({
         "request": request,
-        "history": history,
         "topup_min": TOPUP_MIN_AMOUNT,
         "topup_max": TOPUP_MAX_AMOUNT,
         "topup_fee_min": TOPUP_FEE_MIN,

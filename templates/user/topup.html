@@ -26,58 +26,6 @@
   background: #fffbeb; border: 1px solid #fde68a; color: #92400e; font-size: .8rem; line-height: 1.5;
 }
 
-.status-badge {
-  display: inline-block; padding: 3px 10px; border-radius: 999px;
-  font-size: .72rem; font-weight: 600; white-space: nowrap;
-}
-.status-badge.pending { background: #fef3c7; color: #92400e; }
-.status-badge.paid { background: #d1fae5; color: #065f46; }
-.status-badge.expired { background: #f3f4f6; color: #6b7280; }
-
-.topup-table { width: 100%; border-collapse: collapse; font-size: .84rem; }
-.topup-table th {
-  text-align: left; padding: 8px 10px; color: #6b7280; font-weight: 600;
-  font-size: .72rem; text-transform: uppercase; letter-spacing: .4px;
-  border-bottom: 1px solid #e5e7eb;
-}
-.topup-table td { padding: 10px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
-.topup-table tr:last-child td { border-bottom: none; }
-
-.topup-cards { display: none; }
-@media (max-width: 640px) {
-  .topup-table-wrap { display: none; }
-  .topup-cards { display: grid; gap: 10px; }
-}
-.topup-card {
-  background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
-  padding: 12px 14px;
-}
-.tc-head {
-  display: flex; justify-content: space-between; align-items: center;
-  gap: 8px; margin-bottom: 8px;
-}
-.tc-time { font-size: .78rem; color: #6b7280; }
-.tc-row {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 3px 0; font-size: .86rem; gap: 12px;
-}
-.tc-row .k { color: #6b7280; white-space: nowrap; }
-.tc-row .v { font-weight: 600; color: #111; text-align: right; }
-.tc-actions {
-  display: flex; justify-content: space-between; align-items: center;
-  gap: 10px; margin-top: 10px; padding-top: 10px;
-  border-top: 1px solid #f3f4f6; flex-wrap: wrap;
-}
-.tc-link { color: #047857; font-weight: 600; font-size: .82rem; white-space: nowrap; }
-
-.btn-mini {
-  background: #047857; color: #fff; border: none; border-radius: 6px;
-  padding: 5px 10px; font-size: .74rem; font-weight: 600; cursor: pointer;
-  white-space: nowrap;
-}
-.btn-mini:hover { background: #065f46; }
-.btn-mini:disabled { background: #9ca3af; cursor: not-allowed; }
-
 #qrisNoticeModal .modal {
   background: #ecfdf5; border: 1px solid #a7f3d0;
   box-shadow: 0 10px 40px rgba(5, 150, 105, .25);
@@ -166,53 +114,6 @@ function showQrisError(msg) {
 function closeQrisNotice() {
   document.getElementById('qrisNoticeModal').classList.remove('show');
 }
-
-function fmtLeft(s) {
-  var m = Math.floor(s / 60), r = s % 60;
-  return m > 0 ? m + 'm ' + (r < 10 ? '0' : '') + r + 's' : r + 's';
-}
-
-function tickCheckBtn(b) {
-  var dl = parseInt(b.dataset.deadline || '0', 10);
-  var left = Math.max(0, Math.round((dl - Date.now()) / 1000));
-  if (left <= 0) {
-    b.disabled = false;
-    b.textContent = 'Cek Pembayaran';
-    return;
-  }
-  b.textContent = 'Tunggu ' + fmtLeft(left);
-  setTimeout(function() { tickCheckBtn(b); }, 1000);
-}
-
-function armCheckButtons() {
-  document.querySelectorAll('button.check-btn').forEach(function(b) {
-    var left = parseInt(b.dataset.left || '0', 10);
-    if (left <= 0) return;
-    b.disabled = true;
-    b.dataset.deadline = Date.now() + left * 1000;
-    tickCheckBtn(b);
-  });
-}
-
-function manualCheck(btn) {
-  if (btn.disabled) return;
-  btn.disabled = true;
-  btn.textContent = 'Mengecek...';
-  var fd = new FormData();
-  fd.append('topup_id', btn.dataset.id);
-  fetch('/user/topup/check', { method: 'POST', body: fd, credentials: 'same-origin' })
-    .then(function(r) { return r.json(); })
-    .then(function(res) {
-      alert(res.message || (res.ok ? 'Belum ada pembayaran terdeteksi.' : 'Gagal mengecek status.'));
-      location.reload();
-    })
-    .catch(function() {
-      btn.disabled = false;
-      btn.textContent = 'Cek Pembayaran';
-    });
-}
-
-document.addEventListener('DOMContentLoaded', armCheckButtons);
 </script>
 {% endblock %}
 {% block content %}
@@ -278,78 +179,6 @@ document.addEventListener('DOMContentLoaded', armCheckButtons);
   <div class="empty-state">Topup QRIS sedang tidak tersedia. Silakan hubungi admin untuk topup manual.</div>
 </div>
 {% endif %}
-
-<div class="card" style="margin-top:24px;">
-  <div style="font-size:.85rem;text-transform:uppercase;letter-spacing:.5px;color:#6b7280;font-weight:600;margin-bottom:14px;">Riwayat Saldo Panel</div>
-  {% if history %}
-  <div class="topup-table-wrap" style="overflow-x:auto;">
-    <table class="topup-table">
-      <thead>
-        <tr><th>Waktu</th><th>Tipe</th><th>Jumlah</th><th>Keterangan</th><th>Aksi</th></tr>
-      </thead>
-      <tbody>
-        {% for t in history %}
-        <tr>
-          <td>{{ t.ts }}</td>
-          <td>
-            {% if t.kind == 'topup' %}Topup QRIS
-            {% elif t.type in ('topup', 'set') %}Penyesuaian Saldo
-            {% elif t.type == 'refund' %}Pengembalian Saldo
-            {% else %}Pengurangan Saldo{% endif %}
-          </td>
-          <td style="font-weight:600;color:{{ '#059669' if t.amount >= 0 else '#dc2626' }};">
-            {{ "+" if t.amount >= 0 else "-" }}{{ t.amount|abs|rupiah }} IDR
-          </td>
-          <td>{{ t.desc }}</td>
-          <td>
-            {% if t.kind == 'topup' and t.show_actions %}
-              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                {% if t.pay_url %}
-                <a href="{{ t.pay_url }}" target="_blank" rel="noopener" style="color:#047857;font-weight:600;white-space:nowrap;">Lihat kode QRIS</a>
-                {% endif %}
-                {% if t.status != 'paid' %}
-                <button type="button" class="btn-mini check-btn" data-id="{{ t.id }}" data-left="{{ t.check_left }}" onclick="manualCheck(this)">Cek Pembayaran</button>
-                {% endif %}
-              </div>
-            {% else %}&mdash;{% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-
-  <div class="topup-cards">
-    {% for t in history %}
-    <div class="topup-card">
-      <div class="tc-head">
-        <span class="tc-time">{{ t.ts }}</span>
-        <span>
-        {% if t.kind == 'topup' %}Topup QRIS
-        {% elif t.type in ('topup', 'set') %}Penyesuaian Saldo
-        {% elif t.type == 'refund' %}Pengembalian Saldo
-        {% else %}Pengurangan Saldo{% endif %}
-        </span>
-      </div>
-      <div class="tc-row"><span class="k">Jumlah</span><span class="v" style="color:{{ '#059669' if t.amount >= 0 else '#dc2626' }};">{{ "+" if t.amount >= 0 else "-" }}{{ t.amount|abs|rupiah }} IDR</span></div>
-      <div class="tc-row"><span class="k">Keterangan</span><span class="v">{{ t.desc }}</span></div>
-      <div class="tc-actions">
-        {% if t.kind == 'topup' and t.show_actions %}
-          {% if t.pay_url %}
-          <a href="{{ t.pay_url }}" target="_blank" rel="noopener" class="tc-link">Lihat kode QRIS</a>
-          {% else %}<span></span>{% endif %}
-          {% if t.status != 'paid' %}
-          <button type="button" class="btn-mini check-btn" data-id="{{ t.id }}" data-left="{{ t.check_left }}" onclick="manualCheck(this)">Cek Pembayaran</button>
-          {% endif %}
-        {% else %}<span>&mdash;</span>{% endif %}
-      </div>
-    </div>
-    {% endfor %}
-  </div>
-  {% else %}
-  <div class="empty-state">Belum ada transaksi.</div>
-  {% endif %}
-</div>
 
 <div class="modal-overlay" id="qrisNoticeModal" onclick="if(event.target===this)closeQrisNotice()">
     <div class="modal">

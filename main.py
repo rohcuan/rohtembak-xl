@@ -1550,7 +1550,7 @@ def _telegram_send_backup(trigger: str) -> tuple[bool, str]:
     cfg = _ab_read_state()
     cfg["last_run_at"] = now_str
     cfg["last_run_ok"] = ok
-    cfg["last_output"] = out[-2000:]
+    cfg["last_output"] = out
     if ok:
         _ab_set_next_run(cfg)
     elif trigger == "auto" and int(cfg.get("retry_left") or 0) < AUTOBACKUP_MAX_RETRIES:
@@ -4383,7 +4383,12 @@ def register(
             "error": "Username harus 3-50 karakter"
         }, status_code=400)
     if len(email) > 100 or not re.fullmatch(
-        r"[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}", email
+        # Local part: segmen alnum (boleh _, %, +, -) dipisah titik tunggal.
+        # Domain: label alnum (hyphen hanya di tengah) dipisah titik tunggal,
+        # TLD huruf 2+.
+        r"[a-z0-9_%+-]+(?:\.[a-z0-9_%+-]+)*@"
+        r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}",
+        email
     ):
         return render("register.html", context={
             "request": request,

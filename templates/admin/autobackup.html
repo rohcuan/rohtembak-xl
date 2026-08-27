@@ -73,6 +73,7 @@ function abRun() {
     {% if retry_left %}
     <div class="info-box" style="margin-top:0;margin-bottom:14px;background:#fef3c7;border-color:#fcd34d;color:#92400e;">
         &#9888; Percobaan backup gagal. Sudah retry {{ retry_left }}/{{ retry_max }}. Akan dicoba lagi otomatis dalam {{ retry_minutes }} menit.
+        {% if st.last_output %}<br><span style="font-size:.75rem;">Alasan: {{ st.last_output }}</span>{% endif %}
     </div>
     {% endif %}
     <form method="POST" action="/admin/autobackup/settings">

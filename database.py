@@ -43,14 +43,32 @@ def init_db():
         if "last_checked_at" not in topup_cols:
             conn.execute(__import__("sqlalchemy").text("ALTER TABLE topup_transactions ADD COLUMN last_checked_at DATETIME DEFAULT NULL"))
             conn.commit()
+        # Migrasi status topup ke lifecycle 4 fase: waiting -> pending -> expired | paid.
+        # Sebelumnya status 'expired' bermakna ganda (5 mnt-24 jam vs >=24 jam).
+        conn.execute(__import__("sqlalchemy").text(
+            "UPDATE topup_transactions SET status='waiting' "
+            "WHERE status='pending' AND expires_at > datetime('now')"
+        ))
+        conn.execute(__import__("sqlalchemy").text(
+            "UPDATE topup_transactions SET status='pending' "
+            "WHERE status='expired' AND datetime(expires_at, '+24 hours') > datetime('now')"
+        ))
+        conn.commit()
         idx = conn.execute(__import__("sqlalchemy").text(
             "SELECT name FROM sqlite_master WHERE type='index' AND name='uq_topup_pending_total'"
         )).fetchone()
-        if not idx:
+        if idx:
             try:
                 conn.execute(__import__("sqlalchemy").text(
-                    "CREATE UNIQUE INDEX uq_topup_pending_total ON topup_transactions (total) WHERE status = 'pending'"
+                    "DROP INDEX uq_topup_pending_total"
                 ))
-                conn.commit()
             except Exception as e:
-                print(f"[init_db] warning: gagal membuat index uq_topup_pending_total: {e}")
+                print(f"[init_db] warning: gagal drop index uq_topup_pending_total: {e}")
+        try:
+            conn.execute(__import__("sqlalchemy").text(
+                "CREATE UNIQUE INDEX uq_topup_pending_total ON topup_transactions (total) "
+                "WHERE status IN ('waiting', 'pending')"
+            ))
+            conn.commit()
+        except Exception as e:
+            print(f"[init_db] warning: gagal membuat index uq_topup_pending_total: {e}")

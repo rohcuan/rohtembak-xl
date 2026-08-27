@@ -62,15 +62,23 @@ class BalanceTransaction(Base):
 
 class TopupTransaction(Base):
     __tablename__ = "topup_transactions"
-    # Anti double-claim: only ONE pending topup may exist per unique total.
-    # The gateway matches payments by nominal, so duplicate pending totals
-    # would let a single real payment credit two rows.
+    # Anti double-claim: hanya SATU topup aktif (waiting/pending) per total
+    # unik. Gateway mencocokkan pembayaran berdasarkan nominal, jadi dua baris
+    # aktif dengan total sama bisa membuat satu pembayaran nyata mengkredit
+    # dua baris.
+    #
+    # Status lifecycle (1 fase = 1 status DB, tidak ada makna ganda):
+    #   waiting -> pending -> expired | paid
+    #   waiting: QRIS masih berlaku (<5 menit)
+    #   pending: lewat masa berlaku, masih dalam jendela cek 24 jam
+    #   expired: >=24 jam sejak kedaluwarsa (selesai, tanpa aksi)
+    #   paid:    pembayaran masuk & saldo dikredit
     __table_args__ = (
         Index(
             "uq_topup_pending_total",
             "total",
             unique=True,
-            sqlite_where=text("status = 'pending'"),
+            sqlite_where=text("status IN ('waiting', 'pending')"),
         ),
     )
 

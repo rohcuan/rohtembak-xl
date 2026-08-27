@@ -810,7 +810,7 @@ def admin_delete_user(
         raise HTTPException(status_code=400, detail="Hanya akun pengguna biasa yang bisa dihapus")
     pending_topups = db.query(TopupTransaction).filter(
         TopupTransaction.user_id == u.id,
-        TopupTransaction.status == "pending"
+        TopupTransaction.status.in_(("waiting", "pending"))
     ).count()
     if pending_topups:
         raise HTTPException(
@@ -830,7 +830,7 @@ def admin_delete_user(
     # jendela race.
     if db.query(TopupTransaction).filter(
         TopupTransaction.user_id == u.id,
-        TopupTransaction.status == "pending"
+        TopupTransaction.status.in_(("waiting", "pending"))
     ).count():
         db.rollback()
         raise HTTPException(
@@ -2610,7 +2610,7 @@ def user_history(request: Request, user: User = Depends(get_current_user)):
             created = created.replace(tzinfo=timezone.utc)
         # Keterangan + aksi ditentukan satu tempat: _topup_phase() — jangan
         # ubah di sini sendiri, supaya tidak melenceng dari pemetaan fase.
-        keterangan, show_qris_link, show_check = _topup_phase(t, now_ts)
+        keterangan, show_qris_link, show_check = _topup_phase(t)
         history.append({
             "kind": "topup",
             "id": t.id,
@@ -3953,31 +3953,28 @@ def _topup_expiry_epoch(topup) -> int:
     return int(dt.timestamp())
 
 
-def _topup_phase(topup, now_ts: float):
+def _topup_phase(topup):
     """Fase tampilan satu baris topup QRIS + aksi yang relevan.
 
-    Status DB (pending/expired/paid) TIDAK sama dengan fase tampilan —
-    fase juga bergantung waktu (masa berlaku QRIS 5 menit & jendela 24 jam).
-    Pemetaan lengkap:
+    Status DB mengikuti fase 1:1 — tidak ada status yang bermakna ganda:
+      waiting -> pending -> expired | paid
 
-    status DB  | kondisi waktu              | keterangan           | Lihat QRIS | Cek Pembayaran
-    -----------|---------------------------|----------------------|------------|---------------
-    pending    | dalam masa berlaku <5 mnt  | Menunggu Pembayaran  | ya         | ya
-    expired    | <24 jam sejak kedaluwarsa  | Pending              | tidak      | ya
-    expired    | >=24 jam sejak kedaluwarsa | Kadaluarsa           | tidak      | tidak
-    paid       | -                          | Topup Berhasil       | tidak      | tidak
+    status DB | keterangan          | Lihat QRIS | Cek Pembayaran
+    ----------|---------------------|------------|---------------
+    waiting   | Menunggu Pembayaran | ya         | ya
+    pending   | Pending             | tidak      | ya
+    expired   | Kadaluarsa          | tidak      | tidak
+    paid      | Topup Berhasil      | tidak      | tidak
 
     Return (keterangan, show_qris_link, show_check).
     """
+    if topup.status == "waiting":
+        return "Menunggu Pembayaran", True, True
+    if topup.status == "pending":
+        return "Pending", False, True
     if topup.status == "paid":
         return "Topup Berhasil", False, False
-    exp_ts = _topup_expiry_epoch(topup)
-    expired_24h = bool(exp_ts and now_ts and now_ts > exp_ts + 24 * 3600)
-    if topup.status == "expired":
-        if expired_24h:
-            return "Kadaluarsa", False, False
-        return "Pending", False, True
-    return "Menunggu Pembayaran", True, True
+    return "Kadaluarsa", False, False
 
 
 _topup_credit_lock = threading.Lock()
@@ -3986,12 +3983,12 @@ _topup_credit_lock = threading.Lock()
 def _credit_topup(db: Session, topup: TopupTransaction):
     """Credit a paid topup exactly once (atomic pending/expired → paid flip)."""
     with _topup_credit_lock:
-        # Atomic guard: UPDATE only matches while the row is still unpaid.
+        # Atomic guard: UPDATE hanya matches while the row is still unpaid.
         # Jangan percaya atribut objek sesi ini (identity map bisa stale
         # ketika path lain baru saja commit 'paid' untuk baris yang sama).
         updated = db.query(TopupTransaction).filter(
             TopupTransaction.id == topup.id,
-            TopupTransaction.status.in_(("pending", "expired")),
+            TopupTransaction.status.in_(("waiting", "pending", "expired")),
         ).update({
             "status": "paid",
             "paid_at": datetime.now(timezone.utc),
@@ -4048,37 +4045,44 @@ def _check_and_settle_topup(db: Session, topup: TopupTransaction) -> dict:
     now_ts = time.time()
     exp_ts = _topup_expiry_epoch(topup)
     if now_ts > exp_ts:
+        # QRIS sudah kedaluwarsa: baris masih dicari sampai 24 jam (fase
+        # pending), lalu dikunci jadi expired. Pembayaran terlambat tetap
+        # bisa dikredit kapan pun lewat _credit_topup.
+        new_status = "pending" if now_ts <= exp_ts + 24 * 3600 else "expired"
         # Conditional update: jangan pernah menimpa 'paid' yang di-commit
         # path lain secara konkuren (stale attribute protection).
         marked = db.query(TopupTransaction).filter(
             TopupTransaction.id == topup.id,
-            TopupTransaction.status == "pending",
-        ).update({"status": "expired"}, synchronize_session=False)
+            TopupTransaction.status.in_(("waiting", "pending")),
+        ).update({"status": new_status}, synchronize_session=False)
         db.commit()
         if not marked:
             fresh = db.query(TopupTransaction).filter(
                 TopupTransaction.id == topup.id
             ).first()
-            st = fresh.status if fresh else "pending"
+            st = fresh.status if fresh else "waiting"
             if st == "paid":
                 return {"ok": True, "status": "paid",
                         "credited": topup.amount,
                         "message": "Pembayaran sudah dikonfirmasi sebelumnya."}
             return {"ok": True, "status": st,
                     "message": "Belum ada pembayaran yang terdeteksi."}
-        return {"ok": True, "status": "expired",
-                "message": "QRIS kedaluwarsa dan tidak ada pembayaran masuk."}
-    return {"ok": True, "status": "pending",
+        return {"ok": True, "status": new_status,
+                "message": "Belum ada pembayaran yang terdeteksi."}
+    return {"ok": True, "status": "waiting",
             "message": "Belum ada pembayaran yang terdeteksi."}
 
 
 def _reconcile_pending_topups():
     """Background sweep — hemat panggilan gateway (anti-ban).
 
-    Baris pending TIDAK dipolling selama QR masih berlaku. Satu-satunya cek
-    otomatis terjadi tepat setelah kedaluwarsa: satu panggilan /check-payment
-    per baris untuk menangkap pembayaran yang sudah masuk, lalu selesai
-    (paid atau expired). Sebelum itu, deteksi hanya lewat Cek Pembayaran manual.
+    Lifecycle status: waiting -> pending -> expired | paid.
+    - Baris waiting TIDAK dipolling selama QR masih berlaku. Tepat setelah
+      kedaluwarsa: satu panggilan /check-payment per baris untuk menangkap
+      pembayaran yang sudah masuk; kalau tidak dibayar -> pending.
+    - Baris pending dikunci jadi expired setelah 24 jam sejak kedaluwarsa
+      (tanpa cek lagi).
+    - Sebelum lewat masa berlaku, deteksi hanya lewat Cek Pembayaran manual.
     """
     if not gopay.is_configured():
         return
@@ -4087,8 +4091,9 @@ def _reconcile_pending_topups():
         cutoff = datetime.now(timezone.utc)
         if cutoff.tzinfo is not None:
             cutoff = cutoff.replace(tzinfo=None)
+        # Baru lewat masa berlaku: cek sekali (deteksi pembayaran yang masuk).
         rows = db.query(TopupTransaction).filter(
-            TopupTransaction.status == "pending",
+            TopupTransaction.status == "waiting",
             TopupTransaction.expires_at <= cutoff,
         ).all()
         db.expire_all()  # refresh identity-map objects; jangan percaya atribut stale
@@ -4098,6 +4103,13 @@ def _reconcile_pending_topups():
             except Exception as e:
                 db.rollback()  # session rusak -> jangan biarkan sisa batch ikut gagal
                 print(f"[topup-reconcile] id={row.id} Error: {e}")
+        # Lewat 24 jam sejak kedaluwarsa: kunci jadi expired, tanpa cek lagi.
+        expired_cutoff = cutoff - timedelta(hours=24)
+        db.query(TopupTransaction).filter(
+            TopupTransaction.status == "pending",
+            TopupTransaction.expires_at <= expired_cutoff,
+        ).update({"status": "expired"}, synchronize_session=False)
+        db.commit()
     finally:
         db.close()
 
@@ -4145,7 +4157,7 @@ def topup_create(amount: int = Form(...), user: User = Depends(get_current_user)
     try:
         pending_count = db.query(TopupTransaction).filter(
             TopupTransaction.user_id == user.id,
-            TopupTransaction.status == "pending"
+            TopupTransaction.status.in_(("waiting", "pending"))
         ).count()
         if pending_count >= TOPUP_MAX_PENDING_PER_USER:
             return JSONResponse({
@@ -4163,7 +4175,7 @@ def topup_create(amount: int = Form(...), user: User = Depends(get_current_user)
             fee = random.randint(TOPUP_FEE_MIN, TOPUP_FEE_MAX)
             total = amount + fee
             clash = db.query(TopupTransaction).filter(
-                TopupTransaction.status == "pending",
+                TopupTransaction.status.in_(("waiting", "pending")),
                 TopupTransaction.total == total
             ).first()
             if clash:
@@ -4174,7 +4186,7 @@ def topup_create(amount: int = Form(...), user: User = Depends(get_current_user)
                 fee=fee,
                 total=total,
                 trx_id=f"pending-{uuid.uuid4().hex}",
-                status="pending",
+                status="waiting",
                 expires_at=datetime.fromtimestamp(
                     int(time.time()) + TOPUP_QR_TTL_SECONDS, tz=timezone.utc
                 ),

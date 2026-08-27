@@ -50,8 +50,9 @@
   background: #047857; color: #fff; border: none; border-radius: 6px;
   padding: 5px 10px; font-size: .74rem; font-weight: 600; cursor: pointer;
   white-space: nowrap;
+  display: inline-block; text-decoration: none;
 }
-.btn-mini:hover { background: #065f46; }
+.btn-mini:hover { background: #065f46; text-decoration: none; }
 .btn-mini:disabled { background: #9ca3af; cursor: not-allowed; }
 </style>
 <script>
@@ -143,7 +144,7 @@ document.addEventListener('DOMContentLoaded', armCheckButtons);
                         {% if t.kind == 'topup' %}
                         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                             {% if t.show_qris_link and t.pay_url %}
-                            <a href="{{ t.pay_url }}" target="_blank" rel="noopener" style="color:#047857;font-weight:600;white-space:nowrap;">Lihat kode QRIS</a>
+                            <a href="{{ t.pay_url }}" target="_blank" rel="noopener" class="btn-mini">Lihat kode QRIS</a>
                             {% endif %}
                             {% if t.show_check %}
                             <button type="button" class="btn-mini check-btn" data-id="{{ t.id }}" data-left="{{ t.check_left }}" onclick="manualCheck(this)">Cek Pembayaran</button>
@@ -175,7 +176,7 @@ document.addEventListener('DOMContentLoaded', armCheckButtons);
             <div class="tc-actions">
                 {% if t.kind == 'topup' %}
                 {% if t.show_qris_link and t.pay_url %}
-                <a href="{{ t.pay_url }}" target="_blank" rel="noopener" class="tc-link">Lihat kode QRIS</a>
+                <a href="{{ t.pay_url }}" target="_blank" rel="noopener" class="btn-mini">Lihat kode QRIS</a>
                 {% else %}<span></span>{% endif %}
                 {% if t.show_check %}
                 <button type="button" class="btn-mini check-btn" data-id="{{ t.id }}" data-left="{{ t.check_left }}" onclick="manualCheck(this)">Cek Pembayaran</button>

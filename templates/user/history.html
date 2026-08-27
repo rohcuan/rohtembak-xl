@@ -130,9 +130,10 @@ document.addEventListener('DOMContentLoaded', armCheckButtons);
                     <td>{{ t.ts }}</td>
                     <td>
                         {% if t.kind == 'topup' %}Topup QRIS
-                        {% elif t.type in ('topup', 'set') %}Penyesuaian Saldo
+                        {% elif t.type in ('topup', 'set', 'decrease') %}Penyesuaian Saldo
+                        {% elif t.type == 'purchase' %}Pembelian Paket
                         {% elif t.type == 'refund' %}Pengembalian Saldo
-                        {% else %}Pengurangan Saldo{% endif %}
+                        {% else %}Penyesuaian Saldo{% endif %}
                     </td>
                     <td style="font-weight:600;color:{{ '#059669' if t.amount >= 0 else '#dc2626' }};">
                         {{ "+" if t.amount >= 0 else "-" }}{{ t.amount|abs|rupiah }} IDR
@@ -163,9 +164,10 @@ document.addEventListener('DOMContentLoaded', armCheckButtons);
                 <span class="tc-time">{{ t.ts }}</span>
                 <span>
                 {% if t.kind == 'topup' %}Topup QRIS
-                {% elif t.type in ('topup', 'set') %}Penyesuaian Saldo
+                {% elif t.type in ('topup', 'set', 'decrease') %}Penyesuaian Saldo
+                {% elif t.type == 'purchase' %}Pembelian Paket
                 {% elif t.type == 'refund' %}Pengembalian Saldo
-                {% else %}Pengurangan Saldo{% endif %}
+                {% else %}Penyesuaian Saldo{% endif %}
                 </span>
             </div>
             <div class="tc-row"><span class="k">Jumlah</span><span class="v" style="color:{{ '#059669' if t.amount >= 0 else '#dc2626' }};">{{ "+" if t.amount >= 0 else "-" }}{{ t.amount|abs|rupiah }} IDR</span></div>

@@ -2608,24 +2608,16 @@ def user_history(request: Request, user: User = Depends(get_current_user)):
         created = t.created_at
         if created.tzinfo is None:
             created = created.replace(tzinfo=timezone.utc)
-        # Aksi & keterangan per fase:
-        # - pending (<5 menit): Menunggu Pembayaran — Lihat kode QRIS + Cek Pembayaran
-        # - expired (<24 jam): Pending — hanya Cek Pembayaran
-        # - expired (>=24 jam): Kadaluarsa — tanpa aksi
-        # - paid: Topup Berhasil — tanpa aksi
-        exp_ts = _topup_expiry_epoch(t)
-        expired_24h = exp_ts and now_ts > exp_ts + 24 * 3600
-        show_qris_link = t.status == "pending"
-        show_check = t.status == "pending" or (
-            t.status == "expired" and not expired_24h
-        )
+        # Keterangan + aksi ditentukan satu tempat: _topup_phase() — jangan
+        # ubah di sini sendiri, supaya tidak melenceng dari pemetaan fase.
+        keterangan, show_qris_link, show_check = _topup_phase(t, now_ts)
         history.append({
             "kind": "topup",
             "id": t.id,
             "ts": _fmt_wib(t.created_at),
             "ts_sort": int(created.timestamp()),
             "amount": t.amount,
-            "desc": _topup_desc(t, now_ts),
+            "desc": keterangan,
             "status": t.status,
             # Halaman pembayaran milik gateway (qr/:id).
             "pay_url": gopay.qr_page_url(t.qris_id),
@@ -3961,16 +3953,31 @@ def _topup_expiry_epoch(topup) -> int:
     return int(dt.timestamp())
 
 
-def _topup_desc(topup, now_ts=None) -> str:
-    """Keterangan baris topup QRIS di Riwayat Saldo Panel."""
+def _topup_phase(topup, now_ts: float):
+    """Fase tampilan satu baris topup QRIS + aksi yang relevan.
+
+    Status DB (pending/expired/paid) TIDAK sama dengan fase tampilan —
+    fase juga bergantung waktu (masa berlaku QRIS 5 menit & jendela 24 jam).
+    Pemetaan lengkap:
+
+    status DB  | kondisi waktu              | keterangan           | Lihat QRIS | Cek Pembayaran
+    -----------|---------------------------|----------------------|------------|---------------
+    pending    | dalam masa berlaku <5 mnt  | Menunggu Pembayaran  | ya         | ya
+    expired    | <24 jam sejak kedaluwarsa  | Pending              | tidak      | ya
+    expired    | >=24 jam sejak kedaluwarsa | Kadaluarsa           | tidak      | tidak
+    paid       | -                          | Topup Berhasil       | tidak      | tidak
+
+    Return (keterangan, show_qris_link, show_check).
+    """
     if topup.status == "paid":
-        return "Topup Berhasil"
+        return "Topup Berhasil", False, False
+    exp_ts = _topup_expiry_epoch(topup)
+    expired_24h = bool(exp_ts and now_ts and now_ts > exp_ts + 24 * 3600)
     if topup.status == "expired":
-        exp_ts = _topup_expiry_epoch(topup)
-        if exp_ts and now_ts and now_ts > exp_ts + 24 * 3600:
-            return "Kadaluarsa"
-        return "Pending"
-    return "Menunggu Pembayaran"
+        if expired_24h:
+            return "Kadaluarsa", False, False
+        return "Pending", False, True
+    return "Menunggu Pembayaran", True, True
 
 
 _topup_credit_lock = threading.Lock()

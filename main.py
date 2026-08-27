@@ -2608,23 +2608,16 @@ def user_history(request: Request, user: User = Depends(get_current_user)):
         created = t.created_at
         if created.tzinfo is None:
             created = created.replace(tzinfo=timezone.utc)
-        # Aksi per fase:
-        # - pending (QRIS masih berlaku): Lihat kode QRIS + Cek Pembayaran
-        # - expired (<24 jam): hanya Cek Pembayaran (QRIS sudah tak relevan)
-        # - paid (<24 jam sejak dibayar): hanya Lihat kode QRIS
-        # - expired/paid (>24 jam): tanpa aksi
+        # Aksi & keterangan per fase:
+        # - pending (<5 menit): Menunggu Pembayaran — Lihat kode QRIS + Cek Pembayaran
+        # - expired (<24 jam): Pending — hanya Cek Pembayaran
+        # - expired (>=24 jam): Kadaluarsa — tanpa aksi
+        # - paid: Topup Berhasil — tanpa aksi
         exp_ts = _topup_expiry_epoch(t)
-        paid_ts = 0
-        if t.paid_at is not None:
-            paid = t.paid_at
-            if paid.tzinfo is None:
-                paid = paid.replace(tzinfo=timezone.utc)
-            paid_ts = int(paid.timestamp())
-        show_qris_link = t.status == "pending" or (
-            t.status == "paid" and paid_ts and now_ts <= paid_ts + 24 * 3600
-        )
+        expired_24h = exp_ts and now_ts > exp_ts + 24 * 3600
+        show_qris_link = t.status == "pending"
         show_check = t.status == "pending" or (
-            t.status == "expired" and exp_ts and now_ts <= exp_ts + 24 * 3600
+            t.status == "expired" and not expired_24h
         )
         history.append({
             "kind": "topup",
@@ -2632,7 +2625,7 @@ def user_history(request: Request, user: User = Depends(get_current_user)):
             "ts": _fmt_wib(t.created_at),
             "ts_sort": int(created.timestamp()),
             "amount": t.amount,
-            "desc": _topup_desc(t),
+            "desc": _topup_desc(t, now_ts),
             "status": t.status,
             # Halaman pembayaran milik gateway (qr/:id).
             "pay_url": gopay.qr_page_url(t.qris_id),
@@ -3968,13 +3961,16 @@ def _topup_expiry_epoch(topup) -> int:
     return int(dt.timestamp())
 
 
-def _topup_desc(topup) -> str:
+def _topup_desc(topup, now_ts=None) -> str:
     """Keterangan baris topup QRIS di Riwayat Saldo Panel."""
-    if topup.status == "pending":
-        return "Menunggu Pembayaran"
+    if topup.status == "paid":
+        return "Topup Berhasil"
     if topup.status == "expired":
-        return "Kadaluarsa"
-    return "—"
+        exp_ts = _topup_expiry_epoch(topup)
+        if exp_ts and now_ts and now_ts > exp_ts + 24 * 3600:
+            return "Kadaluarsa"
+        return "Pending"
+    return "Menunggu Pembayaran"
 
 
 _topup_credit_lock = threading.Lock()

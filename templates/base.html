@@ -82,16 +82,6 @@
                             <span class="dropdown-label">Saldo Panel</span>
                             <span class="dropdown-value">{{ (balance or 0)|rupiah }} IDR</span>
                         </div>
-                        <div class="has-sub">
-                            <div class="dropdown-row" style="cursor:pointer;" onclick="toggleSubmenu(this)">
-                                <span class="dropdown-label" style="font-weight:600;color:#1a1a2e;">Minta Bantuan</span>
-                                <svg class="chevron sub-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                            </div>
-                            <div class="submenu">
-                                <a class="dropdown-item" href="https://t.me/rohcuan" target="_blank" rel="noopener">Telegram</a>
-                                <a class="dropdown-item" href="https://wa.me/6289512992313" target="_blank" rel="noopener">WhatsApp</a>
-                            </div>
-                        </div>
                         {% else %}
                         <div class="dropdown-row" style="cursor:pointer;" onclick="location.href='/admin/credentials'">
                             <span class="dropdown-label">Edit Admin Credentials</span>
@@ -113,7 +103,18 @@
                     <div class="dropdown-footer">
                         {% if user.role != 'admin' %}<a href="/user/topup" class="dropdown-item">Topup Saldo Panel</a>{% endif %}
                         {% if user.role != 'admin' %}<a href="/user/detail-saldo-token" class="dropdown-item">Riwayat Saldo Panel</a>{% endif %}
-                        <a href="javascript:void(0)" class="dropdown-item clear-cache" onclick="openClearCacheModal()">Clear Cache</a>
+                        {% if user.role != 'admin' %}
+                        <div class="has-sub" style="border-bottom:1px solid #f0f0f0;">
+                            <div class="dropdown-row" style="cursor:pointer;padding:10px 16px;margin:0;" onclick="toggleSubmenu(this)">
+                                <span class="dropdown-label" style="font-weight:600;color:#1a1a2e;">Minta Bantuan</span>
+                                <svg class="chevron sub-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                            </div>
+                            <div class="submenu" style="margin:0 16px 10px;">
+                                <a class="dropdown-item" href="https://t.me/rohcuan" target="_blank" rel="noopener">Telegram</a>
+                                <a class="dropdown-item" href="https://wa.me/6289512992313" target="_blank" rel="noopener">WhatsApp</a>
+                            </div>
+                        </div>
+                        {% endif %}
                         <a href="/logout" class="dropdown-logout">Logout</a>
                     </div>
                 </div>
@@ -133,16 +134,6 @@
 {% endif %}
 <div class="container">
     {% block content %}{% endblock %}
-</div>
-<div class="modal-overlay" id="clearCacheModal" onclick="if(event.target===this)closeClearCacheModal()">
-    <div class="modal">
-        <h3>Clear Cache</h3>
-        <p class="modal-body">Semua cache browser akan dihapus (paket, detail paket, dan data banner), lalu halaman akan dimuat ulang untuk mengambil data terbaru. Lanjutkan?</p>
-        <div class="modal-actions">
-            <button type="button" class="btn btn-outline" onclick="closeClearCacheModal()">Tidak</button>
-            <button type="button" class="btn btn-danger" onclick="confirmClearCache()">Ya, Muat Ulang</button>
-        </div>
-    </div>
 </div>
 <div class="modal-overlay" id="sessionExpiredModal">
     <div class="modal">
@@ -169,30 +160,6 @@ function toggleDropdown() {
 }
 function toggleSubmenu(el) {
     el.parentElement.classList.toggle('open');
-}
-function openClearCacheModal() {
-  var dd = document.getElementById('userDropdown');
-  if (dd) dd.classList.remove('show');
-  var m = document.getElementById('clearCacheModal');
-  if (m) m.classList.add('show');
-}
-function closeClearCacheModal() {
-  var m = document.getElementById('clearCacheModal');
-  if (m) m.classList.remove('show');
-}
-function confirmClearCache() {
-  closeClearCacheModal();
-  clearAppCache();
-}
-function clearAppCache() {
-  function go() {
-    var url = location.pathname + location.search;
-    location.href = url + (url.indexOf('?') === -1 ? '?' : '&') + '_clr=' + Date.now();
-  }
-  if (!('caches' in window)) { go(); return; }
-  caches.keys().then(function(keys) {
-    return Promise.all(keys.map(function(k) { return caches.delete(k); }));
-  }).then(go).catch(go);
 }
 var SESSION_EXPIRED_SHOWN = false;
 var FLOATING_NOTICE_ON_CLOSE = null;

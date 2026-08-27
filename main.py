@@ -2595,9 +2595,13 @@ def user_history(request: Request, user: User = Depends(get_current_user)):
     now_ts = time.time()
     history = []
 
+    # Ambil SEMUA topup (tanpa limit) supaya dedupe BalanceTransaction di bawah
+    # tidak menghilangkan topup paid yang "tua" — kalau baris topup-nya tidak
+    # diambil, baris saldonya jangan di-dedupe. List akhir tetap dipotong
+    # ke 20 baris terbaru di bawah.
     topups = db.query(TopupTransaction).filter(
         TopupTransaction.user_id == user.id
-    ).order_by(TopupTransaction.id.desc()).limit(10).all()
+    ).order_by(TopupTransaction.id.desc()).all()
     for t in topups:
         check_left = 0
         if t.last_checked_at is not None:
@@ -4045,16 +4049,18 @@ def _check_and_settle_topup(db: Session, topup: TopupTransaction) -> dict:
     now_ts = time.time()
     exp_ts = _topup_expiry_epoch(topup)
     if now_ts > exp_ts:
-        # QRIS sudah kedaluwarsa: baris masih dicari sampai 24 jam (fase
-        # pending), lalu dikunci jadi expired. Pembayaran terlambat tetap
-        # bisa dikredit kapan pun lewat _credit_topup.
-        new_status = "pending" if now_ts <= exp_ts + 24 * 3600 else "expired"
+        # QRIS sudah kedaluwarsa: transisi HANYA ke pending. Kunci
+        # pending -> expired (setelah 24 jam sejak kedaluwarsa) adalah
+        # satu-satunya tanggung jawab _reconcile_pending_topups — jangan
+        # pernah set status expired langsung dari sini, supaya state machine
+        # punya satu aturan per transisi. Pembayaran terlambat tetap bisa
+        # dikredit kapan pun lewat _credit_topup.
         # Conditional update: jangan pernah menimpa 'paid' yang di-commit
         # path lain secara konkuren (stale attribute protection).
         marked = db.query(TopupTransaction).filter(
             TopupTransaction.id == topup.id,
             TopupTransaction.status.in_(("waiting", "pending")),
-        ).update({"status": new_status}, synchronize_session=False)
+        ).update({"status": "pending"}, synchronize_session=False)
         db.commit()
         if not marked:
             fresh = db.query(TopupTransaction).filter(
@@ -4067,7 +4073,7 @@ def _check_and_settle_topup(db: Session, topup: TopupTransaction) -> dict:
                         "message": "Pembayaran sudah dikonfirmasi sebelumnya."}
             return {"ok": True, "status": st,
                     "message": "Belum ada pembayaran yang terdeteksi."}
-        return {"ok": True, "status": new_status,
+        return {"ok": True, "status": "pending",
                 "message": "Belum ada pembayaran yang terdeteksi."}
     return {"ok": True, "status": "waiting",
             "message": "Belum ada pembayaran yang terdeteksi."}

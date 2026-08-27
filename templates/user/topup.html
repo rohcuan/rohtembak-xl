@@ -215,15 +215,6 @@ function manualCheck(btn) {
 document.addEventListener('DOMContentLoaded', armCheckButtons);
 </script>
 {% endblock %}
-{% macro type_badge(t) -%}
-  {%- if t.type in ("topup", "set") -%}
-  <span style="color:#6366f1;font-weight:500;font-size:.8rem;">Penyesuaian Saldo</span>
-  {%- elif t.type == "refund" -%}
-  <span style="color:#10b981;font-weight:500;font-size:.8rem;">Pengembalian Saldo</span>
-  {%- else -%}
-  <span style="color:#ef4444;font-weight:500;font-size:.8rem;">Pengurangan Saldo</span>
-  {%- endif -%}
-{%- endmacro %}
 {% block content %}
 
 <div class="page-title">Topup Saldo Panel</div>
@@ -301,11 +292,10 @@ document.addEventListener('DOMContentLoaded', armCheckButtons);
         <tr>
           <td>{{ t.ts }}</td>
           <td>
-            {% if t.kind == 'topup' %}
-            <span class="status-badge {{ t.status }}">Topup QRIS</span>
-            {% else %}
-            {{ type_badge(t) }}
-            {% endif %}
+            {% if t.kind == 'topup' %}Topup QRIS
+            {% elif t.type in ('topup', 'set') %}Penyesuaian Saldo
+            {% elif t.type == 'refund' %}Pengembalian Saldo
+            {% else %}Pengurangan Saldo{% endif %}
           </td>
           <td style="font-weight:600;color:{{ '#059669' if t.amount >= 0 else '#dc2626' }};">
             {{ "+" if t.amount >= 0 else "-" }}{{ t.amount|abs|rupiah }} IDR
@@ -334,11 +324,12 @@ document.addEventListener('DOMContentLoaded', armCheckButtons);
     <div class="topup-card">
       <div class="tc-head">
         <span class="tc-time">{{ t.ts }}</span>
-        {% if t.kind == 'topup' %}
-        <span class="status-badge {{ t.status }}">Topup QRIS</span>
-        {% else %}
-        {{ type_badge(t) }}
-        {% endif %}
+        <span>
+        {% if t.kind == 'topup' %}Topup QRIS
+        {% elif t.type in ('topup', 'set') %}Penyesuaian Saldo
+        {% elif t.type == 'refund' %}Pengembalian Saldo
+        {% else %}Pengurangan Saldo{% endif %}
+        </span>
       </div>
       <div class="tc-row"><span class="k">Jumlah</span><span class="v" style="color:{{ '#059669' if t.amount >= 0 else '#dc2626' }};">{{ "+" if t.amount >= 0 else "-" }}{{ t.amount|abs|rupiah }} IDR</span></div>
       <div class="tc-row"><span class="k">Keterangan</span><span class="v">{{ t.desc }}</span></div>

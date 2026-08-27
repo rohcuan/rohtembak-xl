@@ -3904,13 +3904,8 @@ def _topup_expiry_epoch(topup) -> int:
 
 
 def _topup_desc(topup) -> str:
-    """Keterangan baris topup QRIS di Riwayat Saldo Panel, termasuk info kedaluwarsa."""
-    base = f"Total bayar {_fmt_idr(topup.total)} IDR (termasuk biaya admin {_fmt_idr(topup.fee)} IDR)"
-    if topup.status != "paid":
-        exp_fmt = _fmt_wib(topup.expires_at)
-        if exp_fmt:
-            base += f" · Kedaluwarsa {exp_fmt}"
-    return base
+    """Keterangan baris topup QRIS di Riwayat Saldo Panel."""
+    return "Kadaluarsa" if topup.status != "paid" else "—"
 
 
 _topup_credit_lock = threading.Lock()

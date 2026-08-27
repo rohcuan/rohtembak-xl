@@ -78,7 +78,7 @@
                     </div>
                     <div class="dropdown-body">
                         {% if user.role != 'admin' %}
-                        <div class="dropdown-row">
+                        <div class="dropdown-row" style="cursor:pointer;" onclick="location.href='/user/topup'">
                             <span class="dropdown-label">Saldo Panel</span>
                             <span class="dropdown-value">{{ (balance or 0)|rupiah }} IDR</span>
                         </div>
@@ -101,8 +101,6 @@
                         {% endif %}
                     </div>
                     <div class="dropdown-footer">
-                        {% if user.role != 'admin' %}<a href="/user/topup" class="dropdown-item">Topup Saldo Panel</a>{% endif %}
-                        {% if user.role != 'admin' %}<a href="/user/detail-saldo-token" class="dropdown-item">Riwayat Saldo Panel</a>{% endif %}
                         {% if user.role != 'admin' %}
                         <div class="has-sub" style="border-bottom:1px solid #f0f0f0;">
                             <div class="dropdown-row" style="cursor:pointer;padding:10px 16px;margin:0;" onclick="toggleSubmenu(this)">

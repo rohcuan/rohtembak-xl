@@ -159,7 +159,7 @@ function showPayLink(url, total) {
 function showQrisNotice(total, url) {
   document.getElementById('qris-notice-msg').textContent =
     'Total yang harus dibayar: ' + fmtIdr(total) + ' IDR. ' +
-    'Setelah pembayaran berhasil, kembali ke halaman ini lalu klik "Cek Pembayaran" di riwayat topup untuk menambahkan saldo ke panel.';
+    'Setelah pembayaran berhasil, kembali ke halaman ini lalu klik "Cek Pembayaran" di Riwayat Saldo Panel untuk menambahkan saldo ke panel.';
   document.getElementById('qris-notice-btn').onclick = function() {
     location.href = url;
   };
@@ -218,6 +218,17 @@ function manualCheck(btn) {
 document.addEventListener('DOMContentLoaded', armCheckButtons);
 </script>
 {% endblock %}
+{% macro type_badge(t) -%}
+  {%- if t.type == "topup" -%}
+  <span style="color:#10b981;font-weight:500;font-size:.8rem;">Penambahan Saldo</span>
+  {%- elif t.type == "set" -%}
+  <span style="color:#6366f1;font-weight:500;font-size:.8rem;">Penyesuaian Saldo</span>
+  {%- elif t.type == "refund" -%}
+  <span style="color:#10b981;font-weight:500;font-size:.8rem;">Pengembalian Saldo</span>
+  {%- else -%}
+  <span style="color:#ef4444;font-weight:500;font-size:.8rem;">Pengurangan Saldo</span>
+  {%- endif -%}
+{%- endmacro %}
 {% block content %}
 
 <div class="page-title">Topup Saldo Panel</div>
@@ -283,28 +294,38 @@ document.addEventListener('DOMContentLoaded', armCheckButtons);
 {% endif %}
 
 <div class="card" style="margin-top:24px;">
-  <div style="font-size:.85rem;text-transform:uppercase;letter-spacing:.5px;color:#6b7280;font-weight:600;margin-bottom:14px;">Riwayat Topup Terakhir</div>
-  {% if topups %}
+  <div style="font-size:.85rem;text-transform:uppercase;letter-spacing:.5px;color:#6b7280;font-weight:600;margin-bottom:14px;">Riwayat Saldo Panel</div>
+  {% if history %}
   <div class="topup-table-wrap" style="overflow-x:auto;">
     <table class="topup-table">
       <thead>
-        <tr><th>Waktu</th><th>Nominal</th><th>Total Bayar</th><th>Status</th><th>QRIS</th><th>Cek</th></tr>
+        <tr><th>Waktu</th><th>Tipe</th><th>Jumlah</th><th>Keterangan</th><th>Aksi</th></tr>
       </thead>
       <tbody>
-        {% for t in topups %}
+        {% for t in history %}
         <tr>
-          <td>{{ t.created_fmt }}</td>
-          <td><strong>{{ t.amount|rupiah }}</strong> IDR</td>
-          <td>{{ t.total|rupiah }} IDR</td>
-          <td><span class="status-badge {{ t.status }}">{{ t.status_label }}</span></td>
+          <td>{{ t.ts }}</td>
           <td>
-            {% if t.pay_url %}
-            <a href="{{ t.pay_url }}" target="_blank" rel="noopener" style="color:#047857;font-weight:600;white-space:nowrap;">Lihat kode QRIS</a>
-            {% else %}&mdash;{% endif %}
+            {% if t.kind == 'topup' %}
+            <span class="status-badge {{ t.status }}">{{ t.status_label }}</span>
+            {% else %}
+            {{ type_badge(t) }}
+            {% endif %}
           </td>
+          <td style="font-weight:600;color:{{ '#059669' if t.amount >= 0 else '#dc2626' }};">
+            {{ "+" if t.amount >= 0 else "-" }}{{ t.amount|abs|rupiah }} IDR
+          </td>
+          <td>{{ t.desc }}</td>
           <td>
-            {% if t.status != 'paid' %}
-            <button type="button" class="btn-mini check-btn" data-id="{{ t.id }}" data-left="{{ t.check_left }}" onclick="manualCheck(this)">Cek Pembayaran</button>
+            {% if t.kind == 'topup' %}
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                {% if t.pay_url %}
+                <a href="{{ t.pay_url }}" target="_blank" rel="noopener" style="color:#047857;font-weight:600;white-space:nowrap;">Lihat kode QRIS</a>
+                {% endif %}
+                {% if t.status != 'paid' %}
+                <button type="button" class="btn-mini check-btn" data-id="{{ t.id }}" data-left="{{ t.check_left }}" onclick="manualCheck(this)">Cek Pembayaran</button>
+                {% endif %}
+              </div>
             {% else %}&mdash;{% endif %}
           </td>
         </tr>
@@ -314,27 +335,33 @@ document.addEventListener('DOMContentLoaded', armCheckButtons);
   </div>
 
   <div class="topup-cards">
-    {% for t in topups %}
+    {% for t in history %}
     <div class="topup-card">
       <div class="tc-head">
-        <span class="tc-time">{{ t.created_fmt }}</span>
+        <span class="tc-time">{{ t.ts }}</span>
+        {% if t.kind == 'topup' %}
         <span class="status-badge {{ t.status }}">{{ t.status_label }}</span>
-      </div>
-      <div class="tc-row"><span class="k">Nominal</span><span class="v">{{ t.amount|rupiah }} IDR</span></div>
-      <div class="tc-row"><span class="k">Total Bayar</span><span class="v">{{ t.total|rupiah }} IDR</span></div>
-      <div class="tc-actions">
-        {% if t.pay_url %}
-        <a href="{{ t.pay_url }}" target="_blank" rel="noopener" class="tc-link">Lihat kode QRIS</a>
-        {% else %}<span></span>{% endif %}
-        {% if t.status != 'paid' %}
-        <button type="button" class="btn-mini check-btn" data-id="{{ t.id }}" data-left="{{ t.check_left }}" onclick="manualCheck(this)">Cek Pembayaran</button>
+        {% else %}
+        {{ type_badge(t) }}
         {% endif %}
+      </div>
+      <div class="tc-row"><span class="k">Jumlah</span><span class="v" style="color:{{ '#059669' if t.amount >= 0 else '#dc2626' }};">{{ "+" if t.amount >= 0 else "-" }}{{ t.amount|abs|rupiah }} IDR</span></div>
+      <div class="tc-row"><span class="k">Keterangan</span><span class="v">{{ t.desc }}</span></div>
+      <div class="tc-actions">
+        {% if t.kind == 'topup' %}
+          {% if t.pay_url %}
+          <a href="{{ t.pay_url }}" target="_blank" rel="noopener" class="tc-link">Lihat kode QRIS</a>
+          {% else %}<span></span>{% endif %}
+          {% if t.status != 'paid' %}
+          <button type="button" class="btn-mini check-btn" data-id="{{ t.id }}" data-left="{{ t.check_left }}" onclick="manualCheck(this)">Cek Pembayaran</button>
+          {% endif %}
+        {% else %}<span>&mdash;</span>{% endif %}
       </div>
     </div>
     {% endfor %}
   </div>
   {% else %}
-  <div class="empty-state">Belum ada transaksi topup.</div>
+  <div class="empty-state">Belum ada transaksi.</div>
   {% endif %}
 </div>
 

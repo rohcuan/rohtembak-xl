@@ -4049,7 +4049,7 @@ def topup_page(request: Request, user: User = Depends(get_current_user)):
     )
     status_labels = {"pending": "Menunggu Pembayaran", "paid": "Berhasil", "expired": "Kedaluwarsa"}
     now_ts = time.time()
-    topups = []
+    history = []
     for t in rows:
         check_left = 0
         if t.last_checked_at is not None:
@@ -4057,31 +4057,53 @@ def topup_page(request: Request, user: User = Depends(get_current_user)):
             if last.tzinfo is None:
                 last = last.replace(tzinfo=timezone.utc)
             check_left = max(0, int(last.timestamp()) + TOPUP_MANUAL_CHECK_COOLDOWN - int(now_ts))
-        topups.append({
+        created = t.created_at
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+        history.append({
+            "kind": "topup",
             "id": t.id,
+            "ts": _fmt_wib(t.created_at),
+            "ts_sort": int(created.timestamp()),
             "amount": t.amount,
-            "fee": t.fee,
-            "total": t.total,
+            "desc": f"Topup QRIS — total bayar {_fmt_idr(t.total)} IDR (termasuk biaya admin {_fmt_idr(t.fee)} IDR)",
             "status": t.status,
             "status_label": status_labels.get(t.status, t.status),
-            "created_fmt": _fmt_wib(t.created_at),
-            "is_pending": t.status == "pending" and now_ts <= _topup_expiry_epoch(t),
             # Halaman pembayaran milik gateway (qr/:id). Gateway sendiri yang
             # menampilkan info kedaluwarsa, jadi link tetap ditampilkan untuk
             # semua status termasuk expired.
             "pay_url": gopay.qr_page_url(t.qris_id),
             "check_left": check_left,
         })
+
+    transactions = db.query(BalanceTransaction).filter(
+        BalanceTransaction.user_id == user.id
+    ).order_by(BalanceTransaction.created_at.desc()).all()
+    for bt in transactions:
+        created = bt.created_at
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+        history.append({
+            "kind": "saldo",
+            "id": bt.id,
+            "ts": _fmt_wib(bt.created_at),
+            "ts_sort": int(created.timestamp()),
+            "amount": bt.amount,
+            "type": bt.type,
+            "desc": bt.description or "—",
+        })
+    history.sort(key=lambda r: r["ts_sort"], reverse=True)
+    history = history[:20]
+    db.close()
     ctx.update({
         "request": request,
-        "topups": topups,
+        "history": history,
         "topup_min": TOPUP_MIN_AMOUNT,
         "topup_max": TOPUP_MAX_AMOUNT,
         "topup_fee_min": TOPUP_FEE_MIN,
         "topup_fee_max": TOPUP_FEE_MAX,
         "gopay_ready": gopay.is_configured(),
     })
-    db.close()
     return render("user/topup.html", context=ctx)
 
 

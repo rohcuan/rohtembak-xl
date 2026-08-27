@@ -2608,16 +2608,24 @@ def user_history(request: Request, user: User = Depends(get_current_user)):
         created = t.created_at
         if created.tzinfo is None:
             created = created.replace(tzinfo=timezone.utc)
-        # Topup paid/kedaluwarsa: aksi (Lihat kode QRIS / Cek Pembayaran) hanya
-        # relevan selama 24 jam sejak dibayar (paid_at) / masa berlaku berakhir.
+        # Aksi per fase:
+        # - pending (QRIS masih berlaku): Lihat kode QRIS + Cek Pembayaran
+        # - expired (<24 jam): hanya Cek Pembayaran (QRIS sudah tak relevan)
+        # - paid (<24 jam sejak dibayar): hanya Lihat kode QRIS
+        # - expired/paid (>24 jam): tanpa aksi
         exp_ts = _topup_expiry_epoch(t)
-        ref_ts = exp_ts
-        if t.status == "paid" and t.paid_at is not None:
+        paid_ts = 0
+        if t.paid_at is not None:
             paid = t.paid_at
             if paid.tzinfo is None:
                 paid = paid.replace(tzinfo=timezone.utc)
-            ref_ts = int(paid.timestamp())
-        show_actions = not (t.status in ("paid", "expired") and ref_ts and now_ts > ref_ts + 24 * 3600)
+            paid_ts = int(paid.timestamp())
+        show_qris_link = t.status == "pending" or (
+            t.status == "paid" and paid_ts and now_ts <= paid_ts + 24 * 3600
+        )
+        show_check = t.status == "pending" or (
+            t.status == "expired" and exp_ts and now_ts <= exp_ts + 24 * 3600
+        )
         history.append({
             "kind": "topup",
             "id": t.id,
@@ -2626,12 +2634,11 @@ def user_history(request: Request, user: User = Depends(get_current_user)):
             "amount": t.amount,
             "desc": _topup_desc(t),
             "status": t.status,
-            # Halaman pembayaran milik gateway (qr/:id). Gateway sendiri yang
-            # menampilkan info kedaluwarsa, jadi link tetap ditampilkan untuk
-            # semua status termasuk expired.
+            # Halaman pembayaran milik gateway (qr/:id).
             "pay_url": gopay.qr_page_url(t.qris_id),
             "check_left": check_left,
-            "show_actions": show_actions,
+            "show_qris_link": show_qris_link,
+            "show_check": show_check,
         })
 
     transactions = db.query(BalanceTransaction).filter(
@@ -3963,7 +3970,11 @@ def _topup_expiry_epoch(topup) -> int:
 
 def _topup_desc(topup) -> str:
     """Keterangan baris topup QRIS di Riwayat Saldo Panel."""
-    return "Kadaluarsa" if topup.status != "paid" else "—"
+    if topup.status == "pending":
+        return "Menunggu Pembayaran"
+    if topup.status == "expired":
+        return "Kadaluarsa"
+    return "—"
 
 
 _topup_credit_lock = threading.Lock()

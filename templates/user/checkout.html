@@ -205,15 +205,15 @@ function closePendingModal() {
           <strong>Penting:</strong> Pastikan pulsa tidak lebih dari 800k, agar tidak terpotong sejumlah 800k.
         </div>
         {% endif %}
-        {% if method == "qris" %}
-        <div class="saldo-warn">Biaya saldo panel dipotong langsung saat QRIS dibuat dan <strong>tidak dapat dikembalikan</strong>, termasuk jika QRIS tidak jadi dibayar.</div>
-        {% endif %}
       </div>
 
     <div style="margin-top:18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
       <button class="btn btn-success" id="pay-btn" onclick="payNow()" {% if insufficient %}disabled{% endif %}>Bayar</button>
       <a class="btn btn-outline btn-sm" href="/user/xl/beli-paket/{{ detail.url_id }}/detail">&larr; Kembali</a>
     </div>
+    {% if method == "qris" %}
+    <div style="margin-top:10px;font-size:.78rem;color:#92400e;">Biaya saldo panel dipotong langsung saat QRIS dibuat dan <strong>tidak dapat dikembalikan</strong>, termasuk jika QRIS tidak jadi dibayar.</div>
+    {% endif %}
 
     <div style="margin-top:18px;">
       <div class="terminal-box" id="terminal-box"><span class="t-title">result</span><span class="t-prompt">$</span> menunggu konfirmasi bayar...</div>

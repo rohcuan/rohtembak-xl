@@ -198,7 +198,7 @@ function closePendingModal() {
           <span class="v">{{ (price + fee)|rupiah }} IDR</span>
         </div>
         {% if insufficient %}
-        <div class="saldo-warn">Saldo panel tidak mencukupi untuk paket ini.</div>
+        <div class="saldo-warn">Saldo panel tidak mencukupi untuk paket ini. Silahkan lakukan isi ulang saldo di menu <a href="/user/topup" style="color:#047857;font-weight:600;">Topup Saldo Panel</a>.</div>
         {% endif %}
         {% if decoy_pulsa_notice %}
         <div style="margin-top:10px;padding:10px 12px;border-radius:8px;background:#fffbeb;border:1px solid #fde68a;color:#92400e;font-size:.8rem;line-height:1.5;">
@@ -214,9 +214,6 @@ function closePendingModal() {
       <button class="btn btn-success" id="pay-btn" onclick="payNow()" {% if insufficient %}disabled{% endif %}>Bayar</button>
       <a class="btn btn-outline btn-sm" href="/user/xl/beli-paket/{{ detail.url_id }}/detail">&larr; Kembali</a>
     </div>
-    {% if insufficient %}
-    <div style="margin-top:8px;font-size:.78rem;color:#6b7280;">Silahkan lakukan isi ulang saldo di menu <a href="/user/topup" style="color:#047857;font-weight:600;">Topup Saldo Panel</a>.</div>
-    {% endif %}
 
     <div style="margin-top:18px;">
       <div class="terminal-box" id="terminal-box"><span class="t-title">result</span><span class="t-prompt">$</span> menunggu konfirmasi bayar...</div>

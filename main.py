@@ -3903,6 +3903,16 @@ def _topup_expiry_epoch(topup) -> int:
     return int(dt.timestamp())
 
 
+def _topup_desc(topup) -> str:
+    """Keterangan baris topup QRIS di Riwayat Saldo Panel, termasuk info kedaluwarsa."""
+    base = f"Total bayar {_fmt_idr(topup.total)} IDR (termasuk biaya admin {_fmt_idr(topup.fee)} IDR)"
+    if topup.status != "paid":
+        exp_fmt = _fmt_wib(topup.expires_at)
+        if exp_fmt:
+            base += f" · Kedaluwarsa {exp_fmt}"
+    return base
+
+
 _topup_credit_lock = threading.Lock()
 
 
@@ -4076,7 +4086,7 @@ def topup_page(request: Request, user: User = Depends(get_current_user)):
             "ts": _fmt_wib(t.created_at),
             "ts_sort": int(created.timestamp()),
             "amount": t.amount,
-            "desc": f"Topup QRIS — total bayar {_fmt_idr(t.total)} IDR (termasuk biaya admin {_fmt_idr(t.fee)} IDR)",
+            "desc": _topup_desc(t),
             "status": t.status,
             "status_label": status_labels.get(t.status, t.status),
             # Halaman pembayaran milik gateway (qr/:id). Gateway sendiri yang
@@ -4091,6 +4101,10 @@ def topup_page(request: Request, user: User = Depends(get_current_user)):
         BalanceTransaction.user_id == user.id
     ).order_by(BalanceTransaction.created_at.desc()).all()
     for bt in transactions:
+        # Topup QRIS yang sudah terbayar sudah diwakili baris kind="topup"
+        # di atas (status paid), jadi jangan ditampilkan dua kali.
+        if bt.type == "topup" and "QRIS" in (bt.description or ""):
+            continue
         created = bt.created_at
         if created.tzinfo is None:
             created = created.replace(tzinfo=timezone.utc)

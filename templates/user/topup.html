@@ -216,9 +216,7 @@ document.addEventListener('DOMContentLoaded', armCheckButtons);
 </script>
 {% endblock %}
 {% macro type_badge(t) -%}
-  {%- if t.type == "topup" -%}
-  <span style="color:#10b981;font-weight:500;font-size:.8rem;">Penambahan Saldo</span>
-  {%- elif t.type == "set" -%}
+  {%- if t.type in ("topup", "set") -%}
   <span style="color:#6366f1;font-weight:500;font-size:.8rem;">Penyesuaian Saldo</span>
   {%- elif t.type == "refund" -%}
   <span style="color:#10b981;font-weight:500;font-size:.8rem;">Pengembalian Saldo</span>
@@ -304,7 +302,7 @@ document.addEventListener('DOMContentLoaded', armCheckButtons);
           <td>{{ t.ts }}</td>
           <td>
             {% if t.kind == 'topup' %}
-            <span class="status-badge {{ t.status }}">{{ t.status_label }}</span>
+            <span class="status-badge {{ t.status }}">Topup QRIS</span>
             {% else %}
             {{ type_badge(t) }}
             {% endif %}
@@ -337,7 +335,7 @@ document.addEventListener('DOMContentLoaded', armCheckButtons);
       <div class="tc-head">
         <span class="tc-time">{{ t.ts }}</span>
         {% if t.kind == 'topup' %}
-        <span class="status-badge {{ t.status }}">{{ t.status_label }}</span>
+        <span class="status-badge {{ t.status }}">Topup QRIS</span>
         {% else %}
         {{ type_badge(t) }}
         {% endif %}

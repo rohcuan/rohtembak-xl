@@ -129,11 +129,8 @@ function createTopup() {
 function showQrisNotice(amount) {
   var err = document.getElementById('qris-notice-err');
   if (err) err.style.display = 'none';
-  document.getElementById('qris-notice-msg').innerHTML =
-    'Nominal topup: <strong>' + fmtIdr(amount) + ' IDR</strong> (ditambah kode unik acak ' +
-    fmtIdr({{ topup_fee_min }}) + '&ndash;' + fmtIdr({{ topup_fee_max }}) + ' IDR).<br>' +
-    'QRIS baru dibuat saat kamu klik <strong>"Lanjut bayar"</strong>.<br>' +
-    'Setelah pembayaran berhasil, kembali ke halaman ini lalu klik <strong>"Cek Pembayaran"</strong> di <strong>Riwayat Saldo Panel</strong> untuk menambahkan saldo ke panel.';
+  document.getElementById('qris-notice-msg').textContent =
+    'Setelah pembayaran berhasil, kembali ke halaman ini lalu klik "Cek Pembayaran" di Riwayat Saldo Panel untuk menambahkan saldo ke panel.';
   document.getElementById('qrisNoticeModal').classList.add('show');
 }
 
@@ -367,7 +364,7 @@ document.addEventListener('DOMContentLoaded', armCheckButtons);
 
 <div class="modal-overlay" id="qrisNoticeModal" onclick="if(event.target===this)closeQrisNotice()">
     <div class="modal">
-        <h3>Konfirmasi Topup</h3>
+        <h3>Penting</h3>
         <p class="modal-body" id="qris-notice-msg"></p>
         <div id="qris-notice-err" style="display:none;margin-bottom:12px;padding:8px 12px;border-radius:8px;background:#fef2f2;color:#991b1b;font-size:.82rem;"></div>
         <div class="modal-actions">

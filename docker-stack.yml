@@ -3,6 +3,11 @@ services:
     # PRODUCTION. NB: entrypoint di bawah ditarik dari branch main — pastikan
     # dev sudah dimerge ke main sebelum deploy, kalau tidak stack akan jalan
     # dengan entrypoint versi lama (yang meng-track branch dev).
+    #
+    # TIDAK AUTO-UPDATE: app hanya di-clone sekali; perubahan di GitHub tidak
+    # masuk otomatis. Update manual:
+    #   docker exec <container> bash -c "cd /opt/rohtembak && git pull --ff-only"
+    #   docker service update --force rohtembak-xl
     image: quay.io/toolbx-images/debian-toolbox:12
     environment:
       APP_PORT: 8000

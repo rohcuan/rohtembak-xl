@@ -4,13 +4,14 @@ set -euo pipefail
 # =============================================================================
 # RohTembak (XL) - dev/staging container entrypoint
 # -----------------------------------------------------------------------------
-# Single-file entrypoint: bootstraps deps, clones/pulls the DEV branch,
+# Single-file entrypoint: bootstraps deps, clones the DEV branch (SEKALI),
 # prepares venv + .env, translates stale main-branch links to dev,
 # waits for real secrets, then runs uvicorn as PID 1.
 #
-# Replaces the old trio (entrypoint.sh + install-dev-staging.sh +
-# reinstall-dev-staging.sh). Re-running it on an existing volume behaves
-# like "reinstall-lite": pull latest, re-sync deps, restart app.
+# TIDAK AUTO-UPDATE: perubahan di GitHub tidak otomatis masuk ke container.
+# Update manual:
+#   podman exec rohtembak-dev bash -c "cd /opt/rohtembak && git pull --ff-only"
+#   podman restart rohtembak-dev
 #
 # Environment:
 #   INSTALL_DIR          target dir                     (default /opt/rohtembak)
@@ -69,19 +70,10 @@ if ! command -v git >/dev/null 2>&1 || ! command -v python3 >/dev/null 2>&1 \
     retry apt-get install -y git python3 python3-venv python3-pip curl ca-certificates >/dev/null
 fi
 
-# --- 2. Source: clone dev, or pull latest ---------------------------------------
-if [ -f "${INSTALL_DIR}/main.py" ] && [ -d "${INSTALL_DIR}/.git" ]; then
-    log "Existing install found - pulling latest dev..."
-    if ! retry git -C "${INSTALL_DIR}" pull --ff-only origin dev 2>/dev/null; then
-        warn "Fast-forward pull failed (local patches?). Hard-resetting to origin/dev..."
-        # .env di-track repo & link-patch bikin tree kotor — lindungi isinya
-        # sebelum reset supaya nilai custom tidak hilang.
-        cp "${INSTALL_DIR}/.env" /tmp/.env.keep 2>/dev/null || true
-        retry git -C "${INSTALL_DIR}" fetch origin dev
-        git -C "${INSTALL_DIR}" reset --hard origin/dev
-        mv /tmp/.env.keep "${INSTALL_DIR}/.env" 2>/dev/null || true
-    fi
-else
+# --- 2. Source: clone dev once, NO auto-update ----------------------------------
+# Container tidak pernah pull otomatis. Kode yang sudah ada di volume dipakai
+# apa adanya sampai di-update manual (lihat header file ini).
+if [ ! -f "${INSTALL_DIR}/main.py" ] || [ ! -d "${INSTALL_DIR}/.git" ]; then
     log "Fresh install - cloning ${REPO_URL} (branch ${REPO_BRANCH})..."
     # Jangan pernah menghapus isi volume. Clone ke temp, lalu copy kode masuk.
     # - Gagal jaringan -> exit SEBELUM menyentuh isi volume (.env/data aman)
@@ -103,6 +95,8 @@ else
         mv "${tmp}/.env.keep" "${INSTALL_DIR}/.env"
     fi
     rm -rf "${tmp}"
+else
+    log "Existing install found - NOT updating (auto-update disabled)."
 fi
 cd "${INSTALL_DIR}"
 

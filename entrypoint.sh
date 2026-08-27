@@ -5,7 +5,12 @@ set -euo pipefail
 # RohTembak (XL) - PRODUCTION container entrypoint (branch: main)
 # -----------------------------------------------------------------------------
 # Self-contained bootstrap for production deployments:
-#   deps -> clone/pull main -> venv -> .env guard -> uvicorn (PID 1)
+#   deps -> clone main (SEKALI) -> venv -> .env guard -> uvicorn (PID 1)
+#
+# TIDAK AUTO-UPDATE: perubahan di GitHub tidak otomatis masuk ke container.
+# Update manual:
+#   podman exec rohtembak bash -c "cd /opt/rohtembak && git pull --ff-only"
+#   podman restart rohtembak
 #
 # For development/staging use entrypoint-dev-staging.sh instead (tracks the
 # dev branch and patches stale main-branch links).
@@ -50,17 +55,10 @@ if ! command -v git >/dev/null 2>&1 || ! command -v python3 >/dev/null 2>&1 \
     retry apt-get install -y git python3 python3-venv python3-pip curl ca-certificates >/dev/null
 fi
 
-# --- 2. Source: clone main, or pull latest ---------------------------------------
-if [ -f "${INSTALL_DIR}/main.py" ] && [ -d "${INSTALL_DIR}/.git" ]; then
-    log "Existing install found - pulling latest main..."
-    if ! retry git -C "${INSTALL_DIR}" pull --ff-only origin "${REPO_BRANCH}" 2>/dev/null; then
-        warn "Fast-forward pull failed (local changes?). Hard-resetting to origin/${REPO_BRANCH}..."
-        cp "${INSTALL_DIR}/.env" /tmp/.env.keep 2>/dev/null || true
-        retry git -C "${INSTALL_DIR}" fetch origin "${REPO_BRANCH}"
-        git -C "${INSTALL_DIR}" reset --hard "origin/${REPO_BRANCH}"
-        mv /tmp/.env.keep "${INSTALL_DIR}/.env" 2>/dev/null || true
-    fi
-else
+# --- 2. Source: clone once, NO auto-update --------------------------------------
+# Container tidak pernah pull otomatis. Kode yang sudah ada di volume dipakai
+# apa adanya sampai di-update manual (lihat header file ini).
+if [ ! -f "${INSTALL_DIR}/main.py" ] || [ ! -d "${INSTALL_DIR}/.git" ]; then
     log "Fresh install - cloning ${REPO_URL} (branch ${REPO_BRANCH})..."
     # Jangan pernah menghapus isi volume. Clone ke temp, lalu copy kode masuk.
     # - Gagal jaringan -> exit SEBELUM menyentuh isi volume (.env/data aman)
@@ -82,6 +80,8 @@ else
         mv "${tmp}/.env.keep" "${INSTALL_DIR}/.env"
     fi
     rm -rf "${tmp}"
+else
+    log "Existing install found - NOT updating (auto-update disabled)."
 fi
 cd "${INSTALL_DIR}"
 

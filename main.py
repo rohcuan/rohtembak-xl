@@ -9,6 +9,7 @@ import uuid
 import asyncio
 import threading
 import zipfile
+import re
 import requests
 from urllib.parse import quote as _urlquote
 from contextlib import asynccontextmanager, redirect_stdout
@@ -4294,17 +4295,24 @@ def register(
             "request": request,
             "error": "Password minimal 6 karakter"
         }, status_code=400)
-    if "@" not in email or len(email) > 100:
-        return render("register.html", context={
-            "request": request,
-            "error": "Format email tidak valid"
-        }, status_code=400)
     username = username.strip().lower()
     email = email.strip().lower()
+    if not re.fullmatch(r"[a-z0-9]+", username):
+        return render("register.html", context={
+            "request": request,
+            "error": "Username hanya boleh huruf dan angka (tanpa spasi/simbol)"
+        }, status_code=400)
     if len(username) < 3 or len(username) > 50:
         return render("register.html", context={
             "request": request,
             "error": "Username harus 3-50 karakter"
+        }, status_code=400)
+    if len(email) > 100 or not re.fullmatch(
+        r"[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}", email
+    ):
+        return render("register.html", context={
+            "request": request,
+            "error": "Format email tidak valid"
         }, status_code=400)
     attempt_key = _client_key(request)
     if _login_blocked(attempt_key):

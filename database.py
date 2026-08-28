@@ -55,20 +55,31 @@ def init_db():
         ))
         conn.commit()
         idx = conn.execute(__import__("sqlalchemy").text(
-            "SELECT name FROM sqlite_master WHERE type='index' AND name='uq_topup_pending_total'"
+            "SELECT sql FROM sqlite_master WHERE type='index' AND name='uq_topup_pending_total'"
         )).fetchone()
-        if idx:
+        target_sql = ("CREATE UNIQUE INDEX uq_topup_pending_total ON topup_transactions (total) "
+                      "WHERE status IN ('waiting', 'pending')")
+
+        def _norm_sql(s):
+            # Normalisasi spasi/baris baru supaya perbandingan tidak sensitif
+            # terhadap whitespace yang disimpan SQLite.
+            return " ".join(str(s).split())
+
+        if idx is None:
+            try:
+                conn.execute(__import__("sqlalchemy").text(target_sql))
+                conn.commit()
+            except Exception as e:
+                print(f"[init_db] warning: gagal membuat index uq_topup_pending_total: {e}")
+        elif _norm_sql(idx[0]) != _norm_sql(target_sql):
+            # Definisi index berubah (mis. migrasi status topup 4 fase):
+            # baru drop & buat ulang. Kalau sudah benar, tidak disentuh sama
+            # sekali — zero overhead per boot.
             try:
                 conn.execute(__import__("sqlalchemy").text(
                     "DROP INDEX uq_topup_pending_total"
                 ))
+                conn.execute(__import__("sqlalchemy").text(target_sql))
+                conn.commit()
             except Exception as e:
-                print(f"[init_db] warning: gagal drop index uq_topup_pending_total: {e}")
-        try:
-            conn.execute(__import__("sqlalchemy").text(
-                "CREATE UNIQUE INDEX uq_topup_pending_total ON topup_transactions (total) "
-                "WHERE status IN ('waiting', 'pending')"
-            ))
-            conn.commit()
-        except Exception as e:
-            print(f"[init_db] warning: gagal membuat index uq_topup_pending_total: {e}")
+                print(f"[init_db] warning: gagal recreate index uq_topup_pending_total: {e}")

@@ -139,8 +139,7 @@ if [ "${HEAD_SHA}" != "$(cat "${LINK_STAMP}" 2>/dev/null || echo "")" ]; then
 fi
 
 # --- 5. Configuration (.env) -----------------------------------------------------
-# .env TIDAK di-track di repo (keamanan: repo public). Sediakan lewat
-# ROHTEMBAK_ENV_FILE, env vars, atau salin manual ke volume.
+# Repo ships a ready-to-run .env (tracked). Override paths below.
 ENV_PROVIDED=0
 for key in "${SECRET_KEYS[@]}"; do
     if [ -n "${!key:-}" ]; then

@@ -2364,13 +2364,6 @@ def remove_xl(
         XLAccount.id == xl_id, XLAccount.user_id == user.id
     ).first()
     if xl:
-        remaining = db.query(XLAccount).filter(
-            XLAccount.user_id == user.id, XLAccount.id != xl_id
-        ).count()
-        if remaining == 0:
-            ctx = get_user_context(user, db)
-            ctx.update({"request": request, "error": "Tidak bisa menghapus satu-satunya nomor XL"})
-            return render("user/dashboard.html", context=ctx, status_code=400)
         was_active = xl.is_active
         _XL_TOKEN_CACHE.pop(xl.subscriber_id or xl.id, None)  # jangan pakai token basi
         db.delete(xl)

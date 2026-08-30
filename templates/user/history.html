@@ -74,6 +74,19 @@
 .qr-window .qr-total { margin-top: 12px; font-size: .9rem; color: #111; }
 .qr-window .qr-total strong { color: #059669; font-size: 1rem; }
 .qr-window .qr-hint { margin-top: 14px; font-size: .72rem; color: #9ca3af; line-height: 1.5; }
+.spinner {
+  width: 54px; height: 54px; margin: 40px auto 16px;
+  border: 5px solid #e5e7eb; border-top-color: #059669;
+  border-radius: 50%; animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.qr-window .loading-msg { font-size: .85rem; color: #374151; }
+.qr-window .load-error {
+  display: none; margin-top: 12px; padding: 10px 12px; border-radius: 8px;
+  background: #fef2f2; color: #991b1b; font-size: .8rem; line-height: 1.5;
+  text-align: left;
+}
+.qr-window .load-error.show { display: block; }
 .qr-window .success-title { color: #059669; font-size: 1.15rem; margin-bottom: 6px; }
 .success-box {
   text-align: left; background: #f8f9fa; border: 1px solid #e5e7eb;
@@ -150,24 +163,49 @@ function manualCheck(btn) {
 }
 
 function openQr(topupId, amount, fee, total) {
-  document.getElementById('qr-nominal').textContent = fmtIdr(amount) + ' IDR';
-  document.getElementById('qr-fee').textContent = fmtIdr(fee) + ' IDR';
-  document.getElementById('qr-total').textContent = fmtIdr(total) + ' IDR';
-  fetch('/user/topup/qr/' + topupId, { credentials: 'same-origin', cache: 'no-store' })
+  currentTopupId = topupId;
+  currentQrParams = { id: topupId, amount: amount, fee: fee, total: total };
+  showQrLoading(amount, fee, total);
+  fetchQr();
+}
+var currentTopupId = null;
+var currentQrParams = null;
+
+function fetchQr() {
+  var p = currentQrParams;
+  if (!p) return;
+  document.getElementById('qr-load-error').classList.remove('show');
+  document.getElementById('qr-load-retry-wrap').style.display = 'none';
+  fetch('/user/topup/qr/' + p.id, { credentials: 'same-origin', cache: 'no-store' })
     .then(function(r) { return r.json(); })
     .then(function(res) {
       if (!res.ok) {
-        alert(res.message || 'Payment gateway sedang offline. QRIS tidak dapat ditampilkan.');
+        showQrError(res.message || 'Payment gateway sedang offline. QRIS tidak dapat ditampilkan.');
         return;
       }
-      currentTopupId = topupId;
-      showQr(res.qr_img, res.expires_ts);
+      showQr(res.qr_img, res.expires_ts, p.amount, p.fee, p.total);
     })
     .catch(function() {
-      alert('Payment gateway sedang offline. QRIS tidak dapat ditampilkan.');
+      showQrError('Payment gateway sedang offline. QRIS tidak dapat ditampilkan.');
     });
 }
-var currentTopupId = null;
+
+function showQrLoading(amount, fee, total) {
+  qrExpires = 0;
+  document.getElementById('qr-nominal').textContent = fmtIdr(amount) + ' IDR';
+  document.getElementById('qr-fee').textContent = fmtIdr(fee) + ' IDR';
+  document.getElementById('qr-total').textContent = fmtIdr(total) + ' IDR';
+  setQrViewState('loading');
+  document.getElementById('qr-overlay').classList.add('show');
+}
+
+function showQrError(msg) {
+  setQrViewState('loading');
+  var errEl = document.getElementById('qr-load-error');
+  errEl.textContent = msg;
+  errEl.classList.add('show');
+  document.getElementById('qr-load-retry-wrap').style.display = '';
+}
 
 function showQr(src, expires) {
   qrExpires = parseInt(expires, 10) || 0;
@@ -181,6 +219,7 @@ function showQr(src, expires) {
 }
 
 function setQrViewState(state) {
+  document.getElementById('qr-view-loading').style.display = state === 'loading' ? '' : 'none';
   document.getElementById('qr-view-pay').style.display = state === 'pay' ? '' : 'none';
   document.getElementById('qr-view-success').style.display = state === 'success' ? '' : 'none';
 }
@@ -283,6 +322,9 @@ function closeQr(reload) {
   ov.classList.remove('show');
   if (qrTimerInt) { clearInterval(qrTimerInt); qrTimerInt = null; }
   resetCheckBtn();
+  document.getElementById('qr-load-error').classList.remove('show');
+  document.getElementById('qr-load-retry-wrap').style.display = 'none';
+  currentQrParams = null;
   if (reload && wasPaid) location.reload();
 }
 
@@ -373,6 +415,16 @@ document.addEventListener('DOMContentLoaded', armCheckButtons);
 <div class="qr-overlay" id="qr-overlay" onclick="if(event.target===this)closeQr(false)">
   <div class="qr-window">
     <button class="qr-close" onclick="closeQr(false)">&times;</button>
+
+    <div id="qr-view-loading">
+      <h3>Menyiapkan QRIS</h3>
+      <p>Mengambil kode QR dari payment gateway...</p>
+      <div class="spinner"></div>
+      <div class="load-error" id="qr-load-error"></div>
+      <div style="margin-top:14px;display:none;" id="qr-load-retry-wrap">
+        <button class="btn btn-success" id="qr-load-retry" style="width:100%;" onclick="fetchQr()">Coba lagi</button>
+      </div>
+    </div>
 
     <div id="qr-view-pay">
       <h3>Scan QRIS</h3>

@@ -154,7 +154,7 @@ function manualCheck(btn) {
         btn.textContent = 'Cek Pembayaran';
       }
       alert(res.message || (res.ok ? 'Belum ada pembayaran terdeteksi.' : 'Gagal mengecek status.'));
-      if (res.ok && res.status === 'paid') location.reload();
+      if (res.ok && res.status !== (btn.dataset.status || '')) location.reload();
     })
     .catch(function() {
       btn.disabled = false;
@@ -162,13 +162,15 @@ function manualCheck(btn) {
     });
 }
 
-function openQr(topupId, amount, fee, total) {
+function openQr(topupId, amount, fee, total, status) {
   currentTopupId = topupId;
+  currentTopupStatus = status || '';
   currentQrParams = { id: topupId, amount: amount, fee: fee, total: total };
   showQrLoading(amount, fee, total);
   fetchQr();
 }
 var currentTopupId = null;
+var currentTopupStatus = '';
 var currentQrParams = null;
 
 function fetchQr() {
@@ -310,6 +312,7 @@ function checkStatus(silent) {
       }
       if (btn) armCheckCooldown(cd > 0 ? cd : COOLDOWN);
       if (!silent) alert(res.message || 'Belum ada pembayaran terdeteksi.');
+      if (currentTopupStatus && res.status !== currentTopupStatus) { location.reload(); return; }
     })
     .catch(function() {
       if (btn) resetCheckBtn();
@@ -325,6 +328,7 @@ function closeQr(reload) {
   document.getElementById('qr-load-error').classList.remove('show');
   document.getElementById('qr-load-retry-wrap').style.display = 'none';
   currentQrParams = null;
+  currentTopupStatus = '';
   if (reload && wasPaid) { location.reload(); return; }
   if (!wasPaid) {
     document.getElementById('qrisClosedModal').classList.add('show');
@@ -376,9 +380,9 @@ document.addEventListener('DOMContentLoaded', armCheckButtons);
                     <td>
                         {% if t.kind == 'topup' %}
                         {% if t.show_qris_link %}
-                        <button type="button" class="btn-mini" onclick="openQr({{ t.id }}, {{ t.amount }}, {{ t.fee }}, {{ t.total }})">Lihat kode QRIS</button>
+                        <button type="button" class="btn-mini" onclick="openQr({{ t.id }}, {{ t.amount }}, {{ t.fee }}, {{ t.total }}, '{{ t.status }}')">Lihat kode QRIS</button>
                         {% elif t.show_check %}
-                        <button type="button" class="btn-mini check-btn" data-id="{{ t.id }}" data-left="{{ t.check_left }}" onclick="manualCheck(this)">Cek Pembayaran</button>
+                        <button type="button" class="btn-mini check-btn" data-id="{{ t.id }}" data-status="{{ t.status }}" data-left="{{ t.check_left }}" onclick="manualCheck(this)">Cek Pembayaran</button>
                         {% else %}&mdash;{% endif %}
                         {% else %}&mdash;{% endif %}
                     </td>
@@ -405,9 +409,9 @@ document.addEventListener('DOMContentLoaded', armCheckButtons);
             <div class="tc-row"><span class="k">Keterangan</span><span class="v">{{ t.desc }}</span></div>
             <div class="tc-actions">
                 {% if t.kind == 'topup' and t.show_qris_link %}
-                <button type="button" class="btn-mini" onclick="openQr({{ t.id }}, {{ t.amount }}, {{ t.fee }}, {{ t.total }})">Lihat kode QRIS</button>
+                <button type="button" class="btn-mini" onclick="openQr({{ t.id }}, {{ t.amount }}, {{ t.fee }}, {{ t.total }}, '{{ t.status }}')">Lihat kode QRIS</button>
                 {% elif t.kind == 'topup' and t.show_check %}
-                <button type="button" class="btn-mini check-btn" data-id="{{ t.id }}" data-left="{{ t.check_left }}" onclick="manualCheck(this)">Cek Pembayaran</button>
+                <button type="button" class="btn-mini check-btn" data-id="{{ t.id }}" data-status="{{ t.status }}" data-left="{{ t.check_left }}" onclick="manualCheck(this)">Cek Pembayaran</button>
                 {% else %}<span>&mdash;</span>{% endif %}
             </div>
         </div>

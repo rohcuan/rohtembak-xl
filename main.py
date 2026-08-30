@@ -4037,7 +4037,14 @@ def _credit_topup(db: Session, topup: TopupTransaction):
 def _check_and_settle_topup(db: Session, topup: TopupTransaction) -> dict:
     """Ask the gateway about one topup; settle (credit/mark expired) accordingly."""
     res = gopay.check_payment(topup.total, topup.trx_id)
-    if res.get("success") and res.get("paid"):
+    if not res.get("success"):
+        # Gateway offline / belum dikonfigurasi: jangan jatuh ke tebakan
+        # "belum ada pembayaran" yang menyesatkan. Laporkan kegagalan
+        # eksplisit; baris tetap di fase sekarang, sweep berikutnya akan
+        # mencoba lagi (tidak dikunci ke pending selagi gateway mati).
+        return {"ok": False, "status": "unknown",
+                "message": res.get("error") or "Gagal menghubungi gateway QRIS. Coba lagi nanti."}
+    if res.get("paid"):
         new_balance = _credit_topup(db, topup)
         if new_balance is not None:
             return {"ok": True, "status": "paid", "new_balance": new_balance,
@@ -4371,7 +4378,9 @@ def topup_check(topup_id: int = Form(...), user: User = Depends(get_current_user
             if fresh_last is not None:
                 if fresh_last.tzinfo is None:
                     fresh_last = fresh_last.replace(tzinfo=timezone.utc)
-                left = max(0, int(fresh_last.timestamp()) + TOPUP_MANUAL_CHECK_COOLDOWN - int(time.time()))
+                # min 1 detik: kalau sisa persis 0 (tepat di batas), client jangan
+                # di-lock 5 menit penuh gara-gara fallback cooldown di JS.
+                left = max(1, int(fresh_last.timestamp()) + TOPUP_MANUAL_CHECK_COOLDOWN - int(time.time()))
             return JSONResponse({
                 "ok": False, "cooldown": left,
                 "message": f"Tunggu {left // 60}m {left % 60}s sebelum cek pembayaran lagi."

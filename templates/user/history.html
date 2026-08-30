@@ -438,12 +438,12 @@ document.addEventListener('DOMContentLoaded', armCheckButtons);
         Sisa waktu: <strong id="qr-timer" style="font-family:ui-monospace,monospace;">&mdash;</strong>
       </div>
       <div id="qr-expired-note" style="display:none;margin-top:8px;padding:10px 12px;border-radius:8px;background:#fef2f2;color:#991b1b;font-size:.8rem;line-height:1.5;">
-        QRIS sudah kedaluwarsa dan tidak dapat dipindai lagi. Jika kamu sudah membayar, saldo tetap masuk otomatis &mdash; tekan <strong>Cek Pembayaran</strong> untuk memastikan.
+        QRIS sudah kedaluwarsa dan tidak dapat dipindai lagi. Saldo diverifikasi otomatis saat masa QR habis. Jika belum masuk, tekan <strong>Cek Pembayaran</strong>.
       </div>
       <div style="margin-top:14px;">
         <button class="btn btn-success" id="check-btn" onclick="checkStatus(false)" style="width:100%;">Cek Pembayaran</button>
       </div>
-      <div class="qr-hint">Sudah bayar tapi status belum berubah? Tunggu sebentar lalu cek lagi. Sistem juga memeriksa otomatis setiap saat meski kamu menutup halaman ini.</div>
+      <div class="qr-hint">Saldo diverifikasi otomatis saat masa berlaku QR habis (&plusmn;5 menit). Untuk lebih cepat, tekan <strong>Cek Pembayaran</strong> &mdash; bisa diulang-ulang (jeda 5 menit antar cek, selama &plusmn;24 jam). Halaman boleh kamu tutup &mdash; status tetap terverifikasi.</div>
     </div>
 
     <div id="qr-view-success" style="display:none;">

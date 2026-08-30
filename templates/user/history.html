@@ -181,6 +181,7 @@ function fetchQr() {
   fetch('/user/topup/qr/' + p.id, { credentials: 'same-origin', cache: 'no-store' })
     .then(function(r) { return r.json(); })
     .then(function(res) {
+      if (currentQrParams !== p) return;
       if (!res.ok) {
         showQrError(res.message || 'Payment gateway sedang offline. QRIS tidak dapat ditampilkan.');
         return;
@@ -188,6 +189,7 @@ function fetchQr() {
       showQr(res.qr_img, res.expires_ts, p.amount, p.fee, p.total);
     })
     .catch(function() {
+      if (currentQrParams !== p) return;
       showQrError('Payment gateway sedang offline. QRIS tidak dapat ditampilkan.');
     });
 }
@@ -211,7 +213,10 @@ function showQrError(msg) {
 
 function showQr(src, expires) {
   qrExpires = parseInt(expires, 10) || 0;
-  document.getElementById('qr-img').src = src || '';
+  var img = document.getElementById('qr-img');
+  if (img) { img.src = src || ''; img.style.display = ''; }
+  var note = document.getElementById('qr-expired-note');
+  if (note) note.style.display = 'none';
   setQrViewState('pay');
   resetCheckBtn();
   document.getElementById('qr-overlay').classList.add('show');
@@ -274,17 +279,19 @@ function armCheckCooldown(seconds) {
 
 function checkStatus(silent) {
   var btn = document.getElementById('check-btn');
-  if (!currentTopupId) return;
+  var tid = currentTopupId;
+  if (!tid) return;
   if (btn && btn.disabled) return;
   if (btn && !silent) {
     btn.disabled = true;
     btn.textContent = 'Mengecek...';
   }
   var fd = new FormData();
-  fd.append('topup_id', currentTopupId);
+  fd.append('topup_id', tid);
   fetch('/user/topup/check', { method: 'POST', body: fd, credentials: 'same-origin' })
     .then(function(r) { return r.json(); })
     .then(function(res) {
+      if (currentTopupId !== tid) return;
       var cd = parseInt(res.cooldown || '0', 10);
       if (!res.ok) {
         if (btn) armCheckCooldown(cd > 0 ? cd : COOLDOWN);
@@ -329,6 +336,7 @@ function closeQr(reload) {
   document.getElementById('qr-load-retry-wrap').style.display = 'none';
   currentQrParams = null;
   currentTopupStatus = '';
+  currentTopupId = null;
   if (reload && wasPaid) { location.reload(); return; }
   if (!wasPaid) {
     document.getElementById('qrisClosedModal').classList.add('show');

@@ -1,8 +1,8 @@
 services:
   rohtembak-xl:
-    # PRODUCTION. NB: entrypoint di bawah ditarik dari branch main — pastikan
-    # dev sudah dimerge ke main sebelum deploy, kalau tidak stack akan jalan
-    # dengan entrypoint versi lama (yang meng-track branch dev).
+    # PRODUCTION (branch main). Repo private: pada deploy fresh, buat repo
+    # public sementara agar clone / curl raw.githubusercontent berhasil,
+    # lalu kembalikan ke private setelah stack jalan.
     #
     # TIDAK AUTO-UPDATE: app hanya di-clone sekali; perubahan di GitHub tidak
     # masuk otomatis. Update manual:

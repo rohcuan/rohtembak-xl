@@ -12,9 +12,6 @@ set -euo pipefail
 #   podman exec rohtembak bash -c "cd /opt/rohtembak && git pull --ff-only"
 #   podman restart rohtembak
 #
-# For development/staging use entrypoint-dev-staging.sh instead (tracks the
-# dev branch and patches stale main-branch links).
-#
 # Environment:
 #   INSTALL_DIR          target dir                     (default /opt/rohtembak)
 #   APP_PORT             uvicorn port                   (default 8000)

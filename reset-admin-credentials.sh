@@ -7,7 +7,7 @@ set -euo pipefail
 # Recovery tool for when you get locked out (forgot or lost the admin
 # username/password).
 #
-# NOTE: This is NOT part of entrypoint.sh / entrypoint-dev-staging.sh. It must be run manually from a
+# NOTE: This is NOT part of entrypoint.sh. It must be run manually from a
 # terminal / SSH session inside the container or on the server.
 #
 # It can be run from any working directory (e.g. your home dir) - no need

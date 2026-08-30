@@ -25,7 +25,6 @@ Web UI untuk mengelola akun XL / paket XL (beli paket, info paket, riwayat, pemb
 ├── static/               # CSS / JS
 ├── requirements.txt
 ├── entrypoint.sh             # PRODUCTION Docker entrypoint (branch main)
-├── entrypoint-dev-staging.sh # DEV/STAGING entrypoint + installer (branch dev)
 ├── docker-compose.yml    # production container
 ├── .env                  # konfigurasi kredensial XL API (sudah terisi)
 └── .env.example          # template konfigurasi
@@ -43,23 +42,16 @@ Buka `http://localhost:8000` — login `admin` / `admin`.
 
 > Pada host cgroup v2, jika container gagal start, tambahkan `cgroupns: host` pada service di `docker-compose.yml`.
 
-## Dev / Staging (bare metal, Debian 12)
+## Deployment notes
 
-Install / update / reinstall ke `/opt/rohtembak` via entrypoint dev/staging
-(track branch `dev`). Jalankan ulang = pull latest + re-sync deps, data tetap:
-
-```bash
-wget -O entrypoint-dev-staging.sh https://raw.githubusercontent.com/rohcuan/rohtembak-xl/dev/entrypoint-dev-staging.sh
-chmod +x entrypoint-dev-staging.sh
-sudo INSTALL_DIR=/opt/rohtembak APP_PORT=8000 ./entrypoint-dev-staging.sh
-```
-
-> `entrypoint.sh` = production (branch main), `entrypoint-dev-staging.sh` = dev/staging (branch dev).
-> Keduanya bisa dipakai sebagai entrypoint container maupun installer bare-metal.
+> `entrypoint.sh` bisa dipakai sebagai entrypoint container maupun installer bare-metal.
 > Bare metal: script menjalankan uvicorn di foreground — jalankan via `tmux`/`screen`
 > atau systemd bila ingin tetap hidup setelah SSH logout.
 >
-> Catatan Docker Compose vs Swarm: volume `rohtembak_data` dipakai dengan prefix
+> Repo ini private: pada deploy fresh, buat repo public sementara agar clone /
+> raw.githubusercontent bisa diakses, lalu kembalikan ke private setelah jalan.
+>
+> Docker Compose vs Swarm: volume `rohtembak_data` dipakai dengan prefix
 > berbeda (compose: `rohtembak_rohtembak_data`, stack: `<stack>_rohtembak_data`).
 > Pindah dari compose ke swarm = data terlihat kosong — export/import volume dulu.
 

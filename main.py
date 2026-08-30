@@ -2589,9 +2589,10 @@ def user_history(request: Request, user: User = Depends(get_current_user)):
     history = []
 
     # Ambil SEMUA topup (tanpa limit) supaya dedupe BalanceTransaction di bawah
-    # tidak menghilangkan topup paid yang "tua" — kalau baris topup-nya tidak
-    # diambil, baris saldonya jangan di-dedupe. List akhir tetap dipotong
-    # ke 20 baris terbaru di bawah.
+    # tidak menghilangkan topup paid yang "tua". Setiap topup QRIS yang dibayar
+    # punya baris BalanceTransaction (dibuat bersamaan di _credit_topup); baris
+    # saldo itu sudah diwakili baris kind="topup" status paid — jangan
+    # ditampilkan dua kali. List akhir tetap dipotong ke 20 baris terbaru.
     topups = db.query(TopupTransaction).filter(
         TopupTransaction.user_id == user.id
     ).order_by(TopupTransaction.id.desc()).all()
@@ -2618,8 +2619,6 @@ def user_history(request: Request, user: User = Depends(get_current_user)):
             "total": t.total,
             "desc": keterangan,
             "status": t.status,
-            # Halaman pembayaran milik gateway (qr/:id).
-            "pay_url": gopay.qr_page_url(t.qris_id),
             "check_left": check_left,
             "show_qris_link": show_qris_link,
             "show_check": show_check,
@@ -4283,7 +4282,6 @@ def topup_create(amount: int = Form(...), user: User = Depends(get_current_user)
             "amount": amount,
             "fee": row.fee,
             "total": total,
-            "pay_url": gopay.qr_page_url(qris_id),
         })
     finally:
         db.close()

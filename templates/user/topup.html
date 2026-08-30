@@ -268,12 +268,12 @@ function fmtLeft(s) {
   return m > 0 ? m + 'm ' + (r < 10 ? '0' : '') + r + 's' : r + 's';
 }
 
-function checkStatus(silent) {
+function checkStatus() {
   var btn = document.getElementById('check-btn');
   var tid = currentTopupId;
   if (!tid) return;
   if (btn && btn.disabled) return;
-  if (btn && !silent) {
+  if (btn) {
     btn.disabled = true;
     btn.textContent = 'Mengecek...';
   }
@@ -286,7 +286,7 @@ function checkStatus(silent) {
       var cd = parseInt(res.cooldown || '0', 10);
       if (!res.ok) {
         if (btn) armCheckCooldown(cd > 0 ? cd : COOLDOWN);
-        if (!silent) alert(res.message || 'Gagal mengecek status.');
+        alert(res.message || 'Gagal mengecek status.');
         return;
       }
       if (res.status === 'paid') {
@@ -305,11 +305,11 @@ function checkStatus(silent) {
         var note = document.getElementById('qr-expired-note');
         if (note) note.style.display = '';
         if (btn) armCheckCooldown(cd > 0 ? cd : COOLDOWN);
-        if (!silent) alert(res.message || 'QRIS kedaluwarsa dan tidak ada pembayaran masuk.');
+        alert(res.message || 'QRIS kedaluwarsa dan tidak ada pembayaran masuk.');
         return;
       }
       if (btn) armCheckCooldown(cd > 0 ? cd : COOLDOWN);
-      if (!silent) alert(res.message || 'Belum ada pembayaran terdeteksi.');
+      alert(res.message || 'Belum ada pembayaran terdeteksi.');
     })
     .catch(function() {
       if (btn) resetCheckBtn();
@@ -429,7 +429,7 @@ function closeQrisClosedModal() {
         QRIS sudah kedaluwarsa dan tidak dapat dipindai lagi. Saldo diverifikasi otomatis saat masa QR habis. Jika belum masuk, tekan <strong>Cek Pembayaran</strong>.
       </div>
       <div style="margin-top:14px;">
-        <button class="btn btn-success" id="check-btn" onclick="checkStatus(false)" style="width:100%;">Cek Pembayaran</button>
+        <button class="btn btn-success" id="check-btn" onclick="checkStatus()" style="width:100%;">Cek Pembayaran</button>
       </div>
       <div class="qr-hint">Saldo masuk 5 menit setelah QRIS berhasil dibuat. Atau tekan <strong>Cek Pembayaran</strong> agar tidak perlu menunggu terlalu lama.</div>
     </div>

@@ -10,8 +10,8 @@ GOPAY_TIMEOUT = int(os.getenv("GOPAY_TIMEOUT", "30"))
 SETTING_URL_KEY = "gopay_gateway_url"
 SETTING_API_KEY = "gopay_api_key"
 
-# Cache config DB 5 detik — qr_page_url dipanggil per baris riwayat;
-# tanpa cache itu = buka session DB baru untuk tiap baris.
+# Cache config DB 5 detik — config diakses setiap panggilan API (qr, check,
+# token-status); tanpa cache itu = buka session DB baru tiap request keluar.
 _CFG_TTL = 5.0
 _cfg_cache = {"ts": 0.0, "url": "", "key": ""}
 
@@ -121,18 +121,6 @@ def create_qris(amount: int) -> dict:
         err = data.get("error") if isinstance(data, dict) else None
         return {"success": False, "error": err or "Gateway menolak permintaan QRIS"}
     return data
-
-
-def qr_page_url(qris_id: str) -> str:
-    """Hosted payment page URL (gateway /qr/:id) for a QRIS.
-
-    The gateway page handles QR display, countdown, status checking, and
-    expiry messaging on its own. Returns "" when not configurable.
-    """
-    url, _ = get_config()
-    if not url or not qris_id:
-        return ""
-    return f"{url}/qr/{qris_id}"
 
 
 def get_qris_image(qris_id: str) -> dict:

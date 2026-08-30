@@ -89,7 +89,6 @@ class TopupTransaction(Base):
     total = Column(Integer, nullable=False)
     trx_id = Column(String(50), unique=True, nullable=False)
     qris_id = Column(String(100), default="")
-    qris_code = Column(Text, default="")
     status = Column(String(20), default="waiting", index=True)
     expires_at = Column(DateTime, nullable=False)
     paid_at = Column(DateTime, default=None)

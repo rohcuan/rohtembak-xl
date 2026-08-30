@@ -46,8 +46,56 @@
 }
 .btn-mini:hover { background: #065f46; text-decoration: none; }
 .btn-mini:disabled { background: #9ca3af; cursor: not-allowed; }
+
+.qr-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0,0,0,.55); display: none;
+  align-items: center; justify-content: center; padding: 20px;
+}
+.qr-overlay.show { display: flex; }
+.qr-window {
+  background: #fff; border-radius: 14px; padding: 24px;
+  max-width: 360px; width: 100%; text-align: center;
+  box-shadow: 0 20px 50px rgba(0,0,0,.35);
+  position: relative;
+}
+.qr-window .qr-close {
+  position: absolute; top: 10px; right: 14px;
+  background: none; border: none; font-size: 1.4rem;
+  color: #6b7280; cursor: pointer; line-height: 1;
+}
+.qr-window .qr-close:hover { color: #111; }
+.qr-window h3 { margin: 0 0 4px; font-size: 1rem; color: #111; }
+.qr-window p { margin: 0 0 14px; font-size: .8rem; color: #6b7280; }
+.qr-window img.qr-img {
+  width: 240px; height: 240px; border-radius: 8px;
+  border: 1px solid #e5e7eb; background: #fff;
+}
+.qr-window .qr-total { margin-top: 12px; font-size: .9rem; color: #111; }
+.qr-window .qr-total strong { color: #059669; font-size: 1rem; }
+.qr-window .qr-hint { margin-top: 14px; font-size: .72rem; color: #9ca3af; line-height: 1.5; }
+.qr-window .success-title { color: #059669; font-size: 1.15rem; margin-bottom: 6px; }
+.success-box {
+  text-align: left; background: #f8f9fa; border: 1px solid #e5e7eb;
+  border-radius: 10px; padding: 14px 16px; margin-top: 16px;
+}
+.success-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; font-size: .88rem; }
+.success-row .k { color: #6b7280; }
+.success-row .v { font-weight: 600; color: #111; }
+.success-row .v.added { color: #059669; font-size: 1.05rem; }
+.success-row.total { border-top: 1px solid #e5e7eb; margin-top: 6px; padding-top: 12px; }
+.success-row.total .k { color: #111; font-weight: 600; }
+.success-row.total .v { color: #059669; font-size: 1.15rem; }
 </style>
 <script>
+var COOLDOWN = {{ topup_check_cooldown }};
+var qrExpires = 0;
+var qrTimerInt = null;
+
+function fmtIdr(n) {
+  return Number(n || 0).toLocaleString('id-ID');
+}
+
 function fmtLeft(s) {
   var m = Math.floor(s / 60), r = s % 60;
   return m > 0 ? m + 'm ' + (r < 10 ? '0' : '') + r + 's' : r + 's';
@@ -84,13 +132,158 @@ function manualCheck(btn) {
   fetch('/user/topup/check', { method: 'POST', body: fd, credentials: 'same-origin' })
     .then(function(r) { return r.json(); })
     .then(function(res) {
+      var cd = parseInt(res.cooldown || '0', 10);
+      if (cd > 0) {
+        btn.dataset.deadline = Date.now() + cd * 1000;
+        tickCheckBtn(btn);
+      } else {
+        btn.disabled = false;
+        btn.textContent = 'Cek Pembayaran';
+      }
       alert(res.message || (res.ok ? 'Belum ada pembayaran terdeteksi.' : 'Gagal mengecek status.'));
-      location.reload();
+      if (res.ok && res.status === 'paid') location.reload();
     })
     .catch(function() {
       btn.disabled = false;
       btn.textContent = 'Cek Pembayaran';
     });
+}
+
+function openQr(topupId, amount, fee, total) {
+  document.getElementById('qr-nominal').textContent = fmtIdr(amount) + ' IDR';
+  document.getElementById('qr-fee').textContent = fmtIdr(fee) + ' IDR';
+  document.getElementById('qr-total').textContent = fmtIdr(total) + ' IDR';
+  fetch('/user/topup/qr/' + topupId, { credentials: 'same-origin', cache: 'no-store' })
+    .then(function(r) { return r.json(); })
+    .then(function(res) {
+      if (!res.ok) {
+        alert(res.message || 'Payment gateway sedang offline. QRIS tidak dapat ditampilkan.');
+        return;
+      }
+      currentTopupId = topupId;
+      showQr(res.qr_img, res.expires_ts);
+    })
+    .catch(function() {
+      alert('Payment gateway sedang offline. QRIS tidak dapat ditampilkan.');
+    });
+}
+var currentTopupId = null;
+
+function showQr(src, expires) {
+  qrExpires = parseInt(expires, 10) || 0;
+  document.getElementById('qr-img').src = src || '';
+  setQrViewState('pay');
+  resetCheckBtn();
+  document.getElementById('qr-overlay').classList.add('show');
+  tickQrTimer();
+  if (qrTimerInt) clearInterval(qrTimerInt);
+  qrTimerInt = setInterval(tickQrTimer, 1000);
+}
+
+function setQrViewState(state) {
+  document.getElementById('qr-view-pay').style.display = state === 'pay' ? '' : 'none';
+  document.getElementById('qr-view-success').style.display = state === 'success' ? '' : 'none';
+}
+
+function tickQrTimer() {
+  var el = document.getElementById('qr-timer');
+  if (!el) return;
+  if (!qrExpires) { el.textContent = '\u2014'; return; }
+  var left = qrExpires - Math.floor(Date.now() / 1000);
+  if (left <= 0) {
+    el.textContent = 'Expired';
+    var img = document.getElementById('qr-img');
+    if (img) img.style.display = 'none';
+    var note = document.getElementById('qr-expired-note');
+    if (note) note.style.display = '';
+    if (qrTimerInt) { clearInterval(qrTimerInt); qrTimerInt = null; }
+    return;
+  }
+  var m = Math.floor(left / 60), s = left % 60;
+  el.textContent = (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+}
+
+function resetCheckBtn() {
+  var btn = document.getElementById('check-btn');
+  if (!btn) return;
+  btn.disabled = false;
+  btn.textContent = 'Cek Pembayaran';
+  if (window.checkCdInt) { clearInterval(window.checkCdInt); window.checkCdInt = null; }
+}
+
+function armCheckCooldown(seconds) {
+  var btn = document.getElementById('check-btn');
+  if (!btn) return;
+  if (window.checkCdInt) { clearInterval(window.checkCdInt); window.checkCdInt = null; }
+  var deadline = Date.now() + seconds * 1000;
+  btn.disabled = true;
+  btn.textContent = 'Tunggu ' + fmtLeft(seconds);
+  window.checkCdInt = setInterval(function() {
+    var left = Math.max(0, Math.round((deadline - Date.now()) / 1000));
+    if (left <= 0) {
+      clearInterval(window.checkCdInt);
+      window.checkCdInt = null;
+      btn.disabled = false;
+      btn.textContent = 'Cek Pembayaran';
+      return;
+    }
+    btn.textContent = 'Tunggu ' + fmtLeft(left);
+  }, 1000);
+}
+
+function checkStatus(silent) {
+  var btn = document.getElementById('check-btn');
+  if (!currentTopupId) return;
+  if (btn && btn.disabled) return;
+  if (btn && !silent) {
+    btn.disabled = true;
+    btn.textContent = 'Mengecek...';
+  }
+  var fd = new FormData();
+  fd.append('topup_id', currentTopupId);
+  fetch('/user/topup/check', { method: 'POST', body: fd, credentials: 'same-origin' })
+    .then(function(r) { return r.json(); })
+    .then(function(res) {
+      var cd = parseInt(res.cooldown || '0', 10);
+      if (!res.ok) {
+        if (btn) armCheckCooldown(cd > 0 ? cd : COOLDOWN);
+        if (!silent) alert(res.message || 'Gagal mengecek status.');
+        return;
+      }
+      if (res.status === 'paid') {
+        if (qrTimerInt) { clearInterval(qrTimerInt); qrTimerInt = null; }
+        document.getElementById('success-added').textContent = '+' + fmtIdr(res.credited) + ' IDR';
+        document.getElementById('success-balance').textContent = fmtIdr(res.new_balance) + ' IDR';
+        setQrViewState('success');
+        return;
+      }
+      if (res.status === 'expired') {
+        if (qrTimerInt) { clearInterval(qrTimerInt); qrTimerInt = null; }
+        var timerEl = document.getElementById('qr-timer');
+        if (timerEl) timerEl.textContent = 'Expired';
+        var img = document.getElementById('qr-img');
+        if (img) img.style.display = 'none';
+        var note = document.getElementById('qr-expired-note');
+        if (note) note.style.display = '';
+        if (btn) armCheckCooldown(cd > 0 ? cd : COOLDOWN);
+        if (!silent) alert(res.message || 'QRIS kedaluwarsa dan tidak ada pembayaran masuk.');
+        return;
+      }
+      if (btn) armCheckCooldown(cd > 0 ? cd : COOLDOWN);
+      if (!silent) alert(res.message || 'Belum ada pembayaran terdeteksi.');
+    })
+    .catch(function() {
+      if (btn) resetCheckBtn();
+    });
+}
+
+function closeQr(reload) {
+  var ov = document.getElementById('qr-overlay');
+  var wasPaid = document.getElementById('qr-view-success').style.display !== 'none';
+  ov.classList.remove('show');
+  if (qrTimerInt) { clearInterval(qrTimerInt); qrTimerInt = null; }
+  resetCheckBtn();
+  if (reload && wasPaid) location.reload();
 }
 
 document.addEventListener('DOMContentLoaded', armCheckButtons);
@@ -134,14 +327,11 @@ document.addEventListener('DOMContentLoaded', armCheckButtons);
                     <td>{{ t.desc }}</td>
                     <td>
                         {% if t.kind == 'topup' %}
-                        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                            {% if t.show_qris_link and t.pay_url %}
-                            <a href="{{ t.pay_url }}" target="_blank" rel="noopener" class="btn-mini">Lihat kode QRIS</a>
-                            {% endif %}
-                            {% if t.show_check %}
-                            <button type="button" class="btn-mini check-btn" data-id="{{ t.id }}" data-left="{{ t.check_left }}" onclick="manualCheck(this)">Cek Pembayaran</button>
-                            {% endif %}
-                        </div>
+                        {% if t.show_qris_link %}
+                        <button type="button" class="btn-mini" onclick="openQr({{ t.id }}, {{ t.amount }}, {{ t.fee }}, {{ t.total }})">Lihat kode QRIS</button>
+                        {% elif t.show_check %}
+                        <button type="button" class="btn-mini check-btn" data-id="{{ t.id }}" data-left="{{ t.check_left }}" onclick="manualCheck(this)">Cek Pembayaran</button>
+                        {% else %}&mdash;{% endif %}
                         {% else %}&mdash;{% endif %}
                     </td>
                 </tr>
@@ -166,13 +356,10 @@ document.addEventListener('DOMContentLoaded', armCheckButtons);
             <div class="tc-row"><span class="k">Jumlah</span><span class="v" style="color:{{ '#059669' if t.amount >= 0 else '#dc2626' }};">{{ "+" if t.amount >= 0 else "-" }}{{ t.amount|abs|rupiah }} IDR</span></div>
             <div class="tc-row"><span class="k">Keterangan</span><span class="v">{{ t.desc }}</span></div>
             <div class="tc-actions">
-                {% if t.kind == 'topup' %}
-                {% if t.show_qris_link and t.pay_url %}
-                <a href="{{ t.pay_url }}" target="_blank" rel="noopener" class="btn-mini">Lihat kode QRIS</a>
-                {% else %}<span></span>{% endif %}
-                {% if t.show_check %}
+                {% if t.kind == 'topup' and t.show_qris_link %}
+                <button type="button" class="btn-mini" onclick="openQr({{ t.id }}, {{ t.amount }}, {{ t.fee }}, {{ t.total }})">Lihat kode QRIS</button>
+                {% elif t.kind == 'topup' and t.show_check %}
                 <button type="button" class="btn-mini check-btn" data-id="{{ t.id }}" data-left="{{ t.check_left }}" onclick="manualCheck(this)">Cek Pembayaran</button>
-                {% endif %}
                 {% else %}<span>&mdash;</span>{% endif %}
             </div>
         </div>
@@ -181,6 +368,50 @@ document.addEventListener('DOMContentLoaded', armCheckButtons);
     {% else %}
     <div class="empty-state">Belum ada transaksi.</div>
     {% endif %}
+</div>
+
+<div class="qr-overlay" id="qr-overlay" onclick="if(event.target===this)closeQr(false)">
+  <div class="qr-window">
+    <button class="qr-close" onclick="closeQr(false)">&times;</button>
+
+    <div id="qr-view-pay">
+      <h3>Scan QRIS</h3>
+      <p>Selesaikan pembayaran dengan memindai kode QR ini.</p>
+      <img class="qr-img" id="qr-img" alt="QRIS" src="">
+      <div class="qr-total">
+        Nominal: <span id="qr-nominal">&mdash;</span> &middot; Kode unik: <span id="qr-fee">&mdash;</span><br>
+        Total: <strong id="qr-total">&mdash;</strong>
+      </div>
+      <div style="margin-top:10px;font-size:.85rem;color:#374151;">
+        Sisa waktu: <strong id="qr-timer" style="font-family:ui-monospace,monospace;">&mdash;</strong>
+      </div>
+      <div id="qr-expired-note" style="display:none;margin-top:8px;padding:10px 12px;border-radius:8px;background:#fef2f2;color:#991b1b;font-size:.8rem;line-height:1.5;">
+        QRIS sudah kedaluwarsa dan tidak dapat dipindai lagi. Jika kamu sudah membayar, saldo tetap masuk otomatis &mdash; tekan <strong>Cek Pembayaran</strong> untuk memastikan.
+      </div>
+      <div style="margin-top:14px;">
+        <button class="btn btn-success" id="check-btn" onclick="checkStatus(false)" style="width:100%;">Cek Pembayaran</button>
+      </div>
+      <div class="qr-hint">Sudah bayar tapi status belum berubah? Tunggu sebentar lalu cek lagi. Sistem juga memeriksa otomatis setiap saat meski kamu menutup halaman ini.</div>
+    </div>
+
+    <div id="qr-view-success" style="display:none;">
+      <h3 class="success-title">Topup Berhasil!</h3>
+      <p>Pembayaran terkonfirmasi dan saldo sudah ditambahkan ke akunmu.</p>
+      <div class="success-box">
+        <div class="success-row">
+          <span class="k">Saldo ditambahkan</span>
+          <span class="v added" id="success-added">&mdash;</span>
+        </div>
+        <div class="success-row total">
+          <span class="k">Saldo panel sekarang</span>
+          <span class="v" id="success-balance">&mdash;</span>
+        </div>
+      </div>
+      <div style="margin-top:16px;">
+        <button class="btn btn-success" onclick="closeQr(true)" style="width:100%;">Selesai</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 {% endblock %}

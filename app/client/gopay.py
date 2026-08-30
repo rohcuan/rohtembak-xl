@@ -135,6 +135,35 @@ def qr_page_url(qris_id: str) -> str:
     return f"{url}/qr/{qris_id}"
 
 
+def get_qris_image(qris_id: str) -> dict:
+    """Fetch the QRIS PNG live from the gateway (/qr/:id?format=raw).
+
+    Returns {"ok": True, "data": <png bytes>} or {"ok": False, "error": ...}.
+    Gateway offline / QRIS hilang / kedaluwarsa -> not ok, sehingga panel
+    menolak menampilkan QR yang tidak bisa dipakai bayar (PG wajib online).
+    """
+    url, api_key = get_config()
+    if not url or not qris_id:
+        return {"ok": False, "error": "Gateway QRIS belum dikonfigurasi"}
+    try:
+        res = requests.get(
+            f"{url}/qr/{qris_id}",
+            params={"format": "raw"},
+            headers={"X-Api-Key": api_key},
+            timeout=GOPAY_TIMEOUT,
+            allow_redirects=True,
+        )
+    except Exception as e:
+        return {"ok": False, "error": f"Gagal menghubungi gateway QRIS: {e}"}
+    if res.status_code == 410:
+        return {"ok": False, "error": "QRIS sudah kedaluwarsa."}
+    if res.status_code == 404:
+        return {"ok": False, "error": "QRIS tidak ditemukan."}
+    if res.status_code != 200 or not res.content:
+        return {"ok": False, "error": f"Gateway merespons HTTP {res.status_code}."}
+    return {"ok": True, "data": res.content}
+
+
 def check_payment(amount: int, trx_id: str, start_time: str | None = None) -> dict:
     """Server-to-server payment check scoped by trx_id (anti double-claim).
 

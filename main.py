@@ -2621,6 +2621,8 @@ def user_history(request: Request, user: User = Depends(get_current_user)):
             "ts": _fmt_wib(t.created_at),
             "ts_sort": int(created.timestamp()),
             "amount": t.amount,
+            "fee": t.fee,
+            "total": t.total,
             "desc": keterangan,
             "status": t.status,
             # Halaman pembayaran milik gateway (qr/:id).
@@ -2654,7 +2656,11 @@ def user_history(request: Request, user: User = Depends(get_current_user)):
     history.sort(key=lambda r: r["ts_sort"], reverse=True)
     history = history[:20]
     db.close()
-    ctx.update({"request": request, "history": history})
+    ctx.update({
+        "request": request,
+        "history": history,
+        "topup_check_cooldown": TOPUP_MANUAL_CHECK_COOLDOWN,
+    })
     return render("user/history.html", context=ctx)
 
 
@@ -4142,6 +4148,7 @@ def topup_page(request: Request, user: User = Depends(get_current_user)):
         "topup_max": TOPUP_MAX_AMOUNT,
         "topup_fee_min": TOPUP_FEE_MIN,
         "topup_fee_max": TOPUP_FEE_MAX,
+        "topup_check_cooldown": TOPUP_MANUAL_CHECK_COOLDOWN,
         "gopay_ready": gopay.is_configured(),
     })
     return render("user/topup.html", context=ctx)
@@ -4272,10 +4279,53 @@ def topup_create(amount: int = Form(...), user: User = Depends(get_current_user)
         return JSONResponse({
             "ok": True,
             "id": row.id,
-            "pay_url": gopay.qr_page_url(qris_id),
+            "expires_ts": expires_ts,
             "amount": amount,
             "fee": row.fee,
             "total": total,
+            "pay_url": gopay.qr_page_url(qris_id),
+        })
+    finally:
+        db.close()
+
+
+@app.get("/user/topup/qr/{topup_id}")
+def topup_qr_image(topup_id: int, user: User = Depends(get_current_user)):
+    """Fetch the QRIS PNG live from the payment gateway (no DB storage).
+
+    Gateway harus online: kalau tidak, QR tidak bisa ditampilkan dan user
+    tidak bisa membayar — precaution agar tidak ada pembayaran saat PG down.
+    """
+    if user.role != "user":
+        return JSONResponse({"ok": False, "message": "Akses ditolak"}, status_code=403)
+    if not gopay.is_configured():
+        return JSONResponse({"ok": False, "message": "Topup QRIS belum tersedia."}, status_code=503)
+
+    db = next(get_db())
+    try:
+        row = db.query(TopupTransaction).filter(
+            TopupTransaction.id == topup_id,
+            TopupTransaction.user_id == user.id
+        ).first()
+        if not row:
+            return JSONResponse({"ok": False, "message": "Transaksi topup tidak ditemukan."}, status_code=404)
+        if row.status == "paid":
+            return JSONResponse({"ok": False, "message": "Pembayaran sudah dikonfirmasi."})
+        if not row.qris_id:
+            return JSONResponse({"ok": False, "message": "QRIS belum dibuat."}, status_code=404)
+
+        res = gopay.get_qris_image(row.qris_id)
+        if not res.get("ok"):
+            return JSONResponse({
+                "ok": False,
+                "message": res.get("error") or "Gagal mengambil QRIS dari gateway. Coba lagi."
+            }, status_code=502)
+
+        import base64 as _b64
+        return JSONResponse({
+            "ok": True,
+            "qr_img": "data:image/png;base64," + _b64.b64encode(res["data"]).decode(),
+            "expires_ts": _topup_expiry_epoch(row),
         })
     finally:
         db.close()

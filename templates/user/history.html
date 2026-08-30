@@ -325,7 +325,13 @@ function closeQr(reload) {
   document.getElementById('qr-load-error').classList.remove('show');
   document.getElementById('qr-load-retry-wrap').style.display = 'none';
   currentQrParams = null;
-  if (reload && wasPaid) location.reload();
+  if (reload && wasPaid) { location.reload(); return; }
+  if (!wasPaid) {
+    document.getElementById('qrisClosedModal').classList.add('show');
+  }
+}
+function closeQrisClosedModal() {
+  document.getElementById('qrisClosedModal').classList.remove('show');
 }
 
 document.addEventListener('DOMContentLoaded', armCheckButtons);
@@ -443,7 +449,7 @@ document.addEventListener('DOMContentLoaded', armCheckButtons);
       <div style="margin-top:14px;">
         <button class="btn btn-success" id="check-btn" onclick="checkStatus(false)" style="width:100%;">Cek Pembayaran</button>
       </div>
-      <div class="qr-hint">Saldo diverifikasi otomatis saat masa berlaku QR habis (&plusmn;5 menit). Untuk lebih cepat, tekan <strong>Cek Pembayaran</strong> &mdash; bisa dicek berulang kali (jeda 5 menit antar cek, selama &plusmn;24 jam). Halaman boleh kamu tutup &mdash; status tetap terverifikasi.</div>
+      <div class="qr-hint">Sudah bayar? Saldo dicek otomatis. Kamu juga bisa tekan <strong>Cek Pembayaran</strong>. Tidak masalah jika halaman ini ditutup.</div>
     </div>
 
     <div id="qr-view-success" style="display:none;">
@@ -462,6 +468,18 @@ document.addEventListener('DOMContentLoaded', armCheckButtons);
       <div style="margin-top:16px;">
         <button class="btn btn-success" onclick="closeQr(true)" style="width:100%;">Selesai</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="qrisClosedModal" onclick="if(event.target===this)closeQrisClosedModal()">
+  <div class="modal">
+    <h3>Tidak sengaja menutup QRIS?</h3>
+    <div class="modal-body">
+      <p style="margin:0;">Topup kamu yang masih aktif bisa dilihat kembali. Di halaman ini, pilih <strong>Lihat kode QRIS</strong> pada transaksi terkait untuk membukanya lagi.</p>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-primary" onclick="closeQrisClosedModal()">Oke, Saya Mengerti</button>
     </div>
   </div>
 </div>

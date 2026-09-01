@@ -2885,13 +2885,15 @@ def _build_addon_list(family_data):
 # halaman detail, dan jumlah yang benar-benar ditagih (balance & QRIS).
 # Kalau mau ikut harga API lagi, hapus baris XCP_ALT3_FIXED_PRICE dan
 # pemakaian _xcp_alt3_price() di bawah.
-XCP_ALT3_OPTION_NUMBER = 3
+# CATATAN: "alternatif 3" = index GLOBAL ke-35 (bukan 3!). TARGET_OPTIONS
+# {25, 33, 35} = alternatif 1, 2, 3 yang ditampilkan ke user.
+XCP_ALT3_OPTION_INDEX = 35
 XCP_ALT3_FIXED_PRICE = 30_000
 
 
 def _xcp_alt3_price(option_number, api_price):
     """Harga XCP alternatif 3 dipatok 30rb (hardcode); lainnya ikut API."""
-    if option_number == XCP_ALT3_OPTION_NUMBER:
+    if option_number == XCP_ALT3_OPTION_INDEX:
         return XCP_ALT3_FIXED_PRICE
     return api_price
 
@@ -3130,7 +3132,7 @@ def _fetch_xcp_detail(option_number, active_xl, tokens=None):
                 pkg = xl_get_package(API_KEY, tokens, option["package_option_code"], FAMILY_CODE_XTRA_COMBO, variant["package_variant_code"])
                 if pkg:
                     detail = _build_pkg_detail(pkg, option, variant, f"xcp-{option_number}", option_number)
-                    if option_number == XCP_ALT3_OPTION_NUMBER:
+                    if option_number == XCP_ALT3_OPTION_INDEX:
                         detail["price"] = XCP_ALT3_FIXED_PRICE
                     return detail
                 return None
@@ -3308,7 +3310,7 @@ def _get_payment_items_and_detail(option_number, active_xl):
                     return None, None
                 detail = _build_pkg_detail(pkg, option, variant, f"xcp-{option_number}", option_number)
                 price = _xcp_alt3_price(option_number, int(option["price"]))
-                if option_number == XCP_ALT3_OPTION_NUMBER:
+                if option_number == XCP_ALT3_OPTION_INDEX:
                     detail["price"] = XCP_ALT3_FIXED_PRICE
                 items = [PaymentItem(
                     item_code=option["package_option_code"],

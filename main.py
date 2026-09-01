@@ -777,7 +777,7 @@ def admin_prices_page(request: Request, user: User = Depends(get_current_user)):
                 "display": ov.display_price,
                 "rewrite": ov.rewrite_price,
             })
-    return render("admin/prices.html", context={
+    return render("admin/prices_xl.html", context={
         "request": request,
         "user": user,
         "rows": rows,

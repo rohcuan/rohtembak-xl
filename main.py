@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session, joinedload
 from jinja2 import Environment, FileSystemLoader
 
 from database import init_db, get_db
-from models import User, XLAccount, Balance, BalanceTransaction, FamilyFee, TopupTransaction
+from models import User, XLAccount, Balance, BalanceTransaction, FamilyFee, TopupTransaction, PackagePrice
 from auth import (
     verify_password, create_access_token, decode_token,
     get_current_user, seed_users, hash_password, ACCESS_TOKEN_EXPIRE_MINUTES,
@@ -353,6 +353,7 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass
     init_db()
+    _seed_pkg_price_defaults()
     db = next(get_db())
     seed_users(db)
     existing_users = db.query(User).filter(User.role == "user").all()
@@ -733,6 +734,94 @@ def admin_set_fee(
     _set_family_fee(_fee_key(family_key, "balance"), fee_pulsa)
     _set_family_fee(_fee_key(family_key, "qris"), fee_qris)
     return RedirectResponse(url="/admin/fees", status_code=303)
+
+
+@app.get("/admin/prices", response_class=HTMLResponse)
+def admin_prices_page(request: Request, user: User = Depends(get_current_user)):
+    if user.role != "admin":
+        return RedirectResponse(url="/user/dashboard", status_code=303)
+    db = next(get_db())
+    try:
+        overrides = db.query(PackagePrice).all()
+    finally:
+        db.close()
+    ov_map = {}
+    for ov in overrides:
+        ov_map[(ov.family_key, ov.option_number)] = ov
+    fam_order = ("xcp", "addon10", "addon15", "xtraconf")
+    rows = []
+    for fam in fam_order:
+        rows.append({
+            "key": fam,
+            "label": FAMILY_LABELS.get(fam, fam),
+            "pkgs": [],
+        })
+    # XCP: 3 alternatif tetap (TARGET_OPTIONS 25/33/35).
+    for i, num in enumerate((25, 33, 35), start=1):
+        ov = ov_map.get(("xcp", num))
+        rows[0]["pkgs"].append({
+            "number": num,
+            "name": f"Alternatif {i} (Option #{num})",
+            "display": ov.display_price if ov else None,
+            "rewrite": ov.rewrite_price if ov else None,
+        })
+    # Family lain: hanya tampilkan yang sudah punya override (paket dinamis
+    # dari API, tidak bisa dilist statis di halaman admin tanpa token XL).
+    for fam in fam_order[1:]:
+        fam_rows = [ov for k, ov in ov_map.items() if k[0] == fam]
+        for ov in sorted(fam_rows, key=lambda o: o.option_number):
+            row = next(r for r in rows if r["key"] == fam)
+            row["pkgs"].append({
+                "number": ov.option_number,
+                "name": f"Option #{ov.option_number}",
+                "display": ov.display_price,
+                "rewrite": ov.rewrite_price,
+            })
+    return render("admin/prices.html", context={
+        "request": request,
+        "user": user,
+        "rows": rows,
+    })
+
+
+@app.post("/admin/prices/set")
+def admin_prices_set(
+    family_key: str = Form(...),
+    option_number: int = Form(...),
+    display_price: str = Form(""),
+    rewrite_price: str = Form(""),
+    user: User = Depends(get_current_user),
+):
+    if user.role != "admin":
+        return RedirectResponse(url="/user/dashboard", status_code=303)
+    if family_key not in FAMILY_LABELS:
+        return RedirectResponse(url="/admin/prices", status_code=303)
+    try:
+        display = int(display_price) if display_price.strip() else None
+        rewrite = int(rewrite_price) if rewrite_price.strip() else None
+    except ValueError:
+        return RedirectResponse(url="/admin/prices", status_code=303)
+    if (display is not None and display < 0) or (rewrite is not None and rewrite < 0):
+        return RedirectResponse(url="/admin/prices", status_code=303)
+    db = next(get_db())
+    try:
+        row = db.query(PackagePrice).filter(
+            PackagePrice.family_key == family_key,
+            PackagePrice.option_number == option_number,
+        ).first()
+        if display is None and rewrite is None:
+            if row:
+                db.delete(row)
+        else:
+            if not row:
+                row = PackagePrice(family_key=family_key, option_number=option_number)
+                db.add(row)
+            row.display_price = display
+            row.rewrite_price = rewrite
+        db.commit()
+    finally:
+        db.close()
+    return RedirectResponse(url="/admin/prices", status_code=303)
 
 
 @app.post("/admin/balance/add")
@@ -2880,22 +2969,43 @@ def _build_addon_list(family_data):
     return addons
 
 
-# HARDCODED (BUKAN BUG): harga XCP alternatif 3 dipatok Rp 30.000, bukan dari
-# API XL. Sengaja dipasang atas permintaan owner. Berlaku di daftar paket,
-# halaman detail, dan jumlah yang benar-benar ditagih (balance & QRIS).
-# Kalau mau ikut harga API lagi, hapus baris XCP_ALT3_FIXED_PRICE dan
-# pemakaian _xcp_alt3_price() di bawah.
-# CATATAN: "alternatif 3" = index GLOBAL ke-35 (bukan 3!). TARGET_OPTIONS
-# {25, 33, 35} = alternatif 1, 2, 3 yang ditampilkan ke user.
-XCP_ALT3_OPTION_INDEX = 35
-XCP_ALT3_FIXED_PRICE = 30_000
+def _pkg_price_override(family_key, option_number):
+    """Override harga per paket dari DB (display, rewrite) — NULL = ikut API.
+
+    Admin mengatur ini di halaman /admin/prices. Sebelumnya nilai XCP alt 3
+    di-hardcode; sekarang disimpan di tabel package_prices (di-seed otomatis).
+    BUKAN BUG — ini konfigurasi bisnis yang disengaja.
+    """
+    db = next(get_db())
+    try:
+        row = db.query(PackagePrice).filter(
+            PackagePrice.family_key == family_key,
+            PackagePrice.option_number == option_number,
+        ).first()
+        if not row:
+            return None, None
+        return row.display_price, row.rewrite_price
+    finally:
+        db.close()
 
 
-def _xcp_alt3_price(option_number, api_price):
-    """Harga XCP alternatif 3 dipatok 30rb (hardcode); lainnya ikut API."""
-    if option_number == XCP_ALT3_OPTION_INDEX:
-        return XCP_ALT3_FIXED_PRICE
-    return api_price
+def _seed_pkg_price_defaults():
+    """Seed harga paket default (sekali, idempotent).
+
+    XCP alternatif 3 (index global 35) dipatok 30rb — migrasi dari hardcode
+    lama. Kalau admin menghapus override ini, harga kembali ikut API.
+    """
+    db = next(get_db())
+    try:
+        exists = db.query(PackagePrice).filter(
+            PackagePrice.family_key == "xcp",
+            PackagePrice.option_number == 35,
+        ).first()
+        if not exists:
+            db.add(PackagePrice(family_key="xcp", option_number=35, display_price=30_000, rewrite_price=30_000))
+            db.commit()
+    finally:
+        db.close()
 
 
 def _extract_xcp_packages(family_data):
@@ -2911,11 +3021,39 @@ def _extract_xcp_packages(family_data):
                     "number": option_number,
                     "variant_name": variant["name"],
                     "option_name": option["name"],
-                    "price": _xcp_alt3_price(option_number, option["price"]),
+                    "price": option["price"],
                     "option_code": option["package_option_code"],
                 })
             option_number += 1
     return packages
+
+
+def _apply_pkg_list_price(family_key, items):
+    """Apply display-price override to package list items (daftar paket).
+
+    item.price (yang dilihat user di kartu) = display_price kalau di-set,
+    selain itu tetap harga asli API. rewrite tidak dipakai di list.
+    """
+    for it in items:
+        display, _ = _pkg_price_override(family_key, it.get("number"))
+        if display is not None:
+            it["price"] = display
+    return items
+
+
+def _apply_pkg_detail_price(family_key, detail):
+    """Apply display+rewrite override to a detail dict.
+
+    detail["price"]  = display_price (halaman detail & checkout menampilkan ini)
+    detail["rewrite_price"] = rewrite_price (overwrite_amount saat settlement)
+    """
+    if not detail:
+        return detail
+    display, rewrite = _pkg_price_override(family_key, detail.get("number"))
+    if display is not None:
+        detail["price"] = display
+    detail["rewrite_price"] = rewrite
+    return detail
 
 
 # ─── Beli Paket ──────────────────────────────────────────────────────────────
@@ -3016,6 +3154,7 @@ def _stream_beli_paket_events(active_xl, want, disconnected=None):
             try:
                 data = xl_get_family(API_KEY, tokens, fam_code, is_enterprise=is_ent, migration_type=mig)
                 result = builder(data) if data else []
+                result = _apply_pkg_list_price(f, result)
             except Exception as e:
                 print(f"[beli-paket] Error: {e}")
                 ok = False
@@ -3132,9 +3271,7 @@ def _fetch_xcp_detail(option_number, active_xl, tokens=None):
                 pkg = xl_get_package(API_KEY, tokens, option["package_option_code"], FAMILY_CODE_XTRA_COMBO, variant["package_variant_code"])
                 if pkg:
                     detail = _build_pkg_detail(pkg, option, variant, f"xcp-{option_number}", option_number)
-                    if option_number == XCP_ALT3_OPTION_INDEX:
-                        detail["price"] = XCP_ALT3_FIXED_PRICE
-                    return detail
+                    return _apply_pkg_detail_price("xcp", detail)
                 return None
             option_number_local += 1
     return None
@@ -3309,9 +3446,8 @@ def _get_payment_items_and_detail(option_number, active_xl):
                 if not pkg:
                     return None, None
                 detail = _build_pkg_detail(pkg, option, variant, f"xcp-{option_number}", option_number)
+                detail = _apply_pkg_detail_price("xcp", detail)
                 price = int(option["price"])
-                if option_number == XCP_ALT3_OPTION_INDEX:
-                    detail["price"] = XCP_ALT3_FIXED_PRICE
                 items = [PaymentItem(
                     item_code=option["package_option_code"],
                     product_type="",
@@ -3347,6 +3483,7 @@ def _get_addon_items_and_detail(option_number, addon_spec, active_xl, tokens=Non
                 if not pkg:
                     return None, None
                 detail = _build_pkg_detail(pkg, option, variant, f"{url_id_prefix}-{option_number}", option_number)
+                detail = _apply_pkg_detail_price(_family_key_from_url_id(url_id_prefix), detail)
                 price = int(option["price"])
                 items = [PaymentItem(
                     item_code=option["package_option_code"],
@@ -3387,13 +3524,18 @@ def _parse_bizz_total(error_msg):
 
 
 def _settle_with_decoy(pay_fn, tokens, items, detail, method, use_decoy):
+    # rewrite_price (dari /admin/prices) menang atas display/api — ini jumlah
+    # yang benar-benar ditagih; item_price PaymentItem TETAP harga asli API.
+    charge = detail.get("rewrite_price")
+    if charge is None:
+        charge = detail["price"]
     if not use_decoy:
-        return pay_fn(API_KEY, tokens, items, detail["payment_for"], False, overwrite_amount=detail["price"])
+        return pay_fn(API_KEY, tokens, items, detail["payment_for"], False, overwrite_amount=charge)
 
     items_with_decoy, decoy_price = _append_decoy_item(items, tokens, method)
     if decoy_price is None:
         raise ValueError("Gagal memuat paket decoy.")
-    overwrite_amount = int(detail["price"] or 0) + decoy_price
+    overwrite_amount = int(charge or 0) + decoy_price
 
     if method == "qris":
         return pay_fn(API_KEY, tokens, items_with_decoy, "SHARE_PACKAGE", False, overwrite_amount=overwrite_amount, token_confirmation_idx=1)
@@ -3618,7 +3760,11 @@ def _checkout_context(active_xl, user, detail, method, family_key):
         db.close()
     fee = _get_family_fee(_fee_key(family_key, method))
     remaining = balance - fee
-    price = detail.get("price") or 0
+    # Checkout menampilkan harga yang BENAR-BENAR ditagih: rewrite_price kalau
+    # di-set di /admin/prices, selain itu display_price, lalu harga API.
+    price = detail.get("rewrite_price")
+    if price is None:
+        price = detail.get("price") or 0
     if family_key == "xtraconf" and method == "qris":
         price = price + _qris_decoy_price(active_xl)
     return {

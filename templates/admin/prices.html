@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Atur Harga Paket - RohTembak (XL){% endblock %}
+{% block head %}
+<style>
+.price-form { display: flex; gap: 8px; align-items: center; }
+.price-input { width: 120px; }
+.price-hint { font-size: 12.5px; color: #6b7280; line-height: 1.5; }
+@media (max-width: 700px) {
+  .price-form { width: 100%; flex-wrap: wrap; }
+  .price-input { width: 100%; }
+  .price-form .btn { flex: 1 1 100%; width: 100%; }
+  table thead { display: none; }
+  table, tbody, tr, td { display: block; width: 100%; }
+  tr {
+    background: #fff; border: 1px solid #eee; border-radius: 10px;
+    margin-bottom: 12px; padding: 0; overflow: hidden;
+  }
+  td {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 14px; border: none; border-bottom: 1px solid #f0f0f0;
+    font-size: 14px;
+  }
+  td:first-child, tr:hover td:first-child {
+    background: #e5e7eb;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  td:last-child { border-bottom: none; }
+  td::before {
+    content: attr(data-label);
+    font-weight: 600; color: #666; font-size: 12px;
+    text-transform: uppercase; letter-spacing: .5px;
+    margin-right: 12px; flex-shrink: 0;
+  }
+}
+</style>
+{% endblock %}
+{% block content %}
+
+<div class="header-section">
+    <div>
+        <div class="page-title">Atur Harga Paket</div>
+        <div class="page-subtitle">Override harga per paket: harga tampilan vs harga yang benar-benar ditagih.</div>
+    </div>
+</div>
+
+<div class="card" style="margin-bottom:16px;">
+    <div class="price-hint">
+        <strong>Display price</strong> = harga yang dilihat user (daftar &amp; halaman detail).
+        <strong>Rewrite price</strong> = nominal yang benar-benar ditagih (pulsa &amp; QRIS).
+        Kosongkan keduanya = ikut harga asli API. Kosongkan salah satu = field itu ikut harga API,
+        sedangkan yang diisi tetap dipakai. Kosongkan keduanya pada paket yang sudah pernah diset
+        akan menghapus override-nya. XCP Alternatif 3 di-seed otomatis 30.000 saat install.
+    </div>
+</div>
+
+{% for sec in rows %}
+<div class="card">
+    <h2 style="font-size:16px;margin-bottom:4px;">{{ sec.label }}</h2>
+    {% if sec.items %}
+    <table>
+        <thead>
+            <tr>
+                <th>Paket</th>
+                <th>Display Price (IDR)</th>
+                <th>Rewrite Price (IDR)</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for it in sec.pkgs %}
+            <tr>
+                <td data-label="Paket"><strong>{{ it.name }}</strong></td>
+                <td data-label="Display Price">
+                    <input type="number" name="display_price" value="{{ it.display if it.display is not none else '' }}" min="0" step="1" placeholder="Ikut API" class="form-control price-input" form="price-form-{{ sec.key }}-{{ it.number }}">
+                </td>
+                <td data-label="Rewrite Price">
+                    <input type="number" name="rewrite_price" value="{{ it.rewrite if it.rewrite is not none else '' }}" min="0" step="1" placeholder="Ikut API" class="form-control price-input" form="price-form-{{ sec.key }}-{{ it.number }}">
+                </td>
+                <td>
+                    <form method="POST" action="/admin/prices/set" class="price-form" id="price-form-{{ sec.key }}-{{ it.number }}">
+                        <input type="hidden" name="family_key" value="{{ sec.key }}">
+                        <input type="hidden" name="option_number" value="{{ it.number }}">
+                        <button type="submit" class="btn btn-sm btn-outline">Simpan</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="price-hint" style="margin:8px 0 12px;">Belum ada override. Tambahkan lewat DB (family key <code>{{ sec.key }}</code> + option number) atau gunakan API.</p>
+    {% endif %}
+</div>
+{% endfor %}
+
+{% endblock %}

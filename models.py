@@ -112,3 +112,26 @@ class FamilyFee(Base):
     family_key = Column(String(20), unique=True, nullable=False)
     fee = Column(Integer, default=0)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+class PackagePrice(Base):
+    """Override harga per paket.
+
+    display_price: harga yang ditampilkan ke user (daftar + halaman detail).
+                   NULL = ikut harga asli dari API.
+    rewrite_price: harga yang benar-benar ditagih (overwrite_amount saat
+                   settlement, balance & QRIS). NULL = ikut display_price,
+                   lalu harga API.
+    item_price (PaymentItem) TIDAK pernah diubah — XL menolak (INVALID_PRICE)
+    kalau item_price != harga katalog, jadi rewrite hanya lewat overwrite_amount.
+    """
+
+    __tablename__ = "package_prices"
+
+    id = Column(Integer, primary_key=True, index=True)
+    family_key = Column(String(20), nullable=False, index=True)
+    option_number = Column(Integer, nullable=False)
+    display_price = Column(Integer, default=None)
+    rewrite_price = Column(Integer, default=None)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    __table_args__ = (Index("uq_package_price", "family_key", "option_number", unique=True),)

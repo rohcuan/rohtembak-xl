@@ -353,7 +353,6 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass
     init_db()
-    _seed_pkg_price_defaults()
     db = next(get_db())
     seed_users(db)
     existing_users = db.query(User).filter(User.role == "user").all()
@@ -2985,25 +2984,6 @@ def _pkg_price_override(family_key, option_number):
         if not row:
             return None, None
         return row.display_price, row.rewrite_price
-    finally:
-        db.close()
-
-
-def _seed_pkg_price_defaults():
-    """Seed harga paket default (sekali, idempotent).
-
-    XCP alternatif 3 (index global 35) dipatok 30rb — migrasi dari hardcode
-    lama. Kalau admin menghapus override ini, harga kembali ikut API.
-    """
-    db = next(get_db())
-    try:
-        exists = db.query(PackagePrice).filter(
-            PackagePrice.family_key == "xcp",
-            PackagePrice.option_number == 35,
-        ).first()
-        if not exists:
-            db.add(PackagePrice(family_key="xcp", option_number=35, display_price=30_000, rewrite_price=30_000))
-            db.commit()
     finally:
         db.close()
 

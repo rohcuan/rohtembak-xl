@@ -2880,6 +2880,22 @@ def _build_addon_list(family_data):
     return addons
 
 
+# HARDCODED (BUKAN BUG): harga XCP alternatif 3 dipatok Rp 30.000, bukan dari
+# API XL. Sengaja dipasang atas permintaan owner. Berlaku di daftar paket,
+# halaman detail, dan jumlah yang benar-benar ditagih (balance & QRIS).
+# Kalau mau ikut harga API lagi, hapus baris XCP_ALT3_FIXED_PRICE dan
+# pemakaian _xcp_alt3_price() di bawah.
+XCP_ALT3_OPTION_NUMBER = 3
+XCP_ALT3_FIXED_PRICE = 30_000
+
+
+def _xcp_alt3_price(option_number, api_price):
+    """Harga XCP alternatif 3 dipatok 30rb (hardcode); lainnya ikut API."""
+    if option_number == XCP_ALT3_OPTION_NUMBER:
+        return XCP_ALT3_FIXED_PRICE
+    return api_price
+
+
 def _extract_xcp_packages(family_data):
     packages = []
     if not (family_data and family_data.get("package_variants")):
@@ -2893,7 +2909,7 @@ def _extract_xcp_packages(family_data):
                     "number": option_number,
                     "variant_name": variant["name"],
                     "option_name": option["name"],
-                    "price": option["price"],
+                    "price": _xcp_alt3_price(option_number, option["price"]),
                     "option_code": option["package_option_code"],
                 })
             option_number += 1
@@ -3113,7 +3129,10 @@ def _fetch_xcp_detail(option_number, active_xl, tokens=None):
                 _api_delay()
                 pkg = xl_get_package(API_KEY, tokens, option["package_option_code"], FAMILY_CODE_XTRA_COMBO, variant["package_variant_code"])
                 if pkg:
-                    return _build_pkg_detail(pkg, option, variant, f"xcp-{option_number}", option_number)
+                    detail = _build_pkg_detail(pkg, option, variant, f"xcp-{option_number}", option_number)
+                    if option_number == XCP_ALT3_OPTION_NUMBER:
+                        detail["price"] = XCP_ALT3_FIXED_PRICE
+                    return detail
                 return None
             option_number_local += 1
     return None
@@ -3288,7 +3307,9 @@ def _get_payment_items_and_detail(option_number, active_xl):
                 if not pkg:
                     return None, None
                 detail = _build_pkg_detail(pkg, option, variant, f"xcp-{option_number}", option_number)
-                price = int(option["price"])
+                price = _xcp_alt3_price(option_number, int(option["price"]))
+                if option_number == XCP_ALT3_OPTION_NUMBER:
+                    detail["price"] = XCP_ALT3_FIXED_PRICE
                 items = [PaymentItem(
                     item_code=option["package_option_code"],
                     product_type="",

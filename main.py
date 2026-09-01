@@ -736,7 +736,7 @@ def admin_set_fee(
 
 
 @app.get("/prices-xl", response_class=HTMLResponse)
-def admin_prices_page(request: Request, user: User = Depends(get_current_user)):
+def admin_prices_xl_page(request: Request, user: User = Depends(get_current_user)):
     if user.role != "admin":
         return RedirectResponse(url="/user/dashboard", status_code=303)
     db = next(get_db())
@@ -784,7 +784,7 @@ def admin_prices_page(request: Request, user: User = Depends(get_current_user)):
 
 
 @app.post("/prices-xl/set")
-def admin_prices_set(
+def admin_prices_xl_set(
     family_key: str = Form(...),
     option_number: int = Form(...),
     display_price: str = Form(""),

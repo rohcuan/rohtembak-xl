@@ -1258,7 +1258,7 @@ def admin_backup(format: str = "zip", admin_user: User = Depends(get_current_use
                 "subscription_type": x.subscription_type,
                 "is_active": bool(x.is_active),
             })
-    fees = _get_all_family_fees()
+    prices = _get_all_pkg_prices()
     if format == "txt":
         lines = []
         for u in users_data:
@@ -1278,12 +1278,13 @@ def admin_backup(format: str = "zip", admin_user: User = Depends(get_current_use
             "admin": admin_data,
             "users": [dict(u, xl_accounts=[a for a in xl_data if a["username"] == u["username"]]) for u in users_data],
             "fees": fees,
+            "prices": prices,
             "settings": _collect_backup_settings(),
         }
         resp = JSONResponse(payload)
         resp.headers["Content-Disposition"] = 'attachment; filename="backup.json"'
         return resp
-    zip_bytes = _build_backup_zip_bytes(admin_data, users_data, xl_data, fees, users)
+    zip_bytes = _build_backup_zip_bytes(admin_data, users_data, xl_data, fees, prices, users)
     resp = Response(content=zip_bytes, media_type="application/zip")
     resp.headers["Content-Disposition"] = 'attachment; filename="backup.zip"'
     return resp
@@ -1314,10 +1315,10 @@ def _collect_backup_settings() -> dict:
     }
 
 
-def _build_backup_zip_bytes(admin_data: dict, users_data: list, xl_data: list, fees: dict, users: list) -> bytes:
+def _build_backup_zip_bytes(admin_data: dict, users_data: list, xl_data: list, fees: dict, prices: list, users: list) -> bytes:
     """Bangun backup.zip format manifest v3 — dipakai /admin/backup dan auto backup Telegram.
 
-    Isi: users, xl_accounts, saldo, fee, pengaturan, fingerprint per user,
+    Isi: users, xl_accounts, saldo, fee, harga paket, pengaturan, fingerprint per user,
     device.fp. CATATAN: database (*.db) dan riwayat topup TIDAK ikut — restore
     mengembalikan akun & saldo, bukan riwayat transaksi."""
     exported_at = datetime.now(WIB).strftime("%Y-%m-%d %H:%M:%S WIB")
@@ -1329,12 +1330,13 @@ def _build_backup_zip_bytes(admin_data: dict, users_data: list, xl_data: list, f
             "version": 3,
             "app": "RohTembak (XL)",
             "exported_at": exported_at,
-            "counts": {"users": len(users_data), "xl_accounts": len(xl_data), "fees": len(fees), "settings": 1},
+            "counts": {"users": len(users_data), "xl_accounts": len(xl_data), "fees": len(fees), "prices": len(prices), "settings": 1},
         }, indent=2, ensure_ascii=False)),
         ("admin.json", json.dumps(admin_data, indent=2, ensure_ascii=False)),
         ("users.json", json.dumps(users_data, indent=2, ensure_ascii=False)),
         ("xl_accounts.json", json.dumps(xl_data, indent=2, ensure_ascii=False)),
         ("fees.json", json.dumps(fees, indent=2, ensure_ascii=False)),
+        ("prices.json", json.dumps(prices, indent=2, ensure_ascii=False)),
         ("settings.json", json.dumps(settings_data, indent=2, ensure_ascii=False)),
     ]
     if ax_fp:
@@ -1570,7 +1572,8 @@ def _autobackup_zip_bytes() -> bytes:
                     "is_active": bool(x.is_active),
                 })
         fees = _get_all_family_fees()
-        return _build_backup_zip_bytes(admin_data, users_data, xl_data, fees, users)
+        prices = _get_all_pkg_prices()
+        return _build_backup_zip_bytes(admin_data, users_data, xl_data, fees, prices, users)
     finally:
         db.close()
 
@@ -1851,7 +1854,7 @@ def _norm_user_entry(entry) -> dict:
 
 
 def _norm_backup(data: dict) -> dict:
-    """Normalize full backup data into sections {admin, users, xl_accounts, fees}."""
+    """Normalize full backup data into sections {admin, users, xl_accounts, fees, prices}."""
     users_raw = data.get("users") or []
     users = [_norm_user_entry(u) for u in users_raw if isinstance(u, dict)]
     xl_accounts = data.get("xl_accounts")
@@ -1872,6 +1875,7 @@ def _norm_backup(data: dict) -> dict:
         "users": users,
         "xl_accounts": xl_accounts or None,
         "fees": data.get("fees") if isinstance(data.get("fees"), dict) else None,
+        "prices": data.get("prices") if isinstance(data.get("prices"), list) else None,
         "settings": data.get("settings") if isinstance(data.get("settings"), dict) else None,
     }
 
@@ -1887,11 +1891,11 @@ def _parse_backup_json(data) -> dict:
         if isinstance(users, list):
             return {"kind": "users", "version": 1, "admin": None,
                     "users": [_norm_user_entry(u) for u in users if isinstance(u, dict)],
-                    "xl_accounts": None, "fees": None}
+                    "xl_accounts": None, "fees": None, "prices": None}
     if isinstance(data, list):
         return {"kind": "users", "version": 1, "admin": None,
                 "users": [_norm_user_entry(u) for u in data if isinstance(u, dict)],
-                "xl_accounts": None, "fees": None}
+                "xl_accounts": None, "fees": None, "prices": None}
     raise ValueError("Format JSON tidak dikenali. Gunakan file hasil backup.")
 
 
@@ -1953,6 +1957,7 @@ def _load_backup_v3(zf) -> dict | None:
         "users": read("users.json"),
         "xl_accounts": read("xl_accounts.json"),
         "fees": read("fees.json"),
+        "prices": read("prices.json"),
     })
     data["device_fp"] = device_fp
     data["user_fingerprints"] = user_fingerprints
@@ -2211,6 +2216,34 @@ async def admin_restore_upload(
         if key in FAMILY_FEE_DEFAULTS and isinstance(fee, int) and not isinstance(fee, bool) and fee >= 0:
             valid_fees[key] = fee
 
+    valid_prices = []
+    price_seen = set()
+    for p in data["prices"] or []:
+        if not isinstance(p, dict):
+            continue
+        fk = str(p.get("family_key") or "").strip()
+        try:
+            on = int(p.get("option_number"))
+        except (TypeError, ValueError):
+            continue
+        if not fk or on < 0 or (fk, on) in price_seen:
+            continue
+        dp = p.get("display_price")
+        rp = p.get("rewrite_price")
+        dp = int(dp) if dp is not None else None
+        rp = int(rp) if rp is not None else None
+        if dp is not None and dp < 0:
+            continue
+        if rp is not None and rp < 0:
+            continue
+        price_seen.add((fk, on))
+        valid_prices.append({
+            "family_key": fk,
+            "option_number": on,
+            "display_price": dp,
+            "rewrite_price": rp,
+        })
+
     valid_settings = _validate_restore_settings(data.get("settings"))
     legacy_backup = False
     if valid_settings is None and data.get("kind") == "full":
@@ -2230,7 +2263,7 @@ async def admin_restore_upload(
     a_email = str(admin_section.get("email") or "").strip().lower() if admin_section else ""
     has_admin = bool(a_username and a_password)
 
-    if not (has_admin or valid_users or valid_xl or valid_fees or valid_settings is not None):
+    if not (has_admin or valid_users or valid_xl or valid_fees or valid_prices or valid_settings is not None):
         return _restore_render(request, admin_user, error="Tidak ada data valid dalam file backup.")
 
     # 2. Wipe all existing data so the restore result is identical with the backup
@@ -2240,6 +2273,7 @@ async def admin_restore_upload(
     db.query(XLAccount).delete(synchronize_session=False)
     db.query(User).delete(synchronize_session=False)
     db.query(FamilyFee).delete(synchronize_session=False)
+    db.query(PackagePrice).delete(synchronize_session=False)
     db.expunge_all()
     with _token_lock:
         _XL_TOKEN_CACHE.clear()
@@ -2332,6 +2366,16 @@ async def admin_restore_upload(
         db.add(FamilyFee(family_key=key, fee=fee))
         fee_restored += 1
 
+    price_restored = 0
+    for p in valid_prices:
+        db.add(PackagePrice(
+            family_key=p["family_key"],
+            option_number=p["option_number"],
+            display_price=p["display_price"],
+            rewrite_price=p["rewrite_price"],
+        ))
+        price_restored += 1
+
     db.commit()
 
     settings_applied: list = []
@@ -2345,6 +2389,7 @@ async def admin_restore_upload(
         "xl_restored": xl_restored,
         "xl_skipped": xl_skipped,
         "fees_restored": fee_restored,
+        "prices_restored": price_restored,
     }
     if valid_settings is not None:
         result["settings_applied"] = settings_applied
@@ -2972,7 +3017,7 @@ def _pkg_price_override(family_key, option_number):
     """Override harga per paket dari DB (display, rewrite) — NULL = ikut API.
 
     Admin mengatur ini di halaman /prices-xl. Sebelumnya nilai XCP alt 3
-    di-hardcode; sekarang disimpan di tabel package_prices (di-seed otomatis).
+    di-hardcode; sekarang disimpan di tabel package_prices.
     BUKAN BUG — ini konfigurasi bisnis yang disengaja.
     """
     db = next(get_db())
@@ -2984,6 +3029,26 @@ def _pkg_price_override(family_key, option_number):
         if not row:
             return None, None
         return row.display_price, row.rewrite_price
+    finally:
+        db.close()
+
+
+def _get_all_pkg_prices() -> list:
+    """Kumpulkan semua override harga paket untuk backup (prices.json)."""
+    db = next(get_db())
+    try:
+        rows = db.query(PackagePrice).order_by(
+            PackagePrice.family_key, PackagePrice.option_number
+        ).all()
+        return [
+            {
+                "family_key": r.family_key,
+                "option_number": r.option_number,
+                "display_price": r.display_price,
+                "rewrite_price": r.rewrite_price,
+            }
+            for r in rows
+        ]
     finally:
         db.close()
 

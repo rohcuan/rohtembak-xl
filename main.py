@@ -3309,7 +3309,7 @@ def _get_payment_items_and_detail(option_number, active_xl):
                 if not pkg:
                     return None, None
                 detail = _build_pkg_detail(pkg, option, variant, f"xcp-{option_number}", option_number)
-                price = _xcp_alt3_price(option_number, int(option["price"]))
+                price = int(option["price"])
                 if option_number == XCP_ALT3_OPTION_INDEX:
                     detail["price"] = XCP_ALT3_FIXED_PRICE
                 items = [PaymentItem(

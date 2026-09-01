@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Atur Harga Paket - RohTembak (XL){% endblock %}
+{% block title %}Atur Harga Paket XL - RohTembak (XL){% endblock %}
 {% block head %}
 <style>
 .price-form { display: flex; gap: 8px; align-items: center; }
@@ -38,7 +38,7 @@
 
 <div class="header-section">
     <div>
-        <div class="page-title">Atur Harga Paket</div>
+        <div class="page-title">Atur Harga Paket XL</div>
         <div class="page-subtitle">Override harga per paket: harga tampilan vs harga yang benar-benar ditagih.</div>
     </div>
 </div>
@@ -77,7 +77,7 @@
                     <input type="number" name="rewrite_price" value="{{ it.rewrite if it.rewrite is not none else '' }}" min="0" step="1" placeholder="Ikut API" class="form-control price-input" form="price-form-{{ sec.key }}-{{ it.number }}">
                 </td>
                 <td>
-                    <form method="POST" action="/admin/prices/set" class="price-form" id="price-form-{{ sec.key }}-{{ it.number }}">
+                    <form method="POST" action="/prices-xl/set" class="price-form" id="price-form-{{ sec.key }}-{{ it.number }}">
                         <input type="hidden" name="family_key" value="{{ sec.key }}">
                         <input type="hidden" name="option_number" value="{{ it.number }}">
                         <button type="submit" class="btn btn-sm btn-outline">Simpan</button>

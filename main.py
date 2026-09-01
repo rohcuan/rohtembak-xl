@@ -736,7 +736,7 @@ def admin_set_fee(
     return RedirectResponse(url="/admin/fees", status_code=303)
 
 
-@app.get("/admin/prices", response_class=HTMLResponse)
+@app.get("/prices-xl", response_class=HTMLResponse)
 def admin_prices_page(request: Request, user: User = Depends(get_current_user)):
     if user.role != "admin":
         return RedirectResponse(url="/user/dashboard", status_code=303)
@@ -784,7 +784,7 @@ def admin_prices_page(request: Request, user: User = Depends(get_current_user)):
     })
 
 
-@app.post("/admin/prices/set")
+@app.post("/prices-xl/set")
 def admin_prices_set(
     family_key: str = Form(...),
     option_number: int = Form(...),
@@ -795,14 +795,14 @@ def admin_prices_set(
     if user.role != "admin":
         return RedirectResponse(url="/user/dashboard", status_code=303)
     if family_key not in FAMILY_LABELS:
-        return RedirectResponse(url="/admin/prices", status_code=303)
+        return RedirectResponse(url="/prices-xl", status_code=303)
     try:
         display = int(display_price) if display_price.strip() else None
         rewrite = int(rewrite_price) if rewrite_price.strip() else None
     except ValueError:
-        return RedirectResponse(url="/admin/prices", status_code=303)
+        return RedirectResponse(url="/prices-xl", status_code=303)
     if (display is not None and display < 0) or (rewrite is not None and rewrite < 0):
-        return RedirectResponse(url="/admin/prices", status_code=303)
+        return RedirectResponse(url="/prices-xl", status_code=303)
     db = next(get_db())
     try:
         row = db.query(PackagePrice).filter(
@@ -821,7 +821,7 @@ def admin_prices_set(
         db.commit()
     finally:
         db.close()
-    return RedirectResponse(url="/admin/prices", status_code=303)
+    return RedirectResponse(url="/prices-xl", status_code=303)
 
 
 @app.post("/admin/balance/add")
@@ -2972,7 +2972,7 @@ def _build_addon_list(family_data):
 def _pkg_price_override(family_key, option_number):
     """Override harga per paket dari DB (display, rewrite) — NULL = ikut API.
 
-    Admin mengatur ini di halaman /admin/prices. Sebelumnya nilai XCP alt 3
+    Admin mengatur ini di halaman /prices-xl. Sebelumnya nilai XCP alt 3
     di-hardcode; sekarang disimpan di tabel package_prices (di-seed otomatis).
     BUKAN BUG — ini konfigurasi bisnis yang disengaja.
     """
@@ -3524,7 +3524,7 @@ def _parse_bizz_total(error_msg):
 
 
 def _settle_with_decoy(pay_fn, tokens, items, detail, method, use_decoy):
-    # rewrite_price (dari /admin/prices) menang atas display/api — ini jumlah
+    # rewrite_price (dari /prices-xl) menang atas display/api — ini jumlah
     # yang benar-benar ditagih; item_price PaymentItem TETAP harga asli API.
     charge = detail.get("rewrite_price")
     if charge is None:
@@ -3761,7 +3761,7 @@ def _checkout_context(active_xl, user, detail, method, family_key):
     fee = _get_family_fee(_fee_key(family_key, method))
     remaining = balance - fee
     # Checkout menampilkan harga yang BENAR-BENAR ditagih: rewrite_price kalau
-    # di-set di /admin/prices, selain itu display_price, lalu harga API.
+    # di-set di /prices-xl, selain itu display_price, lalu harga API.
     price = detail.get("rewrite_price")
     if price is None:
         price = detail.get("price") or 0

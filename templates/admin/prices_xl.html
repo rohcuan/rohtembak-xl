@@ -74,7 +74,7 @@
             <input type="hidden" name="label" value="{{ sec.label }}">
             <input type="hidden" name="family_code" value="{{ family_codes[sec.key] if family_codes else '' }}">
             <input type="text" name="url_prefix" value="{{ family_prefixes[sec.key] if family_prefixes else '' }}" class="form-control price-input" style="width:120px;" title="Prefix URL detail/checkout" placeholder="url-prefix">
-            <input type="text" name="option_codes" value="{{ family_options[sec.key] if family_options else '' }}" class="form-control price-input" style="width:130px;" title="Option codes (CSV) — kosong = semua opsi" placeholder="25,33,35 (kosong=semua)">
+            <input type="hidden" name="option_codes" value="{{ family_options[sec.key] if family_options else '' }}">
             <label class="price-hint" style="display:flex;align-items:center;gap:4px;"><input type="checkbox" name="qris_decoy" value="1" {% if family_decoys and family_decoys[sec.key] %}checked{% endif %}>QRIS decoy</label>
             <button type="submit" class="btn btn-sm btn-outline">Simpan Detail</button>
             <a href="/prices-xl/family/toggle?key={{ sec.key }}" class="price-hint">({{ 'sembunyikan' if family_actives and family_actives[sec.key] else 'tampilkan' }} di Beli Paket)</a>
@@ -174,7 +174,6 @@
     <form method="POST" action="/prices-xl/family" class="price-form" style="flex-wrap:wrap;">
         <input type="text" name="label" class="form-control price-input" style="width:180px;" placeholder="Label tampilan" required>
         <input type="text" name="family_code" class="form-control price-input" style="width:250px;" placeholder="Family code (UUID)" required>
-        <input type="text" name="option_codes" class="form-control price-input" style="width:110px;" placeholder="opt codes (opsional)">
         <label class="price-hint" style="display:flex;align-items:center;gap:4px;"><input type="checkbox" name="qris_decoy" value="1">QRIS decoy</label>
         <button type="submit" class="btn btn-sm btn-primary">Tambah</button>
     </form>

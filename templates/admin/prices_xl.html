@@ -78,7 +78,7 @@
             <a href="/prices-xl/family/toggle?key={{ sec.key }}" class="price-hint">({{ 'sembunyikan' if family_actives and family_actives[sec.key] else 'tampilkan' }} di Beli Paket)</a>
         </form>
     </div>
-    {% if sec.pkgs %}
+    {% if sec.pkgs and sec.pkgs|length > 0 %}
     <table>
         <thead>
             <tr>
@@ -124,23 +124,61 @@
             </tr>
             {% endfor %}
         </tbody>
+        <tfoot>
+            <tr>
+                <td>
+                    <input type="number" name="option_number" min="0" step="1" placeholder="#" class="form-control price-input" style="width:90px;" form="add-form-{{ sec.key }}" required>
+                </td>
+                <td><span class="price-hint">XXX</span></td>
+                <td><span class="price-hint">XXX</span></td>
+                <td><input type="number" name="display_price" min="0" step="1" placeholder="Ikut API" class="form-control price-input" form="add-form-{{ sec.key }}"></td>
+                <td><input type="number" name="rewrite_price" min="0" step="1" placeholder="Ikut API" class="form-control price-input" form="add-form-{{ sec.key }}"></td>
+                <td>
+                    <form method="POST" action="/prices-xl/pkg/add" class="price-form" id="add-form-{{ sec.key }}">
+                        <input type="hidden" name="family_key" value="{{ sec.key }}">
+                        <button type="submit" class="btn btn-sm btn-outline">Tambah</button>
+                    </form>
+                </td>
+                <td></td>
+            </tr>
+        </tfoot>
     </table>
     {% else %}
-    <p class="price-hint" style="margin:8px 0 12px;">Belum ada paket di group ini — <a href="/prices-xl/family/{{ sec.key }}/browse">Browse Package</a> lalu tambahkan yang diinginkan.</p>
+    <table>
+        <thead>
+            <tr>
+                <th>Option Code</th>
+                <th>Package Name</th>
+                <th>Default Price (API)</th>
+                <th>Display Price (IDR)</th>
+                <th>Rewrite Price (IDR)</th>
+                <th></th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td colspan="7" class="price-hint">Belum ada paket di group ini — <a href="/prices-xl/family/{{ sec.key }}/browse">Browse Package</a> lalu tambahkan yang diinginkan.</td>
+            </tr>
+        </tbody>
+        <tfoot>
+            <tr>
+                <td><input type="number" name="option_number" min="0" step="1" placeholder="#" class="form-control price-input" style="width:90px;" form="add-form-{{ sec.key }}" required></td>
+                <td><span class="price-hint">XXX</span></td>
+                <td><span class="price-hint">XXX</span></td>
+                <td><input type="number" name="display_price" min="0" step="1" placeholder="Ikut API" class="form-control price-input" form="add-form-{{ sec.key }}"></td>
+                <td><input type="number" name="rewrite_price" min="0" step="1" placeholder="Ikut API" class="form-control price-input" form="add-form-{{ sec.key }}"></td>
+                <td>
+                    <form method="POST" action="/prices-xl/pkg/add" class="price-form" id="add-form-{{ sec.key }}">
+                        <input type="hidden" name="family_key" value="{{ sec.key }}">
+                        <button type="submit" class="btn btn-sm btn-outline">Tambah</button>
+                    </form>
+                </td>
+                <td></td>
+            </tr>
+        </tfoot>
+    </table>
     {% endif %}
-    <div style="margin-top:12px;border-top:1px solid #eee;padding-top:10px;">
-        <div class="price-hint" style="margin:0 0 8px;">+ Tambah paket:</div>
-        <form method="POST" action="/prices-xl/pkg/add" id="add-form-{{ sec.key }}" style="display:grid;grid-template-columns:120px 1fr 140px 150px 150px 70px 70px;gap:8px;align-items:center;">
-            <input type="hidden" name="family_key" value="{{ sec.key }}">
-            <input type="number" name="option_number" min="0" step="1" placeholder="#" class="form-control price-input" required>
-            <span class="price-hint" style="text-align:center;">XXX</span>
-            <span class="price-hint" style="text-align:center;">XXX</span>
-            <input type="number" name="display_price" min="0" step="1" placeholder="Display" class="form-control price-input">
-            <input type="number" name="rewrite_price" min="0" step="1" placeholder="Rewrite" class="form-control price-input">
-            <button type="submit" class="btn btn-sm btn-outline">Tambah</button>
-            <span></span>
-        </form>
-    </div>
 </div>
 {% endfor %}
 

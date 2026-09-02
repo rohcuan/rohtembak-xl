@@ -796,10 +796,15 @@ def admin_prices_xl_page(request: Request, user: User = Depends(get_current_user
             })
         rows.append(row)
     admin_sess = _admin_xl_read()
+    n = 1
+    while f"group-package-{n}" in reg:
+        n += 1
+    next_family_key = f"group-package-{n}"
     return render("admin/prices_xl.html", context={
         "request": request,
         "user": user,
         "rows": rows,
+        "next_family_key": next_family_key,
         "family_codes": {k: v["family_code"] for k, v in reg.items()},
         "family_prefixes": {k: v["url_prefix"] for k, v in reg.items()},
         "family_decoys": {k: v["qris_decoy"] for k, v in reg.items()},
@@ -889,37 +894,52 @@ def admin_prices_xl_set(
 
 @app.post("/prices-xl/family")
 def admin_prices_xl_family(
-    family_key: str = Form(...),
+    family_key: str = Form(""),
     label: str = Form(...),
-    family_code: str = Form(...),
+    family_code: str = Form(""),
     url_prefix: str = Form(""),
     option_codes: str = Form(""),
     qris_decoy: str = Form(""),
     user: User = Depends(get_current_user),
 ):
-    """Ubah/create family di registry: label, family code, url prefix,
-    option codes (CSV; kosong = semua), dan flag decoy QRIS.
+    """Manage family group di registry.
 
-    family_key baru (bukan default) = tambah group paket baru — halaman
-    beli-paket otomatis merendernya sebagai container baru.
+    - Tanpa family_key = TAMBAH group baru: family_key & url_prefix
+      di-generate otomatis sebagai group-package-N (N urut), jadi admin tak
+      perlu mengisi slug/prefix yang membingungkan.
+    - Dengan family_key = EDIT family yang sudah ada (label, family code,
+      url prefix, option codes, flag decoy).
+
+    Label & family code diisi manual; halaman beli-paket otomatis merender
+    family_key baru sebagai container baru.
     """
     if user.role != "admin":
         return RedirectResponse(url="/user/dashboard", status_code=303)
     label = label.strip()[:100]
     family_code = family_code.strip()[:64]
-    url_prefix = re.sub(r"[^a-z0-9-]", "", url_prefix.strip().lower())[:40]
     option_codes = re.sub(r"[^0-9,]", "", option_codes.strip())[:255]
-    if not label or not family_code or not family_key.strip():
+    if not label:
         return RedirectResponse(url="/prices-xl", status_code=303)
+    reg = _family_registry()
     family_key = family_key.strip().lower()[:20]
-    if not re.fullmatch(r"[a-z0-9_]+", family_key):
-        return RedirectResponse(url="/prices-xl", status_code=303)
-    if not url_prefix:
-        url_prefix = family_key
-    # prefix tidak boleh tabrakan dengan family lain
-    existing = {k: v["url_prefix"] for k, v in _family_registry().items()}
-    if existing.get(family_key, url_prefix) != url_prefix and url_prefix in existing.values():
-        return RedirectResponse(url="/prices-xl", status_code=303)
+    editing = bool(family_key)
+    if editing:
+        if family_key not in reg:
+            return RedirectResponse(url="/prices-xl", status_code=303)
+        if not re.fullmatch(r"[a-z0-9_]+", family_key):
+            return RedirectResponse(url="/prices-xl", status_code=303)
+        prefix = re.sub(r"[^a-z0-9-]", "", url_prefix.strip().lower())[:40] or family_key
+        existing = {k: v["url_prefix"] for k, v in reg.items()}
+        if existing.get(family_key, prefix) != prefix and prefix in existing.values():
+            return RedirectResponse(url="/prices-xl", status_code=303)
+    else:
+        if not family_code:
+            return RedirectResponse(url="/prices-xl", status_code=303)
+        n = 1
+        while f"group-package-{n}" in reg:
+            n += 1
+        family_key = f"group-package-{n}"
+        prefix = family_key
     db = next(get_db())
     try:
         row = db.query(XlFamily).filter(XlFamily.family_key == family_key).first()
@@ -929,7 +949,7 @@ def admin_prices_xl_family(
             db.add(row)
         row.label = label
         row.family_code = family_code
-        row.url_prefix = url_prefix
+        row.url_prefix = prefix
         row.option_codes = option_codes
         row.qris_decoy = qris_decoy.strip() in ("1", "true", "on")
         db.commit()

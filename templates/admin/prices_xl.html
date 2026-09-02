@@ -59,6 +59,9 @@
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">
         <form method="POST" action="/prices-xl/family" class="price-form" style="flex-wrap:wrap;">
             <input type="hidden" name="family_key" value="{{ sec.key }}">
+            <input type="hidden" name="url_prefix" value="{{ family_prefixes[sec.key] if family_prefixes else '' }}">
+            <input type="hidden" name="option_codes" value="{{ family_options[sec.key] if family_options else '' }}">
+            <input type="hidden" name="qris_decoy" value="{% if family_decoys and family_decoys[sec.key] %}1{% else %}0{% endif %}">
             <input type="text" name="label" value="{{ sec.label }}" class="form-control price-input" style="width:190px;" title="Label tampilan">
             <input type="text" name="family_code" value="{{ family_codes[sec.key] if family_codes else '' }}" class="form-control price-input" style="width:250px;" title="Family code (UUID katalog API XL)" placeholder="Family code">
             <button type="submit" class="btn btn-sm btn-outline">Simpan</button>
@@ -186,14 +189,13 @@
     <h2 style="font-size:16px;margin-bottom:4px;">Tambah Family Baru</h2>
     <p class="price-hint" style="margin:0 0 10px;">1 group = 1 family code. Family baru langsung muncul sebagai container di halaman Beli Paket.</p>
     <form method="POST" action="/prices-xl/family" class="price-form" style="flex-wrap:wrap;">
-        <input type="text" name="family_key" class="form-control price-input" style="width:110px;" placeholder="key (slug)" required>
         <input type="text" name="label" class="form-control price-input" style="width:180px;" placeholder="Label tampilan" required>
         <input type="text" name="family_code" class="form-control price-input" style="width:250px;" placeholder="Family code (UUID)" required>
-        <input type="text" name="url_prefix" class="form-control price-input" style="width:120px;" placeholder="url-prefix">
         <input type="text" name="option_codes" class="form-control price-input" style="width:110px;" placeholder="opt codes (opsional)">
         <label class="price-hint" style="display:flex;align-items:center;gap:4px;"><input type="checkbox" name="qris_decoy" value="1">QRIS decoy</label>
         <button type="submit" class="btn btn-sm btn-primary">Tambah</button>
     </form>
+    <p class="price-hint" style="margin:8px 0 0;">Group baru otomatis dinamai <span style="color:#15803d;font-weight:600;">{{ next_family_key }}</span></p>
     <div style="margin-top:14px;border-top:1px solid #eee;padding-top:10px;">
         <div class="price-hint" style="margin-bottom:6px;">Sembunyikan/tampilkan family di halaman Beli Paket:</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">

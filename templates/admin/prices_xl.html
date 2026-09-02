@@ -128,14 +128,17 @@
     {% else %}
     <p class="price-hint" style="margin:8px 0 12px;">Belum ada paket di group ini — <a href="/prices-xl/family/{{ sec.key }}/browse">Browse Package</a> lalu tambahkan yang diinginkan.</p>
     {% endif %}
-    <div style="margin-top:10px;border-top:1px solid #eee;padding-top:10px;">
-        <form method="POST" action="/prices-xl/pkg/add" class="price-form" style="flex-wrap:wrap;">
+    <div style="margin-top:12px;border-top:1px solid #eee;padding-top:10px;">
+        <div class="price-hint" style="margin:0 0 8px;">+ Tambah paket:</div>
+        <form method="POST" action="/prices-xl/pkg/add" id="add-form-{{ sec.key }}" style="display:grid;grid-template-columns:120px 1fr 140px 150px 150px 70px 70px;gap:8px;align-items:center;">
             <input type="hidden" name="family_key" value="{{ sec.key }}">
-            <span class="price-hint">+ Tambah paket:</span>
-            <input type="number" name="option_number" min="0" step="1" placeholder="Option #" class="form-control price-input" style="width:100px;" required>
-            <input type="number" name="display_price" min="0" step="1" placeholder="Display (opsional)" class="form-control price-input" style="width:130px;">
-            <input type="number" name="rewrite_price" min="0" step="1" placeholder="Rewrite (opsional)" class="form-control price-input" style="width:130px;">
+            <input type="number" name="option_number" min="0" step="1" placeholder="Option #" class="form-control price-input" required>
+            <span></span>
+            <span></span>
+            <input type="number" name="display_price" min="0" step="1" placeholder="Display" class="form-control price-input">
+            <input type="number" name="rewrite_price" min="0" step="1" placeholder="Rewrite" class="form-control price-input">
             <button type="submit" class="btn btn-sm btn-outline">Tambah</button>
+            <span></span>
         </form>
     </div>
 </div>

@@ -769,55 +769,32 @@ def admin_prices_xl_page(request: Request, user: User = Depends(get_current_user
     for ov in overrides:
         ov_map[(ov.family_key, ov.option_number)] = ov
     reg = _family_registry()
-    fam_order = list(reg.keys()) or ["xcp", "addon10", "addon15", "xtraconf"]
     rows = []
-    for fam in fam_order:
-        rows.append({
-            "key": fam,
-            "label": reg[fam]["label"],
-            "pkgs": [],
-        })
-    # Nama paket dari snapshot katalog (fetch user terakhir / muat katalog
-    # admin) biar admin tahu paket apa yang ada di tiap nomor.
-    snap_names = {
-        fam: {it.get("number"): it for it in _load_catalog_snapshot(fam) if isinstance(it, dict)}
-        for fam in fam_order
-    }
-
-    def _pkg_name(fam, num, prefix=""):
-        info = snap_names.get(fam, {}).get(num) or {}
-        label = info.get("name") or " ".join(x for x in (info.get("label"), info.get("size")) if x)
-        name = f"{prefix} — {label}" if prefix and label else (label or prefix or f"Option #{num}")
-        if info.get("price") is not None:
-            name += f" — API {info['price']:,}".replace(",", ".")
-        return name
-
-    for fam in fam_order:
-        row = next(r for r in rows if r["key"] == fam)
-        codes = reg[fam]["option_codes"]
-        seen = {}
-        # Baris dari option_codes terpilih (XCP: 3 alternatif; kosong = semua)
-        for i, num in enumerate(codes, start=1):
-            seen[num] = f"Alternatif {i}" if len(codes) > 1 else ""
-        # Tambah baris snapshot (mode all / family baru)
-        for num in sorted(snap_names.get(fam, {}).keys()):
-            seen.setdefault(num, "")
-        # Tambah override orphan (nomor di luar daftar)
-        for (fk, n) in ov_map:
-            if fk == fam:
-                seen.setdefault(n, "")
-        for num in sorted(seen):
+    for fam, cfg in reg.items():
+        row = {"key": fam, "label": cfg["label"], "pkgs": []}
+        # Tabel paket KOSONG by default — baris = option codes yang ditambahkan
+        # admin (+ override orphan). Nama paket dari snapshot (hasil Browse
+        # Package) bila tersedia.
+        snap = {it.get("number"): it for it in _load_catalog_snapshot(fam) if isinstance(it, dict)}
+        nums = set(cfg["option_codes"]) | {n for (fk, n) in ov_map if fk == fam}
+        for i, num in enumerate(sorted(nums), start=1):
             ov = ov_map.get((fam, num))
-            prefix = seen[num]
-            name = _pkg_name(fam, num, prefix)
-            if prefix and num not in snap_names.get(fam, {}):
-                name += " (di luar urutan)"
+            info = snap.get(num) or {}
+            label = info.get("name") or " ".join(x for x in (info.get("label"), info.get("size")) if x)
+            name = label or f"Option #{num}"
+            api_price = None
+            if info.get("price") is not None:
+                api_price = f"{info['price']:,}".replace(",", ".")
+            if num not in snap:
+                name += " (belum ada di snapshot — Browse dulu)"
             row["pkgs"].append({
                 "number": num,
                 "name": name,
+                "api_price": api_price,
                 "display": ov.display_price if ov else None,
                 "rewrite": ov.rewrite_price if ov else None,
             })
+        rows.append(row)
     admin_sess = _admin_xl_read()
     return render("admin/prices_xl.html", context={
         "request": request,
@@ -1000,52 +977,167 @@ def admin_prices_xl_catalog_fetch(user: User = Depends(get_current_user)):
     return JSONResponse({"ok": ok, "message": msg})
 
 
-@app.post("/prices-xl/catalog/browse")
-def admin_prices_xl_catalog_browse(
-    family_key: str = Form(...),
-    user: User = Depends(get_current_user),
-):
-    """Lihat isi katalog satu family (option #, nama, harga) langsung dari
-    API XL via sesi admin. Hasil juga disimpan ke snapshot — jadi tabel di
-    halaman ini ikut ter-update tanpa harus menunggu user browse.
-
-    Refresh token XL sekali pakai → serialisasi dengan lock.
-    """
+@app.get("/prices-xl/family/{family_key}/browse")
+def admin_prices_xl_family_browse_page(request: Request, family_key: str, user: User = Depends(get_current_user)):
+    """Halaman Browse Package: isi katalog satu family langsung dari API XL
+    (option #, nama, GB, harga API) via sesi admin. Sebelum browse, nama paket
+    diambil dari snapshot bila tersedia."""
     if user.role != "admin":
-        return JSONResponse({"ok": False, "message": "Akses ditolak"}, status_code=403)
+        return RedirectResponse(url="/user/dashboard", status_code=303)
     cfg = _family_registry().get(family_key)
     if not cfg:
-        return JSONResponse({"ok": False, "message": "Family tidak ditemukan."})
-    if not _admin_xl_read():
-        return JSONResponse({"ok": False, "message": "Belum ada sesi admin XL. Login dulu."})
-    with _catalog_fetch_lock:
-        tokens = _admin_xl_tokens()
+        return RedirectResponse(url="/prices-xl", status_code=303)
+    rows = None
+    note = ""
+    error = None
+    if _admin_xl_read():
+        with _catalog_fetch_lock:
+            tokens = _admin_xl_tokens()
         if not tokens:
             _admin_xl_clear()
-            return JSONResponse({"ok": False, "message": "Sesi admin XL kedaluwarsa. Login ulang nomor admin."})
-        fam_code = cfg["family_code"]
-        is_ent, mig = _family_api_params(fam_code)
-        _api_delay()
+            error = "Sesi admin XL kedaluwarsa. Login ulang nomor admin."
+        else:
+            fam_code = cfg["family_code"]
+            is_ent, mig = _family_api_params(fam_code)
+            _api_delay()
+            try:
+                data = xl_get_family(API_KEY, tokens, fam_code, is_enterprise=is_ent, migration_type=mig)
+            except Exception as e:
+                data = None
+                error = f"Gagal fetch katalog: {e}"
+            if data:
+                if fam_code == FAMILY_CODE_XTRA_COMBO:
+                    _save_xcp_catalog(data)
+                items = _build_registry_items(data, cfg["option_codes"])
+                total = sum(len(v.get("package_options") or []) for v in (data.get("package_variants") or []))
+                rows = [
+                    {"number": it["number"],
+                     "name": " ".join(x for x in (it.get("label"), it.get("size")) if x) or it.get("name") or "-",
+                     "price": f"{it['price']:,}".replace(",", ".") if it.get("price") is not None else "-"}
+                    for it in items
+                ]
+                if cfg["option_codes"] and total > len(items):
+                    note = f"Menampilkan {len(items)} opsi terpilih dari {total} opsi katalog. Kosongkan Option codes di halaman Atur Paket XL untuk menampilkan semua."
+            elif not error:
+                error = "Katalog kosong / tidak ditemukan. Cek family code."
+    else:
+        error = "Belum ada sesi admin XL."
+    selected = set(cfg["option_codes"])
+    snap = {it.get("number"): it for it in _load_catalog_snapshot(family_key) if isinstance(it, dict)}
+    return render("admin/browse_family.html", context={
+        "request": request,
+        "user": user,
+        "fam_key": family_key,
+        "label": cfg["label"],
+        "rows": rows,
+        "snap_rows": snap,
+        "selected": selected,
+        "note": note,
+        "error": error,
+        "admin_xl_phone": (_admin_xl_read() or {}).get("phone_number"),
+    })
+
+
+@app.post("/prices-xl/pkg/add")
+def admin_prices_xl_pkg_add(
+    family_key: str = Form(...),
+    option_number: int = Form(...),
+    display_price: str = Form(""),
+    rewrite_price: str = Form(""),
+    user: User = Depends(get_current_user),
+):
+    """Tambah paket ke group: pakai option code dari hasil Browse. Kode
+    ditambahkan ke daftar tampil (option_codes) + override bila diisi."""
+    if user.role != "admin":
+        return RedirectResponse(url="/user/dashboard", status_code=303)
+    if family_key not in _family_registry() or option_number < 0:
+        return RedirectResponse(url="/prices-xl", status_code=303)
+    try:
+        display = int(display_price) if display_price.strip() else None
+        rewrite = int(rewrite_price) if rewrite_price.strip() else None
+    except ValueError:
+        return RedirectResponse(url="/prices-xl", status_code=303)
+    if (display is not None and display < 0) or (rewrite is not None and rewrite < 0):
+        return RedirectResponse(url="/prices-xl", status_code=303)
+    _family_codes_add(family_key, option_number)
+    if display is not None or rewrite is not None:
+        db = next(get_db())
         try:
-            data = xl_get_family(API_KEY, tokens, fam_code, is_enterprise=is_ent, migration_type=mig)
-        except Exception as e:
-            return JSONResponse({"ok": False, "message": f"Gagal fetch katalog: {e}"})
-        if not data:
-            return JSONResponse({"ok": False, "message": "Katalog kosong / tidak ditemukan. Cek family code."})
-        if fam_code == FAMILY_CODE_XTRA_COMBO:
-            _save_xcp_catalog(data)
-        items = _build_registry_items(data, cfg["option_codes"])
-        total = 0
-        for variant in (data.get("package_variants") or []):
-            total += len(variant.get("package_options") or [])
-        _save_catalog_snapshot(family_key, items)
-    rows = [
-        {"number": it["number"], "name": " ".join(x for x in (it.get("label"), it.get("size")) if x) or it.get("name") or "-",
-         "price": f"{it['price']:,}".replace(",", ".") if it.get("price") is not None else "-"}
-        for it in items
-    ]
-    note = "" if not cfg["option_codes"] or total <= len(items) else f" (menampilkan {len(items)} dari {total} opsi)"
-    return JSONResponse({"ok": True, "label": cfg["label"], "rows": rows, "note": note})
+            row = db.query(PackagePrice).filter(
+                PackagePrice.family_key == family_key,
+                PackagePrice.option_number == option_number,
+            ).first()
+            if not row:
+                row = PackagePrice(family_key=family_key, option_number=option_number)
+                db.add(row)
+            row.display_price = display
+            row.rewrite_price = rewrite
+            db.commit()
+        finally:
+            db.close()
+    return RedirectResponse(url="/prices-xl", status_code=303)
+
+
+@app.post("/prices-xl/pkg/delete")
+def admin_prices_xl_pkg_delete(
+    family_key: str = Form(...),
+    option_number: int = Form(...),
+    user: User = Depends(get_current_user),
+):
+    """Hapus paket dari group: buang override-nya dan keluarkan option code
+    dari daftar tampil (option_codes)."""
+    if user.role != "admin":
+        return RedirectResponse(url="/user/dashboard", status_code=303)
+    db = next(get_db())
+    try:
+        row = db.query(PackagePrice).filter(
+            PackagePrice.family_key == family_key,
+            PackagePrice.option_number == option_number,
+        ).first()
+        if row:
+            db.delete(row)
+        _family_codes_remove(family_key, option_number)
+        db.commit()
+    finally:
+        db.close()
+    return RedirectResponse(url="/prices-xl", status_code=303)
+
+
+def _family_codes_add(family_key, number):
+    """Tambah nomor ke option_codes family (dedupe, urut)."""
+    reg = _family_registry()
+    cfg = reg.get(family_key)
+    if not cfg:
+        return
+    codes = cfg["option_codes"]
+    if number in codes:
+        return
+    codes = sorted(codes + [number])
+    db = next(get_db())
+    try:
+        row = db.query(XlFamily).filter(XlFamily.family_key == family_key).first()
+        if row:
+            row.option_codes = ",".join(str(c) for c in codes)
+            db.commit()
+    finally:
+        db.close()
+
+
+def _family_codes_remove(family_key, number):
+    """Keluarkan nomor dari option_codes family."""
+    reg = _family_registry()
+    cfg = reg.get(family_key)
+    if not cfg or number not in cfg["option_codes"]:
+        return
+    codes = [c for c in cfg["option_codes"] if c != number]
+    db = next(get_db())
+    try:
+        row = db.query(XlFamily).filter(XlFamily.family_key == family_key).first()
+        if row:
+            row.option_codes = ",".join(str(c) for c in codes)
+            db.commit()
+    finally:
+        db.close()
 
 
 # ─── Admin Login XL (sesi khusus fetch katalog) ─────────────────────────────

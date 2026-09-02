@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Browse: {{ label }} - RohTembak (XL){% endblock %}
+{% block content %}
+
+<div class="header-section">
+    <div>
+        <div class="page-title">Browse: {{ label }}</div>
+        <div class="page-subtitle">Katalog live dari API XL — option #, nama, GB, harga. Tambahkan paket yang ingin ditampilkan ke group.</div>
+    </div>
+</div>
+
+{% if error %}
+<div class="card" style="border-color:#fecaca;">
+    <div class="price-hint" style="color:#b91c1c;">{{ error }} — <a href="/prices-xl/login-xl">Admin Login XL</a></div>
+</div>
+{% endif %}
+{% if note %}
+<div class="card" style="margin-bottom:16px;">
+    <div class="price-hint">{{ note }}</div>
+</div>
+{% endif %}
+
+<div class="card">
+    {% if rows %}
+    <table>
+        <thead>
+            <tr>
+                <th>Option #</th>
+                <th>Nama Paket</th>
+                <th>Harga API (IDR)</th>
+                <th>Status</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for it in rows %}
+            <tr>
+                <td data-label="Option #"><strong>#{{ it.number }}</strong></td>
+                <td data-label="Nama">{{ it.name }}</td>
+                <td data-label="Harga API">{{ it.price }}</td>
+                <td data-label="Status">
+                    {% if it.number in selected %}
+                    <span class="price-hint" style="color:#15803d;">&#10003; di group</span>
+                    {% else %}
+                    <span class="price-hint">—</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <form method="POST" action="/prices-xl/pkg/add" class="price-form" style="flex-wrap:wrap;">
+                        <input type="hidden" name="family_key" value="{{ fam_key }}">
+                        <input type="hidden" name="option_number" value="{{ it.number }}">
+                        <input type="number" name="display_price" min="0" step="1" placeholder="Display (opsional)" class="form-control price-input" style="width:140px;">
+                        <input type="number" name="rewrite_price" min="0" step="1" placeholder="Rewrite (opsional)" class="form-control price-input" style="width:140px;">
+                        <button type="submit" class="btn btn-sm btn-outline">{% if it.number in selected %}Tambah Ulang{% else %}+ Tambah{% endif %}</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="price-hint">Tidak ada data katalog. Klik <strong>Browse dari API</strong> untuk memuat.</p>
+    {% endif %}
+</div>
+
+<div class="card">
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <form method="POST" action="/prices-xl/catalog/fetch" style="display:inline;">
+            <input type="hidden" name="family_key" value="{{ fam_key }}">
+            <button type="button" class="btn btn-sm btn-primary" id="refetchBtn">Browse dari API (refresh)</button>
+        </form>
+        <span class="price-hint" id="refetchStatus">{% if admin_xl_phone %}Sesi admin XL: {{ admin_xl_phone }}{% endif %}</span>
+    </div>
+</div>
+
+<a href="/prices-xl" class="btn btn-outline btn-sm" style="margin-top:20px;">&larr; Kembali ke Atur Paket XL</a>
+
+<script>
+(function () {
+  var btn = document.getElementById("refetchBtn");
+  var status = document.getElementById("refetchStatus");
+  if (!btn) return;
+  btn.addEventListener("click", function () {
+    btn.disabled = true;
+    status.textContent = "Memuat katalog dari API XL...";
+    fetch("/prices-xl/catalog/fetch", { method: "POST" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        status.textContent = d.message || (d.ok ? "Selesai." : "Gagal.");
+        if (d.ok) setTimeout(function () { location.reload(); }, 1200);
+        else btn.disabled = false;
+      })
+      .catch(function () { status.textContent = "Gagal terhubung."; btn.disabled = false; });
+  });
+})();
+</script>
+
+{% endblock %}

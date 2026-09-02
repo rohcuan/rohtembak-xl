@@ -63,7 +63,7 @@
             <input type="text" name="family_code" value="{{ family_codes[sec.key] if family_codes else '' }}" class="form-control price-input" style="width:250px;" title="Family code (UUID katalog API XL)" placeholder="Family code">
             <button type="submit" class="btn btn-sm btn-outline">Simpan</button>
         </form>
-        <button type="button" class="btn btn-sm btn-outline browse-btn" data-key="{{ sec.key }}">Browse Package</button>
+        <a href="/prices-xl/family/{{ sec.key }}/browse" class="btn btn-sm btn-outline">Browse Package</a>
         <button type="button" class="btn btn-sm btn-outline adv-toggle" data-key="{{ sec.key }}">Detail &#9662;</button>
     </div>
     <div class="adv-wrap" id="adv-{{ sec.key }}" hidden>
@@ -82,20 +82,26 @@
     <table>
         <thead>
             <tr>
-                <th>Paket</th>
-                <th>Option #</th>
+                <th>Option Code</th>
+                <th>Package Name</th>
+                <th>Default Price (API)</th>
                 <th>Display Price (IDR)</th>
                 <th>Rewrite Price (IDR)</th>
+                <th></th>
                 <th></th>
             </tr>
         </thead>
         <tbody>
             {% for it in sec.pkgs %}
             <tr>
-                <td data-label="Paket"><strong>{{ it.name }}</strong></td>
-                <td data-label="Option #">
+                <td data-label="Option Code"><strong>#{{ it.number }}</strong></td>
+                <td data-label="Package Name">
+                    <strong>{{ it.name }}</strong>
                     <input type="hidden" name="old_option_number" value="{{ it.number }}" form="price-form-{{ sec.key }}-{{ it.number }}">
-                    <input type="number" name="option_number" value="{{ it.number }}" min="0" step="1" class="form-control price-input" style="width:80px;" form="price-form-{{ sec.key }}-{{ it.number }}">
+                    <input type="number" name="option_number" value="{{ it.number }}" min="0" step="1" class="form-control price-input" style="width:80px;margin-top:4px;" form="price-form-{{ sec.key }}-{{ it.number }}" title="Option code yang ditampilkan ke user">
+                </td>
+                <td data-label="Default Price (API)">
+                    {% if it.api_price %}<span class="price-hint">{{ it.api_price }}</span>{% else %}<span class="price-hint">&mdash;</span>{% endif %}
                 </td>
                 <td data-label="Display Price">
                     <input type="number" name="display_price" value="{{ it.display if it.display is not none else '' }}" min="0" step="1" placeholder="Ikut API" class="form-control price-input" form="price-form-{{ sec.key }}-{{ it.number }}">
@@ -109,14 +115,30 @@
                         <button type="submit" class="btn btn-sm btn-outline">Simpan</button>
                     </form>
                 </td>
+                <td>
+                    <form method="POST" action="/prices-xl/pkg/delete" onsubmit="return confirm('Hapus paket ini dari group?');">
+                        <input type="hidden" name="family_key" value="{{ sec.key }}">
+                        <input type="hidden" name="option_number" value="{{ it.number }}">
+                        <button type="submit" class="btn btn-sm btn-outline" title="Hapus dari group">Hapus</button>
+                    </form>
+                </td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
     {% else %}
-    <p class="price-hint" style="margin:8px 0 12px;">Belum ada paket — klik <strong>Browse Package</strong> untuk melihat &amp; memuat katalog dari API XL.</p>
+    <p class="price-hint" style="margin:8px 0 12px;">Belum ada paket di group ini — <a href="/prices-xl/family/{{ sec.key }}/browse">Browse Package</a> lalu tambahkan yang diinginkan.</p>
     {% endif %}
-    <div id="browse-{{ sec.key }}" hidden style="margin-top:10px;"></div>
+    <div style="margin-top:10px;border-top:1px solid #eee;padding-top:10px;">
+        <form method="POST" action="/prices-xl/pkg/add" class="price-form" style="flex-wrap:wrap;">
+            <input type="hidden" name="family_key" value="{{ sec.key }}">
+            <span class="price-hint">+ Tambah paket:</span>
+            <input type="number" name="option_number" min="0" step="1" placeholder="Option #" class="form-control price-input" style="width:100px;" required>
+            <input type="number" name="display_price" min="0" step="1" placeholder="Display (opsional)" class="form-control price-input" style="width:130px;">
+            <input type="number" name="rewrite_price" min="0" step="1" placeholder="Rewrite (opsional)" class="form-control price-input" style="width:130px;">
+            <button type="submit" class="btn btn-sm btn-outline">Tambah</button>
+        </form>
+    </div>
 </div>
 {% endfor %}
 
@@ -147,48 +169,12 @@
 
 <script>
 (function () {
-  // Browse Package: lihat isi katalog family langsung dari API XL
-  document.querySelectorAll(".browse-btn").forEach(function (btn) {
-    btn.addEventListener("click", function () {
-      var key = btn.dataset.key;
-      var panel = document.getElementById("browse-" + key);
-      btn.disabled = true;
-      btn.textContent = "Memuat...";
-      fetch("/prices-xl/catalog/browse", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: "family_key=" + encodeURIComponent(key)
-      }).then(function (r) { return r.json(); }).then(function (d) {
-        btn.disabled = false;
-        btn.textContent = "Browse Package";
-        if (!panel) return;
-        if (!d.ok) { panel.hidden = false; panel.innerHTML = '<div class="price-hint" style="color:#b91c1c;">' + escHtml(d.message || "Gagal.") + '</div>'; return; }
-        var html = '<div class="price-hint" style="margin-bottom:6px;">Katalog <strong>' + escHtml(d.label) + '</strong>' + escHtml(d.note || '') + ' — terbaru dari API XL:</div>';
-        html += '<table><thead><tr><th>Option #</th><th>Nama</th><th>Harga API (IDR)</th></tr></thead><tbody>';
-        d.rows.forEach(function (r) {
-          html += '<tr><td data-label="Option #">' + r.number + '</td><td data-label="Nama">' + escHtml(r.name) + '</td><td data-label="Harga API">' + r.price + '</td></tr>';
-        });
-        html += '</tbody></table>';
-        panel.innerHTML = html;
-        panel.hidden = false;
-      }).catch(function () {
-        btn.disabled = false;
-        btn.textContent = "Browse Package";
-      });
-    });
-  });
-  // Toggle panel pengaturan lanjutan
   document.querySelectorAll(".adv-toggle").forEach(function (btn) {
     btn.addEventListener("click", function () {
       var panel = document.getElementById("adv-" + btn.dataset.key);
       if (panel) panel.hidden = !panel.hidden;
     });
   });
-  function escHtml(s) {
-    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
-      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-    });
-  }
 })();
 </script>
 

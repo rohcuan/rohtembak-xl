@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session, joinedload
 from jinja2 import Environment, FileSystemLoader
 
 from database import init_db, get_db
-from models import User, XLAccount, Balance, BalanceTransaction, FamilyFee, TopupTransaction, PackagePrice
+from models import User, XLAccount, Balance, BalanceTransaction, FamilyFee, TopupTransaction, PackagePrice, XlFamily
 from auth import (
     verify_password, create_access_token, decode_token,
     get_current_user, seed_users, hash_password, ACCESS_TOKEN_EXPIRE_MINUTES,
@@ -152,6 +152,9 @@ _reconcile_task = None
 # Serializes every Balance read-modify-write in this process so concurrent
 # requests cannot lose updates or drive a balance negative.
 _balance_lock = threading.Lock()
+
+# Fetch katalog admin harus serial — refresh token XL sekali pakai.
+_catalog_fetch_lock = threading.Lock()
 
 # Simple in-memory brute-force throttle for login/register endpoints.
 _login_failures = {}
@@ -353,6 +356,12 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass
     init_db()
+    try:
+        db0 = next(get_db())
+        _seed_xl_families(db0)
+        db0.close()
+    except Exception as e:
+        print(f"[lifespan] seed xl_families gagal: {e}")
     db = next(get_db())
     seed_users(db)
     existing_users = db.query(User).filter(User.role == "user").all()
@@ -747,12 +756,14 @@ def admin_prices_xl_page(request: Request, user: User = Depends(get_current_user
     ov_map = {}
     for ov in overrides:
         ov_map[(ov.family_key, ov.option_number)] = ov
-    fam_order = ("xcp", "addon10", "addon15", "xtraconf")
+    fams = _xl_families()
+    fam_order = [k for k, _l, _c in fams] or ["xcp", "addon10", "addon15", "xtraconf"]
+    labels = {k: l for k, l, _c in fams}
     rows = []
     for fam in fam_order:
         rows.append({
             "key": fam,
-            "label": FAMILY_LABELS.get(fam, fam),
+            "label": labels.get(fam, fam),
             "pkgs": [],
         })
     # XCP: 3 alternatif, posisi bisa diubah admin lewat kolom Option #
@@ -789,7 +800,7 @@ def admin_prices_xl_page(request: Request, user: User = Depends(get_current_user
         })
     # Family addon (addon10/addon15): render dari snapshot fetch beli-paket
     # terakhir (penomoran posisional dari API XL), digabung override yang ada.
-    for fam in ("addon10", "addon15"):
+    for fam in [k for k in fam_order if k in ("addon10", "addon15")]:
         row = next(r for r in rows if r["key"] == fam)
         seen = {}
         for it in _load_catalog_snapshot(fam):
@@ -816,9 +827,9 @@ def admin_prices_xl_page(request: Request, user: User = Depends(get_current_user
                 "display": ov.display_price if ov else None,
                 "rewrite": ov.rewrite_price if ov else None,
             })
-    # Family lain tanpa snapshot (xtraconf): hanya tampilkan yang sudah
+    # Family lain tanpa snapshot (mis. xtraconf): hanya tampilkan yang sudah
     # punya override (paket dinamis dari API, tidak bisa dilist statis).
-    for fam in ("xtraconf",):
+    for fam in [k for k in fam_order if k not in ("xcp", "addon10", "addon15")]:
         row = next(r for r in rows if r["key"] == fam)
         fam_rows = [ov for k, ov in ov_map.items() if k[0] == fam]
         for ov in sorted(fam_rows, key=lambda o: o.option_number):
@@ -828,10 +839,13 @@ def admin_prices_xl_page(request: Request, user: User = Depends(get_current_user
                 "display": ov.display_price,
                 "rewrite": ov.rewrite_price,
             })
+    admin_sess = _admin_xl_read()
     return render("admin/prices_xl.html", context={
         "request": request,
         "user": user,
         "rows": rows,
+        "family_codes": {k: c for k, _l, c in fams},
+        "admin_xl_phone": admin_sess.get("phone_number") if admin_sess else None,
     })
 
 
@@ -911,6 +925,139 @@ def admin_prices_xl_set(
     finally:
         db.close()
     return RedirectResponse(url="/prices-xl", status_code=303)
+
+
+@app.post("/prices-xl/family")
+def admin_prices_xl_family(
+    family_key: str = Form(...),
+    label: str = Form(...),
+    family_code: str = Form(...),
+    user: User = Depends(get_current_user),
+):
+    """Ubah label tampilan & family_code (UUID katalog API) sebuah family."""
+    if user.role != "admin":
+        return RedirectResponse(url="/user/dashboard", status_code=303)
+    label = label.strip()[:100]
+    family_code = family_code.strip()[:64]
+    if family_key not in _XL_FAMILY_DEFAULTS or not label or not family_code:
+        return RedirectResponse(url="/prices-xl", status_code=303)
+    db = next(get_db())
+    try:
+        row = db.query(XlFamily).filter(XlFamily.family_key == family_key).first()
+        if row:
+            row.label = label
+            row.family_code = family_code
+            db.commit()
+    finally:
+        db.close()
+    return RedirectResponse(url="/prices-xl", status_code=303)
+
+
+@app.post("/prices-xl/catalog/fetch")
+def admin_prices_xl_catalog_fetch(user: User = Depends(get_current_user)):
+    """Muat katalog semua family dari API XL pakai sesi admin (admin login XL).
+
+    Refresh token XL berotasi per refresh dan hanya berlaku sekali — kalau
+    dua fetch jalan barengan, yang kedua gagal. Serialisasi dengan lock.
+    """
+    if user.role != "admin":
+        return JSONResponse({"ok": False, "message": "Akses ditolak"}, status_code=403)
+    if not _admin_xl_read():
+        return JSONResponse({"ok": False, "message": "Belum ada sesi admin XL. Login dulu."})
+    with _catalog_fetch_lock:
+        ok, msg = _admin_xl_fetch_catalog()
+    return JSONResponse({"ok": ok, "message": msg})
+
+
+# ─── Admin Login XL (sesi khusus fetch katalog) ─────────────────────────────
+
+@app.get("/prices-xl/login-xl", response_class=HTMLResponse)
+def admin_prices_xl_login_page(request: Request, user: User = Depends(get_current_user)):
+    if user.role != "admin":
+        return RedirectResponse(url="/user/dashboard", status_code=303)
+    sess = _admin_xl_read()
+    return render("admin/login_xl.html", context={
+        "request": request,
+        "user": user,
+        "admin_xl_phone": sess.get("phone_number") if sess else None,
+    })
+
+
+@app.post("/prices-xl/login-xl/request")
+def admin_prices_xl_login_request(
+    request: Request,
+    phone_number: str = Form(...),
+    user: User = Depends(get_current_user),
+):
+    if user.role != "admin":
+        return RedirectResponse(url="/user/dashboard", status_code=303)
+    if (not phone_number.startswith("628") or len(phone_number) < 10 or len(phone_number) > 14
+            or not phone_number.isdigit()):
+        return render("admin/login_xl.html", context={
+            "request": request, "user": user, "admin_xl_phone": None,
+            "error": "Nomor tidak valid. Harus diawali 628 dan 10-14 digit",
+        }, status_code=400)
+    try:
+        _api_delay()
+        subscriber_id = xl_get_otp(phone_number, "admin")
+    except Exception as e:
+        return render("admin/login_xl.html", context={
+            "request": request, "user": user, "admin_xl_phone": None,
+            "error": f"Gagal mengirim OTP: {e}",
+        }, status_code=400)
+    if not subscriber_id:
+        return render("admin/login_xl.html", context={
+            "request": request, "user": user, "admin_xl_phone": None,
+            "error": "Gagal mengirim OTP. Periksa nomor atau tunggu beberapa saat.",
+        }, status_code=400)
+    return render("admin/login_xl.html", context={
+        "request": request,
+        "user": user,
+        "admin_xl_phone": None,
+        "phone_number": phone_number,
+        "subscriber_id": subscriber_id,
+    })
+
+
+@app.post("/prices-xl/login-xl/submit")
+def admin_prices_xl_login_submit(
+    request: Request,
+    phone_number: str = Form(...),
+    otp_code: str = Form(...),
+    subscriber_id: str = Form(""),
+    user: User = Depends(get_current_user),
+):
+    if user.role != "admin":
+        return RedirectResponse(url="/user/dashboard", status_code=303)
+    if not otp_code or len(otp_code) != 6 or not otp_code.isdigit():
+        return render("admin/login_xl.html", context={
+            "request": request, "user": user, "admin_xl_phone": None,
+            "phone_number": phone_number, "subscriber_id": subscriber_id,
+            "error": "Kode OTP harus 6 digit angka",
+        }, status_code=400)
+    _api_delay()
+    tokens = xl_submit_otp(API_KEY, "SMS", phone_number, otp_code, "admin")
+    if tokens is None:
+        return render("admin/login_xl.html", context={
+            "request": request, "user": user, "admin_xl_phone": None,
+            "phone_number": phone_number, "subscriber_id": subscriber_id,
+            "error": "Kode OTP salah atau sudah kadaluarsa",
+        }, status_code=400)
+    _admin_xl_write({
+        "phone_number": phone_number,
+        "subscriber_id": subscriber_id,
+        "refresh_token": tokens.get("refresh_token", ""),
+        "refresh_expires_at": int(time.time()) + int(tokens.get("refresh_expires_in") or 0),
+    })
+    return RedirectResponse(url="/prices-xl", status_code=303)
+
+
+@app.post("/prices-xl/login-xl/logout")
+def admin_prices_xl_logout(user: User = Depends(get_current_user)):
+    if user.role != "admin":
+        return RedirectResponse(url="/user/dashboard", status_code=303)
+    _admin_xl_clear()
+    return RedirectResponse(url="/prices-xl/login-xl", status_code=303)
 
 
 @app.post("/admin/balance/add")
@@ -3127,6 +3274,119 @@ def _build_addon_list(family_data):
 
 def _catalog_snapshot_path():
     return os.path.join(BASE_DIR, "data", "catalog_options.json")
+
+
+_XL_FAMILY_DEFAULTS = {
+    "xcp": ("Xtra Combo Plus", lambda: FAMILY_CODE_XTRA_COMBO, 0),
+    "addon10": ("Addon Xtra Combo Plus 10GB", lambda: FAMILY_CODE_ADDON, 1),
+    "addon15": ("Addon Xtra Combo Plus 15GB", lambda: FAMILY_CODE_ADDON_15, 2),
+    "xtraconf": ("Xtra Conference", lambda: FAMILY_CODE_XTRA_CONFERENCE, 3),
+}
+
+
+def _seed_xl_families(db):
+    """Seed baris xl_families dari default — idempotent, hanya key yang hilang."""
+    for key, (label, code_fn, sort) in _XL_FAMILY_DEFAULTS.items():
+        if not db.query(XlFamily).filter(XlFamily.family_key == key).first():
+            db.add(XlFamily(family_key=key, label=label, family_code=code_fn(), sort_order=sort))
+    db.commit()
+
+
+def _xl_families():
+    """Daftar (family_key, label, family_code) urut — dari DB, seed bila kosong."""
+    db = next(get_db())
+    try:
+        _seed_xl_families(db)
+        return [(r.family_key, r.label, r.family_code) for r in
+                db.query(XlFamily).order_by(XlFamily.sort_order).all()]
+    finally:
+        db.close()
+
+
+def _admin_xl_session_path():
+    return os.path.join(BASE_DIR, "data", "admin_xl_session.json")
+
+
+def _admin_xl_read():
+    try:
+        with open(_admin_xl_session_path(), "r", encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) and d.get("refresh_token") else None
+    except (OSError, ValueError):
+        return None
+
+
+def _admin_xl_write(sess):
+    path = _admin_xl_session_path()
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(sess, f, ensure_ascii=False)
+    except OSError as e:
+        print(f"[admin-xl] gagal simpan sesi: {e}")
+
+
+def _admin_xl_clear():
+    try:
+        os.remove(_admin_xl_session_path())
+    except OSError:
+        pass
+
+
+def _admin_xl_tokens():
+    """Token API XL dari sesi admin login (bukan akun user). Refresh token
+    XL berotasi tiap refresh — simpan balik ke file sesi."""
+    sess = _admin_xl_read()
+    if not sess:
+        return None
+    try:
+        tokens = xl_refresh_token(API_KEY, sess["refresh_token"], "admin")
+        if not tokens:
+            return None
+        new_sess = dict(sess)
+        if tokens.get("refresh_token"):
+            new_sess["refresh_token"] = tokens["refresh_token"]
+        try:
+            if tokens.get("refresh_expires_in"):
+                new_sess["refresh_expires_at"] = int(time.time()) + int(tokens["refresh_expires_in"])
+        except (TypeError, ValueError):
+            pass
+        _admin_xl_write(new_sess)
+        return tokens
+    except Exception as e:
+        print(f"[admin-xl] refresh gagal: {e}")
+        return None
+
+
+def _admin_xl_fetch_catalog():
+    """Fetch katalog semua family pakai sesi admin XL → perbarui snapshot.
+    Return (ok, pesan)."""
+    tokens = _admin_xl_tokens()
+    if not tokens:
+        _admin_xl_clear()
+        return False, "Sesi admin XL tidak valid. Login ulang nomor admin."
+    results = []
+    for fam_key, _label, fam_code in _xl_families():
+        is_ent, mig = _family_api_params(fam_code)
+        _api_delay()
+        try:
+            data = xl_get_family(API_KEY, tokens, fam_code, is_enterprise=is_ent, migration_type=mig)
+        except Exception as e:
+            results.append((fam_key, f"error: {e}"))
+            continue
+        if not data:
+            results.append((fam_key, "kosong"))
+            continue
+        if fam_key == "xcp":
+            _save_xcp_catalog(data)
+            results.append((fam_key, f"{len(_load_catalog_snapshot('xcp'))} opsi"))
+        else:
+            builder = _build_addon_list if fam_key in ("addon10", "addon15") else _build_family_list
+            items = builder(data)
+            _save_catalog_snapshot(fam_key, items)
+            results.append((fam_key, f"{len(items)} item"))
+    ok = any(("error" not in msg and msg != "kosong") for _f, msg in results)
+    return ok, "; ".join(f"{f}: {m}" for f, m in results)
 
 
 _XCP_POSITIONS_DEFAULT = (25, 33, 35)

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Atur Harga Paket XL - RohTembak (XL){% endblock %}
+{% block title %}Atur Paket XL - RohTembak (XL){% endblock %}
 {% block head %}
 <style>
 .price-form { display: flex; gap: 8px; align-items: center; }
@@ -38,8 +38,8 @@
 
 <div class="header-section">
     <div>
-        <div class="page-title">Atur Harga Paket XL</div>
-        <div class="page-subtitle">Override harga per paket: harga tampilan vs harga yang benar-benar ditagih.</div>
+        <div class="page-title">Atur Paket XL</div>
+        <div class="page-subtitle">Label, katalog, dan harga per paket: harga tampilan vs harga yang benar-benar ditagih.</div>
     </div>
 </div>
 
@@ -49,15 +49,30 @@
         <strong>Rewrite price</strong> = nominal yang benar-benar ditagih (pulsa &amp; QRIS).
         Kosongkan keduanya = ikut harga asli API. Kosongkan salah satu = field itu ikut harga API,
         sedangkan yang diisi tetap dipakai. Kosongkan keduanya pada paket yang sudah pernah diset
-        akan menghapus override-nya. Daftar paket &amp; Addon XCP terisi otomatis dari katalog API
-        (snapshot saat user membuka Beli Paket). Kalau katalog XL bergeser, ubah nomor urutan di
-        kolom <em>Option #</em> — override harga ikut pindah.
+        akan menghapus override-nya. Daftar paket &amp; nama diambil dari katalog API XL — klik
+        <em>Muat Katalog</em> untuk memperbarui, atau ubah nomor di kolom <em>Option #</em>
+        kalau katalog XL bergeser (override harga ikut pindah).
+    </div>
+</div>
+
+<div class="card" style="margin-bottom:16px;">
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <button type="button" class="btn btn-sm btn-primary" id="fetchCatalogBtn">Muat Katalog</button>
+        <span class="price-hint" id="fetchStatus">
+            {% if admin_xl_phone %}Sesi admin XL: {{ admin_xl_phone }}{% else %}Belum ada sesi admin XL — <a href="/prices-xl/login-xl">login dulu</a> untuk memuat katalog.{% endif %}
+        </span>
     </div>
 </div>
 
 {% for sec in rows %}
 <div class="card">
     <h2 style="font-size:16px;margin-bottom:4px;">{{ sec.label }}</h2>
+    <form method="POST" action="/prices-xl/family" class="price-form" style="margin:0 0 8px;">
+        <input type="hidden" name="family_key" value="{{ sec.key }}">
+        <input type="text" name="label" value="{{ sec.label }}" class="form-control price-input" style="width:240px;" title="Label tampilan">
+        <input type="text" name="family_code" value="{{ family_codes[sec.key] if family_codes else '' }}" class="form-control price-input" style="width:280px;" title="Family code (UUID katalog API XL)">
+        <button type="submit" class="btn btn-sm btn-outline">Simpan Family</button>
+    </form>
     {% if sec.pkgs %}
     <table>
         <thead>
@@ -98,5 +113,28 @@
     {% endif %}
 </div>
 {% endfor %}
+
+<script>
+(function () {
+  var btn = document.getElementById("fetchCatalogBtn");
+  var status = document.getElementById("fetchStatus");
+  if (!btn) return;
+  btn.addEventListener("click", function () {
+    btn.disabled = true;
+    status.textContent = "Memuat katalog dari API XL...";
+    fetch("/prices-xl/catalog/fetch", { method: "POST" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        status.textContent = d.message || (d.ok ? "Selesai." : "Gagal.");
+        if (d.ok) setTimeout(function () { location.reload(); }, 1200);
+        else btn.disabled = false;
+      })
+      .catch(function () {
+        status.textContent = "Gagal terhubung ke server.";
+        btn.disabled = false;
+      });
+  });
+})();
+</script>
 
 {% endblock %}

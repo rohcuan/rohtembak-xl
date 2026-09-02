@@ -135,3 +135,20 @@ class PackagePrice(Base):
     rewrite_price = Column(Integer, default=None)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     __table_args__ = (Index("uq_package_price", "family_key", "option_number", unique=True),)
+
+
+class XlFamily(Base):
+    """Konfigurasi family paket XL yang ditampilkan di /prices-xl.
+
+    label & family_code editable dari dashboard; family_code adalah UUID
+    katalog di API XL (jika XL mengubah katalog, admin tinggal update di sini).
+    """
+
+    __tablename__ = "xl_families"
+
+    id = Column(Integer, primary_key=True, index=True)
+    family_key = Column(String(20), unique=True, nullable=False)
+    label = Column(String(100), nullable=False)
+    family_code = Column(String(64), nullable=False)
+    sort_order = Column(Integer, default=0)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

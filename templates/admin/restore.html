@@ -85,6 +85,9 @@
             <div><span>Nomor XL</span><div class="val">dipulihkan <strong>{{ result.xl_restored }}</strong>{% if result.xl_skipped %} · dilewati {{ result.xl_skipped }}{% endif %}</div></div>
             <div><span>Fee paket</span><div class="val">dipulihkan <strong>{{ result.fees_restored }}</strong></div></div>
             <div><span>Harga paket</span><div class="val">dipulihkan <strong>{{ result.prices_restored }}</strong></div></div>
+            {% if result.families_restored is defined %}
+            <div><span>Registry family XL</span><div class="val">dipulihkan <strong>{{ result.families_restored }}</strong></div></div>
+            {% endif %}
             {% if result.settings_applied is defined %}
             <div><span>Pengaturan panel</span><div class="val">{% if result.settings_applied %}{{ result.settings_applied | join(', ') }}{% else %}tidak ada dalam file backup{% endif %}{% if result.settings_reset_default %} <em>&mdash; direset ke default (backup lama tanpa pengaturan)</em>{% endif %}</div></div>
             {% endif %}

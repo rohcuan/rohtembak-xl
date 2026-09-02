@@ -357,11 +357,23 @@ async def lifespan(app: FastAPI):
         pass
     init_db()
     try:
-        db0 = next(get_db())
-        _seed_xl_families(db0)
-        db0.close()
+        # Migrasi ringan: kolom baru di xl_families (create_all tidak ALTER)
+        from sqlalchemy import text as _text
+        _db0 = next(get_db())
+        _cols = [r[1] for r in _db0.execute(_text("PRAGMA table_info(xl_families)"))]
+        for _name, _ddl in (
+            ("url_prefix", "VARCHAR(40) NOT NULL DEFAULT ''"),
+            ("option_codes", "VARCHAR(255) NOT NULL DEFAULT ''"),
+            ("qris_decoy", "BOOLEAN NOT NULL DEFAULT 0"),
+            ("is_active", "BOOLEAN NOT NULL DEFAULT 1"),
+        ):
+            if _name not in _cols:
+                _db0.execute(_text(f"ALTER TABLE xl_families ADD COLUMN {_name} {_ddl}"))
+        _db0.commit()
+        _seed_xl_families(_db0)
+        _db0.close()
     except Exception as e:
-        print(f"[lifespan] seed xl_families gagal: {e}")
+        print(f"[lifespan] migrasi/seed xl_families gagal: {e}")
     db = next(get_db())
     seed_users(db)
     existing_users = db.query(User).filter(User.role == "user").all()
@@ -665,10 +677,10 @@ def admin_fees_page(request: Request, user: User = Depends(get_current_user)):
         return RedirectResponse(url="/user/dashboard", status_code=303)
     fees = _get_all_family_fees()
     fee_rows = []
-    for fam in ("xcp", "addon10", "addon15", "xtraconf"):
+    for fam in _family_registry():
         fee_rows.append({
             "key": fam,
-            "label": FAMILY_LABELS.get(fam, fam),
+            "label": _family_label(fam),
             "pulsa": fees.get(_fee_key(fam, "balance"), 0),
             "qris": fees.get(_fee_key(fam, "qris"), 0),
         })
@@ -737,7 +749,7 @@ def admin_set_fee(
 ):
     if user.role != "admin":
         return RedirectResponse(url="/user/dashboard", status_code=303)
-    if family_key not in FAMILY_LABELS or fee_pulsa < 0 or fee_qris < 0:
+    if family_key not in _family_registry() or fee_pulsa < 0 or fee_qris < 0:
         return RedirectResponse(url="/admin/fees", status_code=303)
     _set_family_fee(_fee_key(family_key, "balance"), fee_pulsa)
     _set_family_fee(_fee_key(family_key, "qris"), fee_qris)
@@ -756,95 +768,65 @@ def admin_prices_xl_page(request: Request, user: User = Depends(get_current_user
     ov_map = {}
     for ov in overrides:
         ov_map[(ov.family_key, ov.option_number)] = ov
-    fams = _xl_families()
-    fam_order = [k for k, _l, _c in fams] or ["xcp", "addon10", "addon15", "xtraconf"]
-    labels = {k: l for k, l, _c in fams}
+    reg = _family_registry()
+    fam_order = list(reg.keys()) or ["xcp", "addon10", "addon15", "xtraconf"]
     rows = []
     for fam in fam_order:
         rows.append({
             "key": fam,
-            "label": labels.get(fam, fam),
+            "label": reg[fam]["label"],
             "pkgs": [],
         })
-    # XCP: 3 alternatif, posisi bisa diubah admin lewat kolom Option #
-    # (default 25/33/35). Nama paket dari snapshot katalog (fetch user
-    # terakhir) biar admin tahu paket apa yang ada di posisi tersebut.
-    # Override di nomor di luar 3 alt ditampilkan sebagai baris ekstra.
-    xcp_names = {it.get("number"): it for it in _load_catalog_snapshot("xcp") if isinstance(it, dict)}
-    xcp_pos = _xcp_positions()
+    # Nama paket dari snapshot katalog (fetch user terakhir / muat katalog
+    # admin) biar admin tahu paket apa yang ada di tiap nomor.
+    snap_names = {
+        fam: {it.get("number"): it for it in _load_catalog_snapshot(fam) if isinstance(it, dict)}
+        for fam in fam_order
+    }
 
-    def _xcp_name(num, prefix):
-        info = xcp_names.get(num) or {}
-        name = f"{prefix} — {info['name']}" if info.get("name") else f"{prefix} (Option #{num})"
+    def _pkg_name(fam, num, prefix=""):
+        info = snap_names.get(fam, {}).get(num) or {}
+        label = info.get("name") or " ".join(x for x in (info.get("label"), info.get("size")) if x)
+        name = f"{prefix} — {label}" if prefix and label else (label or prefix or f"Option #{num}")
         if info.get("price") is not None:
             name += f" — API {info['price']:,}".replace(",", ".")
         return name
 
-    for i, num in enumerate(xcp_pos, start=1):
-        ov = ov_map.get(("xcp", num))
-        rows[0]["pkgs"].append({
-            "number": num,
-            "name": _xcp_name(num, f"Alternatif {i}"),
-            "display": ov.display_price if ov else None,
-            "rewrite": ov.rewrite_price if ov else None,
-        })
-    for num in sorted(n for (fk, n) in ov_map if fk == "xcp" and n not in xcp_pos):
-        ov = ov_map[("xcp", num)]
-        info = xcp_names.get(num) or {}
-        prefix = info.get("name") or f"Option #{num}"
-        rows[0]["pkgs"].append({
-            "number": num,
-            "name": _xcp_name(num, prefix) + " (di luar urutan)",
-            "display": ov.display_price,
-            "rewrite": ov.rewrite_price,
-        })
-    # Family addon (addon10/addon15): render dari snapshot fetch beli-paket
-    # terakhir (penomoran posisional dari API XL), digabung override yang ada.
-    for fam in [k for k in fam_order if k in ("addon10", "addon15")]:
+    for fam in fam_order:
         row = next(r for r in rows if r["key"] == fam)
+        codes = reg[fam]["option_codes"]
         seen = {}
-        for it in _load_catalog_snapshot(fam):
-            try:
-                seen[int(it.get("number"))] = it
-            except (TypeError, ValueError):
-                continue
-        numbers = set(seen)
-        for ov in ov_map.values():
-            if ov.family_key == fam and ov.option_number not in numbers:
-                seen[ov.option_number] = {"number": ov.option_number, "label": f"Option #{ov.option_number}", "size": "", "price": None}
-                numbers.add(ov.option_number)
+        # Baris dari option_codes terpilih (XCP: 3 alternatif; kosong = semua)
+        for i, num in enumerate(codes, start=1):
+            seen[num] = f"Alternatif {i}" if len(codes) > 1 else ""
+        # Tambah baris snapshot (mode all / family baru)
+        for num in sorted(snap_names.get(fam, {}).keys()):
+            seen.setdefault(num, "")
+        # Tambah override orphan (nomor di luar daftar)
+        for (fk, n) in ov_map:
+            if fk == fam:
+                seen.setdefault(n, "")
         for num in sorted(seen):
-            it = seen[num]
             ov = ov_map.get((fam, num))
-            label = it.get("label") or f"Option #{num}"
-            size = (it.get("size") or "").strip()
-            name = f"{label} {size}".strip()
-            if it.get("price") is not None:
-                name += f" — API {it['price']:,}".replace(",", ".")
+            prefix = seen[num]
+            name = _pkg_name(fam, num, prefix)
+            if prefix and num not in snap_names.get(fam, {}):
+                name += " (di luar urutan)"
             row["pkgs"].append({
                 "number": num,
                 "name": name,
                 "display": ov.display_price if ov else None,
                 "rewrite": ov.rewrite_price if ov else None,
             })
-    # Family lain tanpa snapshot (mis. xtraconf): hanya tampilkan yang sudah
-    # punya override (paket dinamis dari API, tidak bisa dilist statis).
-    for fam in [k for k in fam_order if k not in ("xcp", "addon10", "addon15")]:
-        row = next(r for r in rows if r["key"] == fam)
-        fam_rows = [ov for k, ov in ov_map.items() if k[0] == fam]
-        for ov in sorted(fam_rows, key=lambda o: o.option_number):
-            row["pkgs"].append({
-                "number": ov.option_number,
-                "name": f"Option #{ov.option_number}",
-                "display": ov.display_price,
-                "rewrite": ov.rewrite_price,
-            })
     admin_sess = _admin_xl_read()
     return render("admin/prices_xl.html", context={
         "request": request,
         "user": user,
         "rows": rows,
-        "family_codes": {k: c for k, _l, c in fams},
+        "family_codes": {k: v["family_code"] for k, v in reg.items()},
+        "family_prefixes": {k: v["url_prefix"] for k, v in reg.items()},
+        "family_decoys": {k: v["qris_decoy"] for k, v in reg.items()},
+        "family_options": {k: ",".join(str(x) for x in v["option_codes"]) for k, v in reg.items()},
         "admin_xl_phone": admin_sess.get("phone_number") if admin_sess else None,
     })
 
@@ -860,7 +842,7 @@ def admin_prices_xl_set(
 ):
     if user.role != "admin":
         return RedirectResponse(url="/user/dashboard", status_code=303)
-    if family_key not in FAMILY_LABELS or option_number < 0:
+    if family_key not in _family_registry() or option_number < 0:
         return RedirectResponse(url="/prices-xl", status_code=303)
     if family_key == "xcp" and option_number < 1:
         return RedirectResponse(url="/prices-xl", status_code=303)
@@ -932,21 +914,65 @@ def admin_prices_xl_family(
     family_key: str = Form(...),
     label: str = Form(...),
     family_code: str = Form(...),
+    url_prefix: str = Form(""),
+    option_codes: str = Form(""),
+    qris_decoy: str = Form(""),
     user: User = Depends(get_current_user),
 ):
-    """Ubah label tampilan & family_code (UUID katalog API) sebuah family."""
+    """Ubah/create family di registry: label, family code, url prefix,
+    option codes (CSV; kosong = semua), dan flag decoy QRIS.
+
+    family_key baru (bukan default) = tambah group paket baru — halaman
+    beli-paket otomatis merendernya sebagai container baru.
+    """
     if user.role != "admin":
         return RedirectResponse(url="/user/dashboard", status_code=303)
     label = label.strip()[:100]
     family_code = family_code.strip()[:64]
-    if family_key not in _XL_FAMILY_DEFAULTS or not label or not family_code:
+    url_prefix = re.sub(r"[^a-z0-9-]", "", url_prefix.strip().lower())[:40]
+    option_codes = re.sub(r"[^0-9,]", "", option_codes.strip())[:255]
+    if not label or not family_code or not family_key.strip():
+        return RedirectResponse(url="/prices-xl", status_code=303)
+    family_key = family_key.strip().lower()[:20]
+    if not re.fullmatch(r"[a-z0-9_]+", family_key):
+        return RedirectResponse(url="/prices-xl", status_code=303)
+    if not url_prefix:
+        url_prefix = family_key
+    # prefix tidak boleh tabrakan dengan family lain
+    existing = {k: v["url_prefix"] for k, v in _family_registry().items()}
+    if existing.get(family_key, url_prefix) != url_prefix and url_prefix in existing.values():
         return RedirectResponse(url="/prices-xl", status_code=303)
     db = next(get_db())
     try:
         row = db.query(XlFamily).filter(XlFamily.family_key == family_key).first()
+        if not row:
+            max_sort = db.query(func.coalesce(func.max(XlFamily.sort_order), -1)).scalar()
+            row = XlFamily(family_key=family_key, sort_order=(max_sort or 0) + 1)
+            db.add(row)
+        row.label = label
+        row.family_code = family_code
+        row.url_prefix = url_prefix
+        row.option_codes = option_codes
+        row.qris_decoy = qris_decoy.strip() in ("1", "true", "on")
+        db.commit()
+    finally:
+        db.close()
+    return RedirectResponse(url="/prices-xl", status_code=303)
+
+
+@app.post("/prices-xl/family/toggle")
+def admin_prices_xl_family_toggle(
+    family_key: str = Form(...),
+    user: User = Depends(get_current_user),
+):
+    """Tampil/sembunyikan family di halaman beli-paket tanpa menghapusnya."""
+    if user.role != "admin":
+        return RedirectResponse(url="/user/dashboard", status_code=303)
+    db = next(get_db())
+    try:
+        row = db.query(XlFamily).filter(XlFamily.family_key == family_key).first()
         if row:
-            row.label = label
-            row.family_code = family_code
+            row.is_active = not row.is_active
             db.commit()
     finally:
         db.close()
@@ -1517,6 +1543,7 @@ def admin_backup(format: str = "zip", admin_user: User = Depends(get_current_use
             "users": [dict(u, xl_accounts=[a for a in xl_data if a["username"] == u["username"]]) for u in users_data],
             "fees": fees,
             "prices": prices,
+            "families": _family_registry(),
             "settings": _collect_backup_settings(),
         }
         resp = JSONResponse(payload)
@@ -1570,13 +1597,14 @@ def _build_backup_zip_bytes(admin_data: dict, users_data: list, xl_data: list, f
             "version": 3,
             "app": "RohTembak (XL)",
             "exported_at": exported_at,
-            "counts": {"users": len(users_data), "xl_accounts": len(xl_data), "fees": len(fees), "prices": len(prices), "settings": 1},
+            "counts": {"users": len(users_data), "xl_accounts": len(xl_data), "fees": len(fees), "prices": len(prices), "families": len(_family_registry()), "settings": 1},
         }, indent=2, ensure_ascii=False)),
         ("admin.json", json.dumps(admin_data, indent=2, ensure_ascii=False)),
         ("users.json", json.dumps(users_data, indent=2, ensure_ascii=False)),
         ("xl_accounts.json", json.dumps(xl_data, indent=2, ensure_ascii=False)),
         ("fees.json", json.dumps(fees, indent=2, ensure_ascii=False)),
         ("prices.json", json.dumps(prices, indent=2, ensure_ascii=False)),
+        ("families.json", json.dumps(_family_registry(), indent=2, ensure_ascii=False)),
         ("settings.json", json.dumps(settings_data, indent=2, ensure_ascii=False)),
     ]
     if ax_fp:
@@ -2116,6 +2144,7 @@ def _norm_backup(data: dict) -> dict:
         "xl_accounts": xl_accounts or None,
         "fees": data.get("fees") if isinstance(data.get("fees"), dict) else None,
         "prices": data.get("prices") if isinstance(data.get("prices"), list) else None,
+        "families": data.get("families") if isinstance(data.get("families"), dict) else None,
         "settings": data.get("settings") if isinstance(data.get("settings"), dict) else None,
     }
 
@@ -2198,6 +2227,7 @@ def _load_backup_v3(zf) -> dict | None:
         "xl_accounts": read("xl_accounts.json"),
         "fees": read("fees.json"),
         "prices": read("prices.json"),
+        "families": read("families.json"),
     })
     data["device_fp"] = device_fp
     data["user_fingerprints"] = user_fingerprints
@@ -2470,6 +2500,11 @@ async def admin_restore_upload(
         if key in FAMILY_FEE_DEFAULTS and isinstance(fee, int) and not isinstance(fee, bool) and fee >= 0:
             valid_fees[key] = fee
 
+    # Family dari backup ikut dianggap valid (families dipulihkan sebelum
+    # commit) supaya override milik family custom tidak tertolak.
+    known_fams = set(_family_registry()) | set(
+        k for k, v in (data.get("families") or {}).items() if isinstance(v, dict)
+    )
     valid_prices = []
     price_seen = set()
     for p in data["prices"] or []:
@@ -2480,7 +2515,7 @@ async def admin_restore_upload(
             on = int(p.get("option_number"))
         except (TypeError, ValueError):
             continue
-        if not fk or fk not in FAMILY_LABELS or on < 0 or (fk, on) in price_seen:
+        if not fk or fk not in known_fams or on < 0 or (fk, on) in price_seen:
             continue
         dp = p.get("display_price")
         rp = p.get("rewrite_price")
@@ -2635,6 +2670,23 @@ async def admin_restore_upload(
         ))
         price_restored += 1
 
+    # Registry family dari backup (families.json) — dipulihkan persis.
+    families_restored = 0
+    for key, f in (data.get("families") or {}).items():
+        if not isinstance(f, dict):
+            continue
+        row = db.query(XlFamily).filter(XlFamily.family_key == str(key)).first()
+        if not row:
+            row = XlFamily(family_key=str(key))
+            db.add(row)
+        row.label = str(f.get("label") or key)[:100]
+        row.family_code = str(f.get("family_code") or "")[:64]
+        row.url_prefix = str(f.get("url_prefix") or key)[:40]
+        row.option_codes = str(f.get("option_codes") or "")[:255]
+        row.qris_decoy = bool(f.get("qris_decoy"))
+        row.is_active = bool(f.get("is_active"))
+        families_restored += 1
+
     db.commit()
 
     settings_applied: list = []
@@ -2649,6 +2701,7 @@ async def admin_restore_upload(
         "xl_skipped": xl_skipped,
         "fees_restored": fee_restored,
         "prices_restored": price_restored,
+        "families_restored": families_restored,
     }
     if valid_settings is not None:
         result["settings_applied"] = settings_applied
@@ -3217,59 +3270,42 @@ FAMILY_CODE_BY_NAME = {
     "Xtra Conference": FAMILY_CODE_XTRA_CONFERENCE,
 }
 
-ADDON_APP_NAMES = {"instagram", "tiktok", "facebook", "whatsapp", "youtube"}
-ADDON_SPEC_10 = (FAMILY_CODE_ADDON, "addon10-xcp")
-ADDON_SPEC_15 = (FAMILY_CODE_ADDON_15, "addon15-xcp")
-XTRA_CONF_SPEC = (FAMILY_CODE_XTRA_CONFERENCE, "xtraconf")
 
 
-def _build_family_list(family_data):
+
+
+def _build_registry_items(family_data, option_codes):
+    """Builder generik untuk registry: semua opsi katalog (dengan filter
+    option_codes bila di-set di admin). Ini sumber tunggal daftar paket
+    untuk halaman beli-paket — 1 family = 1 group kartu.
+    """
     items = []
     if not (family_data and family_data.get("package_variants")):
         return items
     item_number = 1
     for variant in family_data["package_variants"]:
         for option in variant["package_options"]:
-            items.append({
-                "number": item_number,
-                "label": option["name"],
-                "size": "",
-                "price": option["price"],
-                "variant_name": variant["name"],
-                "option_code": option["package_option_code"],
-            })
-            item_number += 1
-    return items
-
-
-def _build_addon_list(family_data):
-    import re
-    addons = []
-    if not (family_data and family_data.get("package_variants")):
-        return addons
-    addon_number = 1
-    for variant in family_data["package_variants"]:
-        for option in variant["package_options"]:
-            name_lower = option["name"].lower()
-            if any(a in name_lower for a in ADDON_APP_NAMES):
+            if not option_codes or item_number in option_codes:
                 raw = option["name"]
                 m = re.match(r'^(.+?)\s+(\d+\s*GB)$', raw, re.IGNORECASE)
                 if m:
-                    label = m.group(1)
-                    size = m.group(2).upper()
+                    label, size = m.group(1), m.group(2).upper()
                 else:
-                    label = raw
-                    size = ""
-                addons.append({
-                    "number": addon_number,
+                    label, size = raw, ""
+                items.append({
+                    "number": item_number,
                     "label": label,
                     "size": size,
+                    "name": option["name"],
                     "price": option["price"],
                     "variant_name": variant["name"],
                     "option_code": option["package_option_code"],
                 })
-            addon_number += 1
-    return addons
+            item_number += 1
+    return items
+
+
+
 
 
 def _catalog_snapshot_path():
@@ -3277,30 +3313,88 @@ def _catalog_snapshot_path():
 
 
 _XL_FAMILY_DEFAULTS = {
-    "xcp": ("Xtra Combo Plus", lambda: FAMILY_CODE_XTRA_COMBO, 0),
-    "addon10": ("Addon Xtra Combo Plus 10GB", lambda: FAMILY_CODE_ADDON, 1),
-    "addon15": ("Addon Xtra Combo Plus 15GB", lambda: FAMILY_CODE_ADDON_15, 2),
-    "xtraconf": ("Xtra Conference", lambda: FAMILY_CODE_XTRA_CONFERENCE, 3),
+    "xcp": {"label": "Xtra Combo Plus", "code": lambda: FAMILY_CODE_XTRA_COMBO,
+            "url_prefix": "xcp", "option_codes": "25,33,35", "qris_decoy": False, "sort": 0},
+    "addon10": {"label": "Addon Xtra Combo Plus 10GB", "code": lambda: FAMILY_CODE_ADDON,
+                "url_prefix": "addon10-xcp", "option_codes": "4,5,6,7,8,9", "qris_decoy": False, "sort": 1},
+    "addon15": {"label": "Addon Xtra Combo Plus 15GB", "code": lambda: FAMILY_CODE_ADDON_15,
+                "url_prefix": "addon15-xcp", "option_codes": "4,5,6,7,8,14,18,19,20", "qris_decoy": False, "sort": 2},
+    "xtraconf": {"label": "Xtra Conference", "code": lambda: FAMILY_CODE_XTRA_CONFERENCE,
+                 "url_prefix": "xtraconf", "option_codes": "", "qris_decoy": True, "sort": 3},
 }
 
 
 def _seed_xl_families(db):
-    """Seed baris xl_families dari default — idempotent, hanya key yang hilang."""
-    for key, (label, code_fn, sort) in _XL_FAMILY_DEFAULTS.items():
-        if not db.query(XlFamily).filter(XlFamily.family_key == key).first():
-            db.add(XlFamily(family_key=key, label=label, family_code=code_fn(), sort_order=sort))
+    """Seed baris xl_families dari default — idempotent, hanya key yang hilang.
+
+    ponytail: kolom baru (url_prefix/option_codes/qris_decoy) baris lama yang
+    kosong di-backfill dari default sekali — admin bebas mengubahnya setelahnya.
+    """
+    for key, d in _XL_FAMILY_DEFAULTS.items():
+        row = db.query(XlFamily).filter(XlFamily.family_key == key).first()
+        if not row:
+            db.add(XlFamily(
+                family_key=key, label=d["label"], family_code=d["code"](),
+                url_prefix=d["url_prefix"], option_codes=d["option_codes"],
+                qris_decoy=d["qris_decoy"], sort_order=d["sort"],
+            ))
+        else:
+            if not row.url_prefix:
+                row.url_prefix = d["url_prefix"]
+            if row.qris_decoy is None:
+                row.qris_decoy = d["qris_decoy"]
+            # Backfill sekali: baris lama tanpa option_codes ambil default
+            # (addon10/15: daftar opsi berbayar katalog saat ini; xcp: alt).
+            if not str(row.option_codes or "").strip():
+                row.option_codes = d["option_codes"]
     db.commit()
 
 
-def _xl_families():
-    """Daftar (family_key, label, family_code) urut — dari DB, seed bila kosong."""
+def _family_registry():
+    """Registry semua family (termasuk non-aktif): family_key -> config dict.
+
+    Sumber tunggal untuk routing, builder, label, prefix — halaman beli-paket
+    adalah container yang merender registry ini.
+    """
     db = next(get_db())
     try:
         _seed_xl_families(db)
-        return [(r.family_key, r.label, r.family_code) for r in
-                db.query(XlFamily).order_by(XlFamily.sort_order).all()]
+        rows = db.query(XlFamily).order_by(XlFamily.sort_order).all()
+        reg = {}
+        for r in rows:
+            codes = []
+            for part in str(r.option_codes or "").split(","):
+                part = part.strip()
+                if part:
+                    try:
+                        codes.append(int(part))
+                    except ValueError:
+                        pass
+            reg[r.family_key] = {
+                "label": r.label,
+                "family_code": r.family_code,
+                "url_prefix": r.url_prefix or r.family_key,
+                "option_codes": codes,
+                "qris_decoy": bool(r.qris_decoy),
+                "is_active": bool(r.is_active),
+                "sort": r.sort_order,
+            }
+        return reg
     finally:
         db.close()
+
+
+def _active_families():
+    """Registry family aktif saja, urut tampil."""
+    reg = _family_registry()
+    return {k: v for k, v in sorted(reg.items(), key=lambda kv: kv[1]["sort"]) if v["is_active"]}
+
+
+def _family_key_by_prefix(prefix):
+    for key, cfg in _family_registry().items():
+        if cfg["url_prefix"] == prefix:
+            return key
+    return None
 
 
 def _admin_xl_session_path():
@@ -3366,7 +3460,10 @@ def _admin_xl_fetch_catalog():
         _admin_xl_clear()
         return False, "Sesi admin XL tidak valid. Login ulang nomor admin."
     results = []
-    for fam_key, _label, fam_code in _xl_families():
+    for fam_key, cfg in _family_registry().items():
+        if not cfg["is_active"]:
+            continue
+        fam_code = cfg["family_code"]
         is_ent, mig = _family_api_params(fam_code)
         _api_delay()
         try:
@@ -3377,14 +3474,12 @@ def _admin_xl_fetch_catalog():
         if not data:
             results.append((fam_key, "kosong"))
             continue
-        if fam_key == "xcp":
+        if fam_code == FAMILY_CODE_XTRA_COMBO:
             _save_xcp_catalog(data)
-            results.append((fam_key, f"{len(_load_catalog_snapshot('xcp'))} opsi"))
-        else:
-            builder = _build_addon_list if fam_key in ("addon10", "addon15") else _build_family_list
-            items = builder(data)
-            _save_catalog_snapshot(fam_key, items)
-            results.append((fam_key, f"{len(items)} item"))
+        cfg = _active_families().get(fam_key) or {}
+        items = _build_registry_items(data, cfg.get("option_codes") or [])
+        _save_catalog_snapshot(fam_key, items)
+        results.append((fam_key, f"{len(items)} item"))
     ok = any(("error" not in msg and msg != "kosong") for _f, msg in results)
     return ok, "; ".join(f"{f}: {m}" for f, m in results)
 
@@ -3393,29 +3488,31 @@ _XCP_POSITIONS_DEFAULT = (25, 33, 35)
 
 
 def _xcp_positions():
-    """Posisi (option number) Alternatif 1/2/3 XCP — bisa diubah admin di
-    /prices-xl. Default 25/33/35; tersimpan di data/xcp_positions.json."""
-    try:
-        with open(os.path.join(BASE_DIR, "data", "xcp_positions.json"), "r", encoding="utf-8") as f:
-            d = json.load(f)
-        vals = tuple(int(d[str(i)]) for i in (1, 2, 3))
-        if len(set(vals)) == 3 and all(v > 0 for v in vals):
-            return vals
-    except (OSError, ValueError, KeyError, TypeError):
-        pass
+    """Posisi (option number) Alternatif 1/2/3 XCP = kolom option_codes di
+    tabel xl_families (CSV, urutan = urutan alternatif). Dikelola admin di
+    /prices-xl via kolom Option #."""
+    codes = _family_registry().get("xcp", {}).get("option_codes") or []
+    vals = tuple(codes[:3])
+    if len(vals) == 3 and len(set(vals)) == 3 and all(v > 0 for v in vals):
+        return vals
     return _XCP_POSITIONS_DEFAULT
 
 
 def _save_xcp_positions(vals):
-    path = os.path.join(BASE_DIR, "data", "xcp_positions.json")
+    """Simpan posisi alt 1/2/3 XCP ke kolom option_codes family xcp."""
+    db = next(get_db())
     try:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump({str(i): int(v) for i, v in zip((1, 2, 3), vals)}, f)
+        row = db.query(XlFamily).filter(XlFamily.family_key == "xcp").first()
+        if not row:
+            return False
+        row.option_codes = ",".join(str(int(v)) for v in vals)
+        db.commit()
         return True
-    except (OSError, ValueError, TypeError) as e:
+    except Exception as e:
         print(f"[xcp-positions] gagal simpan: {e}")
         return False
+    finally:
+        db.close()
 
 
 def _read_snapshot_file():
@@ -3517,24 +3614,7 @@ def _get_all_pkg_prices() -> list:
         db.close()
 
 
-def _extract_xcp_packages(family_data):
-    packages = []
-    if not (family_data and family_data.get("package_variants")):
-        return packages
-    TARGET_OPTIONS = set(_xcp_positions())
-    option_number = 1
-    for variant in family_data["package_variants"]:
-        for option in variant["package_options"]:
-            if option_number in TARGET_OPTIONS:
-                packages.append({
-                    "number": option_number,
-                    "variant_name": variant["name"],
-                    "option_name": option["name"],
-                    "price": option["price"],
-                    "option_code": option["package_option_code"],
-                })
-            option_number += 1
-    return packages
+
 
 
 def _apply_pkg_list_price(family_key, items):
@@ -3601,10 +3681,24 @@ def user_xl_beli_paket(request: Request, user: User = Depends(get_current_user))
     ctx = get_user_context(user, db)
     db.close()
 
+    # Sections untuk container beli-paket: 1 family aktif = 1 group kartu.
+    # Family baru yang ditambahkan admin otomatis muncul di sini.
+    sections = []
+    for fam_key, cfg in _active_families().items():
+        if cfg["qris_decoy"]:
+            sections.append({"key": f"{fam_key}-balance", "fam": fam_key,
+                             "title": f"{cfg['label']} (via Pulsa)"})
+            sections.append({"key": f"{fam_key}-qris", "fam": fam_key,
+                             "title": f"{cfg['label']} (via QRIS)"})
+        else:
+            sections.append({"key": fam_key, "fam": fam_key, "title": cfg["label"]})
+
     ctx.update({
         "request": request,
-        "family_name": "Xtra Combo Plus",
+        "family_name": _family_label("xcp"),
         "qris_decoy_price": _qris_decoy_price(),
+        "sections": sections,
+        "url_prefixes": {k: v["url_prefix"] for k, v in _active_families().items()},
     })
     return render("user/beli_paket.html", context=ctx)
 
@@ -3617,7 +3711,7 @@ def _stream_beli_paket_events(active_xl, want, disconnected=None):
     error = False
     fetched_at = None
     xl_info = None
-    fam_want = [f for f in ("xcp", "addon10", "addon15", "xtraconf") if f in want]
+    fam_want = [f for f in _active_families() if f in want]
     need_tokens = bool(fam_want) or ("meta" in want)
 
     tokens = None
@@ -3655,14 +3749,17 @@ def _stream_beli_paket_events(active_xl, want, disconnected=None):
         for f in fam_want:
             if disconnected and disconnected.is_set():
                 return
-            fam_code, builder, entry_key = _FAMILY_FETCHERS[f]
+            spec = _family_fetch_spec(f)
+            if not spec:
+                continue
+            fam_code, builder, entry_key = spec
             is_ent, mig = _family_api_params(fam_code)
             _api_delay()
             ok = True
             result = []
             try:
                 data = xl_get_family(API_KEY, tokens, fam_code, is_enterprise=is_ent, migration_type=mig)
-                if f == "xcp":
+                if fam_code == FAMILY_CODE_XTRA_COMBO:
                     _save_xcp_catalog(data)
                 result = builder(data) if data else []
                 result = _apply_pkg_list_price(f, result)
@@ -3689,7 +3786,7 @@ async def user_xl_beli_paket_stream(request: Request, user: User = Depends(get_c
     db = next(get_db())
     ctx = get_user_context(user, db)
     db.close()
-    want = {x for x in (request.query_params.get("families") or "").split(",") if x in ("meta", "xcp", "addon10", "addon15", "xtraconf")}
+    want = {x for x in (request.query_params.get("families") or "").split(",") if x == "meta" or x in _active_families()}
     disconnected = threading.Event()
     async def _watch():
         # is_disconnected() = poll non-blocking. Loop + sleep supaya benar-
@@ -3717,15 +3814,22 @@ async def user_xl_beli_paket_stream(request: Request, user: User = Depends(get_c
     )
 
 
-_FAMILY_FETCHERS = {
-    "xcp": (FAMILY_CODE_XTRA_COMBO, _extract_xcp_packages, "packages"),
-    "addon10": (FAMILY_CODE_ADDON, _build_addon_list, "addons"),
-    "addon15": (FAMILY_CODE_ADDON_15, _build_addon_list, "addons_15"),
-    "xtraconf": (FAMILY_CODE_XTRA_CONFERENCE, _build_family_list, "xtra_conf"),
-}
+def _family_fetch_spec(fam_key):
+    """(family_code, builder, entry_key) untuk stream beli-paket — dari registry.
+
+    entry_key = family_key (container & cache di template kunci berdasar ini).
+    Semua family pakai builder generik registry; option_codes (bila di-set)
+    memfilter opsi katalog yang ditampilkan.
+    """
+    cfg = _active_families().get(fam_key)
+    if not cfg:
+        return None
+    return cfg["family_code"], lambda data: _build_registry_items(data, cfg["option_codes"]), fam_key
 
 
 def _family_api_params(family_code):
+    """(is_enterprise, migration_type) per family — Xtra Conference butuh
+    parameter khusus; family baru default ke (False, "NONE")."""
     if family_code == FAMILY_CODE_XTRA_CONFERENCE:
         return True, "PRIOH_TO_PRIO"
     return False, "NONE"
@@ -3755,25 +3859,49 @@ def _build_pkg_detail(pkg, option, variant, url_id, number=None):
     }
 
 
-@app.get("/user/xl/beli-paket/xcp-{option_number}/detail", response_class=HTMLResponse)
-def user_xl_detail_paket(request: Request, option_number: int, user: User = Depends(get_current_user)):
+@app.get("/user/xl/beli-paket/{family_prefix}-{option_number}/detail", response_class=HTMLResponse)
+def user_xl_detail_paket(request: Request, family_prefix: str, option_number: int,
+                         via: str = "", user: User = Depends(get_current_user)):
+    """Detail generik — family_prefix adalah url_prefix family di registry
+    (mis. "xcp", "addon10-xcp"). Family baru otomatis punya halaman detail."""
     if user.role != "user":
         return RedirectResponse(url="/admin/dashboard", status_code=303)
+    fam_key = _family_key_by_prefix(family_prefix)
+    if not fam_key:
+        return RedirectResponse(url="/user/xl/beli-paket", status_code=303)
     db = next(get_db())
     ctx = get_user_context(user, db)
     db.close()
-    ctx.update({"request": request, "family": "xcp", "n": option_number})
+    if via not in ("pulsa", "qris"):
+        via = ""
+    cfg = _family_registry()[fam_key]
+    ctx.update({
+        "request": request,
+        "family": fam_key,
+        "family_prefix": family_prefix,
+        "n": option_number,
+        "via": via,
+        "qris_decoy": cfg["qris_decoy"],
+        "qris_decoy_price": _qris_decoy_price() if cfg["qris_decoy"] else 0,
+    })
     return render("user/detail_paket.html", context=ctx)
 
 
-def _fetch_xcp_detail(option_number, active_xl, tokens=None):
+def _family_detail(fam_key, option_number, active_xl, tokens=None):
+    """Detail satu paket untuk family mana pun di registry (dipakai detail page
+    & checkout). option_number = posisi di katalog API family tersebut."""
+    cfg = _family_registry().get(fam_key)
+    if not cfg:
+        return None
     if not tokens:
         _api_delay()
         tokens = _get_xl_tokens(active_xl)
         if not tokens:
             return None
+    fam_code = cfg["family_code"]
+    is_ent, mig = _family_api_params(fam_code)
     _api_delay()
-    family_data = xl_get_family(API_KEY, tokens, FAMILY_CODE_XTRA_COMBO, is_enterprise=False, migration_type="NONE")
+    family_data = xl_get_family(API_KEY, tokens, fam_code, is_enterprise=is_ent, migration_type=mig)
     if not (family_data and family_data.get("package_variants")):
         return None
     option_number_local = 1
@@ -3781,54 +3909,13 @@ def _fetch_xcp_detail(option_number, active_xl, tokens=None):
         for option in variant["package_options"]:
             if option_number_local == option_number:
                 _api_delay()
-                pkg = xl_get_package(API_KEY, tokens, option["package_option_code"], FAMILY_CODE_XTRA_COMBO, variant["package_variant_code"])
+                pkg = xl_get_package(API_KEY, tokens, option["package_option_code"], fam_code, variant["package_variant_code"])
                 if pkg:
-                    detail = _build_pkg_detail(pkg, option, variant, f"xcp-{option_number}", option_number)
-                    return _apply_pkg_detail_price("xcp", detail)
+                    detail = _build_pkg_detail(pkg, option, variant, f"{cfg['url_prefix']}-{option_number}", option_number)
+                    return _apply_pkg_detail_price(fam_key, detail)
                 return None
             option_number_local += 1
     return None
-
-
-@app.get("/user/xl/beli-paket/addon10-xcp-{option_number}/detail", response_class=HTMLResponse)
-def user_xl_detail_addon(request: Request, option_number: int, user: User = Depends(get_current_user)):
-    if user.role != "user":
-        return RedirectResponse(url="/admin/dashboard", status_code=303)
-    db = next(get_db())
-    ctx = get_user_context(user, db)
-    db.close()
-    ctx.update({"request": request, "family": "addon10", "n": option_number})
-    return render("user/detail_paket.html", context=ctx)
-
-
-@app.get("/user/xl/beli-paket/addon15-xcp-{option_number}/detail", response_class=HTMLResponse)
-def user_xl_detail_addon15(request: Request, option_number: int, user: User = Depends(get_current_user)):
-    if user.role != "user":
-        return RedirectResponse(url="/admin/dashboard", status_code=303)
-    db = next(get_db())
-    ctx = get_user_context(user, db)
-    db.close()
-    ctx.update({"request": request, "family": "addon15", "n": option_number})
-    return render("user/detail_paket.html", context=ctx)
-
-
-@app.get("/user/xl/beli-paket/xtraconf-{option_number}/detail", response_class=HTMLResponse)
-def user_xl_detail_xtraconf(request: Request, option_number: int, via: str = "", user: User = Depends(get_current_user)):
-    if user.role != "user":
-        return RedirectResponse(url="/admin/dashboard", status_code=303)
-    db = next(get_db())
-    ctx = get_user_context(user, db)
-    db.close()
-    if via not in ("pulsa", "qris"):
-        via = ""
-    ctx.update({
-        "request": request,
-        "family": "xtraconf",
-        "n": option_number,
-        "via": via,
-        "qris_decoy_price": _qris_decoy_price(),
-    })
-    return render("user/detail_paket.html", context=ctx)
 
 
 def _stream_detail_events(family, option_number, active_xl, want, disconnected=None):
@@ -3874,14 +3961,7 @@ def _stream_detail_events(family, option_number, active_xl, want, disconnected=N
         if tokens and not (disconnected and disconnected.is_set()):
             _api_delay()
             try:
-                if family == "xcp":
-                    detail = _fetch_xcp_detail(option_number, active_xl, tokens)
-                elif family == "addon10":
-                    detail = _get_addon_detail(option_number, ADDON_SPEC_10, active_xl, tokens)
-                elif family == "addon15":
-                    detail = _get_addon_detail(option_number, ADDON_SPEC_15, active_xl, tokens)
-                elif family == "xtraconf":
-                    detail = _get_addon_detail(option_number, XTRA_CONF_SPEC, active_xl, tokens)
+                detail = _family_detail(family, option_number, active_xl, tokens)
             except Exception as e:
                 print(f"[detail-stream] {family}-{option_number} error: {e}")
                 error = True
@@ -3940,51 +4020,24 @@ def user_xl_banner_info(user: User = Depends(get_current_user)):
 
 # ─── Payment Routes ─────────────────────────────────────────────────────────
 
-def _get_payment_items_and_detail(option_number, active_xl):
-    """Helper: get package detail + payment items for a given option_number."""
-    _api_delay()
-    tokens = _get_xl_tokens(active_xl)
-    if not tokens:
-        return None, None
-    _api_delay()
-    family_data = xl_get_family(API_KEY, tokens, FAMILY_CODE_XTRA_COMBO, is_enterprise=False, migration_type="NONE")
-    if not family_data:
-        return None, None
-    option_number_local = 1
-    for variant in family_data["package_variants"]:
-        for option in variant["package_options"]:
-            if option_number_local == option_number:
-                _api_delay()
-                pkg = xl_get_package(API_KEY, tokens, option["package_option_code"], FAMILY_CODE_XTRA_COMBO, variant["package_variant_code"])
-                if not pkg:
-                    return None, None
-                detail = _build_pkg_detail(pkg, option, variant, f"xcp-{option_number}", option_number)
-                detail = _apply_pkg_detail_price("xcp", detail)
-                price = int(option["price"])
-                items = [PaymentItem(
-                    item_code=option["package_option_code"],
-                    product_type="",
-                    item_price=price,
-                    item_name=f"{variant['name']} {option['name']}".strip(),
-                    tax=0,
-                    token_confirmation=pkg.get("token_confirmation", ""),
-                )]
-                return items, detail
-            option_number_local += 1
-    return None, None
+def _get_family_items_and_detail(fam_key, option_number, active_xl, tokens=None):
+    """Payment items + detail untuk family mana pun di registry (settlement).
 
-
-def _get_addon_items_and_detail(option_number, addon_spec, active_xl, tokens=None):
-    """Helper: get addon detail + payment items for a given option_number."""
-    family_code, url_id_prefix = addon_spec
+    item_price TETAP harga katalog API (XL menolak INVALID_PRICE kalau beda);
+    rewrite hanya lewat overwrite_amount saat settle.
+    """
+    cfg = _family_registry().get(fam_key)
+    if not cfg:
+        return None, None
     if not tokens:
         _api_delay()
         tokens = _get_xl_tokens(active_xl)
         if not tokens:
             return None, None
-    is_ent, mig = _family_api_params(family_code)
+    fam_code = cfg["family_code"]
+    is_ent, mig = _family_api_params(fam_code)
     _api_delay()
-    family_data = xl_get_family(API_KEY, tokens, family_code, is_enterprise=is_ent, migration_type=mig)
+    family_data = xl_get_family(API_KEY, tokens, fam_code, is_enterprise=is_ent, migration_type=mig)
     if not family_data:
         return None, None
     option_number_local = 1
@@ -3992,11 +4045,11 @@ def _get_addon_items_and_detail(option_number, addon_spec, active_xl, tokens=Non
         for option in variant["package_options"]:
             if option_number_local == option_number:
                 _api_delay()
-                pkg = xl_get_package(API_KEY, tokens, option["package_option_code"], family_code, variant["package_variant_code"])
+                pkg = xl_get_package(API_KEY, tokens, option["package_option_code"], fam_code, variant["package_variant_code"])
                 if not pkg:
                     return None, None
-                detail = _build_pkg_detail(pkg, option, variant, f"{url_id_prefix}-{option_number}", option_number)
-                detail = _apply_pkg_detail_price(_family_key_from_url_id(url_id_prefix), detail)
+                detail = _build_pkg_detail(pkg, option, variant, f"{cfg['url_prefix']}-{option_number}", option_number)
+                detail = _apply_pkg_detail_price(fam_key, detail)
                 price = int(option["price"])
                 items = [PaymentItem(
                     item_code=option["package_option_code"],
@@ -4009,12 +4062,6 @@ def _get_addon_items_and_detail(option_number, addon_spec, active_xl, tokens=Non
                 return items, detail
             option_number_local += 1
     return None, None
-
-
-def _get_addon_detail(option_number, addon_spec, active_xl, tokens=None):
-    items, detail = _get_addon_items_and_detail(option_number, addon_spec, active_xl, tokens)
-    return detail
-
 
 def _append_decoy_item(items, tokens, payment_type="balance"):
     from app.service.decoy import build_decoy_item
@@ -4064,20 +4111,17 @@ def _settle_with_decoy(pay_fn, tokens, items, detail, method, use_decoy):
     return res
 
 
-def _process_payment(active_xl, option_number, addon_spec, method):
+def _process_payment(active_xl, fam_key, option_number, method):
     pay_error = None
     pay_success = None
     detail = None
     pay_extra = {}
-    use_decoy = bool(addon_spec) and addon_spec[0] == FAMILY_CODE_XTRA_CONFERENCE
+    use_decoy = bool(_family_registry().get(fam_key, {}).get("qris_decoy"))
     _stdout_buf = io.StringIO()
     with redirect_stdout(_stdout_buf):
         if active_xl and active_xl.refresh_token:
             try:
-                if addon_spec:
-                    items, detail = _get_addon_items_and_detail(option_number, addon_spec, active_xl)
-                else:
-                    items, detail = _get_payment_items_and_detail(option_number, active_xl)
+                items, detail = _get_family_items_and_detail(fam_key, option_number, active_xl)
             except Exception as e:
                 pay_error = f"Error fetching package: {e}"
                 items = None
@@ -4165,23 +4209,12 @@ FAMILY_FEE_DEFAULTS = {
     "xtraconf:qris": 1000,
 }
 
-FAMILY_LABELS = {
-    "xcp": "Xtra Combo Plus",
-    "addon10": "Addon Xtra Combo Plus 10GB",
-    "addon15": "Addon Xtra Combo Plus 15GB",
-    "xtraconf": "Xtra Conference",
-}
+def _family_label(family_key):
+    return _family_registry().get(family_key, {}).get("label", family_key)
 
 
 def _fee_key(family_key, method):
     return f"{family_key}:{method}"
-
-
-def _family_key_from_url_id(url_id):
-    for key in ("addon10", "addon15", "xtraconf", "xcp"):
-        if str(url_id).startswith(key):
-            return key
-    return "xcp"
 
 
 def _get_family_fee(family_key):
@@ -4273,12 +4306,13 @@ def _checkout_context(active_xl, user, detail, method, family_key):
         db.close()
     fee = _get_family_fee(_fee_key(family_key, method))
     remaining = balance - fee
+    decoy = bool(_family_registry().get(family_key, {}).get("qris_decoy"))
     # Checkout menampilkan harga yang BENAR-BENAR ditagih: rewrite_price kalau
     # di-set di /prices-xl, selain itu display_price, lalu harga API.
     price = detail.get("rewrite_price")
     if price is None:
         price = detail.get("price") or 0
-    if family_key == "xtraconf" and method == "qris":
+    if decoy and method == "qris":
         price = price + _qris_decoy_price(active_xl)
     return {
         "detail": detail,
@@ -4287,88 +4321,39 @@ def _checkout_context(active_xl, user, detail, method, family_key):
         "balance": balance,
         "price": price,
         "fee": fee,
-        "family_label": FAMILY_LABELS.get(family_key, family_key),
+        "family_label": _family_label(family_key),
         "remaining": remaining,
         "insufficient": remaining < 0,
-        # XtraConf via pulsa (balance): item decoy (bundle) sengaja dibuat gagal,
-        # jadi pulsa nomor harus DI BAWAH harga decoy — kalau lebih, decoy ikut
-        # terpotong sungguhan. QRIS tidak berlaku (harga tampil sudah termasuk).
-        "decoy_pulsa_notice": family_key == "xtraconf" and method == "balance",
+        # Family decoy via pulsa (balance): item decoy (bundle) sengaja dibuat
+        # gagal, jadi pulsa nomor harus DI BAWAH harga decoy — kalau lebih,
+        # decoy ikut terpotong sungguhan. QRIS tidak berlaku (harga tampil
+        # sudah termasuk).
+        "decoy_pulsa_notice": decoy and method == "balance",
         "pay_url": f"/user/xl/beli-paket/{detail.get('url_id')}/pay/{method}",
     }
 
 
-@app.get("/user/xl/beli-paket/xcp-{option_number}/checkout/{method}")
-def checkout_paket(request: Request, option_number: int, method: str, user: User = Depends(get_current_user)):
+@app.get("/user/xl/beli-paket/{family_prefix}-{option_number}/checkout/{method}")
+def checkout_paket(request: Request, family_prefix: str, option_number: int, method: str,
+                   user: User = Depends(get_current_user)):
+    """Checkout generik — resolve family dari url_prefix di registry."""
     if user.role != "user":
         return RedirectResponse(url="/admin/dashboard", status_code=303)
     if method not in PAY_METHOD_LABELS:
+        return RedirectResponse(url="/user/xl/beli-paket", status_code=303)
+    fam_key = _family_key_by_prefix(family_prefix)
+    if not fam_key:
         return RedirectResponse(url="/user/xl/beli-paket", status_code=303)
     db = next(get_db())
     ctx = get_user_context(user, db)
     db.close()
     active_xl = ctx.get("active_xl")
-    detail = _checkout_detail(active_xl, lambda: _fetch_xcp_detail(option_number, active_xl))
+    detail = _checkout_detail(active_xl, lambda: _family_detail(fam_key, option_number, active_xl))
     if not detail:
-        return RedirectResponse(url=f"/user/xl/beli-paket/xcp-{option_number}/detail", status_code=303)
-    cc = _checkout_context(active_xl, user, detail, method, "xcp")
+        return RedirectResponse(url=f"/user/xl/beli-paket/{family_prefix}-{option_number}/detail", status_code=303)
+    cc = _checkout_context(active_xl, user, detail, method, fam_key)
     ctx.update({"request": request, **cc})
     return render("user/checkout.html", context=ctx)
-
-
-@app.get("/user/xl/beli-paket/addon10-xcp-{option_number}/checkout/{method}")
-def checkout_addon(request: Request, option_number: int, method: str, user: User = Depends(get_current_user)):
-    if user.role != "user":
-        return RedirectResponse(url="/admin/dashboard", status_code=303)
-    if method not in PAY_METHOD_LABELS:
-        return RedirectResponse(url="/user/xl/beli-paket", status_code=303)
-    db = next(get_db())
-    ctx = get_user_context(user, db)
-    db.close()
-    active_xl = ctx.get("active_xl")
-    detail = _checkout_detail(active_xl, lambda: _get_addon_detail(option_number, ADDON_SPEC_10, active_xl))
-    if not detail:
-        return RedirectResponse(url=f"/user/xl/beli-paket/addon10-xcp-{option_number}/detail", status_code=303)
-    cc = _checkout_context(active_xl, user, detail, method, "addon10")
-    ctx.update({"request": request, **cc})
-    return render("user/checkout.html", context=ctx)
-
-
-@app.get("/user/xl/beli-paket/addon15-xcp-{option_number}/checkout/{method}")
-def checkout_addon15(request: Request, option_number: int, method: str, user: User = Depends(get_current_user)):
-    if user.role != "user":
-        return RedirectResponse(url="/admin/dashboard", status_code=303)
-    if method not in PAY_METHOD_LABELS:
-        return RedirectResponse(url="/user/xl/beli-paket", status_code=303)
-    db = next(get_db())
-    ctx = get_user_context(user, db)
-    db.close()
-    active_xl = ctx.get("active_xl")
-    detail = _checkout_detail(active_xl, lambda: _get_addon_detail(option_number, ADDON_SPEC_15, active_xl))
-    if not detail:
-        return RedirectResponse(url=f"/user/xl/beli-paket/addon15-xcp-{option_number}/detail", status_code=303)
-    cc = _checkout_context(active_xl, user, detail, method, "addon15")
-    ctx.update({"request": request, **cc})
-    return render("user/checkout.html", context=ctx)
-
-
-@app.get("/user/xl/beli-paket/xtraconf-{option_number}/checkout/{method}")
-def checkout_xtraconf(request: Request, option_number: int, method: str, user: User = Depends(get_current_user)):
-    if user.role != "user":
-        return RedirectResponse(url="/admin/dashboard", status_code=303)
-    if method not in PAY_METHOD_LABELS:
-        return RedirectResponse(url="/user/xl/beli-paket", status_code=303)
-    db = next(get_db())
-    ctx = get_user_context(user, db)
-    db.close()
-    active_xl = ctx.get("active_xl")
-    detail = _checkout_detail(active_xl, lambda: _get_addon_detail(option_number, XTRA_CONF_SPEC, active_xl))
-    if not detail:
-        return RedirectResponse(url=f"/user/xl/beli-paket/xtraconf-{option_number}/detail", status_code=303)
-    cc = _checkout_context(active_xl, user, detail, method, "xtraconf")
-    ctx.update({"request": request, **cc})
-    return render("user/checkout.html", context=ctx)
-
 
 def _panel_fee_precheck(user, family_key: str, method: str):
     """Return an error response when panel saldo cannot cover the fee; else None.
@@ -4389,74 +4374,29 @@ def _panel_fee_precheck(user, family_key: str, method: str):
     finally:
         db.close()
 
-
-@app.post("/user/xl/beli-paket/xcp-{option_number}/pay/{method}")
-def pay_paket(request: Request, option_number: int, method: str, user: User = Depends(get_current_user)):
+@app.post("/user/xl/beli-paket/{family_prefix}-{option_number}/pay/{method}")
+def pay_paket(request: Request, family_prefix: str, option_number: int, method: str,
+              user: User = Depends(get_current_user)):
+    """Pay generik — family dari url_prefix registry; decoy hanya utk family
+    yang menandainya (qris_decoy, mis. Xtra Conference)."""
     if user.role != "user":
         return JSONResponse({"ok": False, "message": "Akses ditolak"}, status_code=403)
     if method not in PAY_METHOD_LABELS:
         return JSONResponse({"ok": False, "message": "Metode pembayaran tidak tersedia."}, status_code=400)
-    blocked = _panel_fee_precheck(user, "xcp", method)
+    fam_key = _family_key_by_prefix(family_prefix)
+    if not fam_key:
+        return JSONResponse({"ok": False, "message": "Paket tidak ditemukan."}, status_code=404)
+    cfg = _family_registry()[fam_key]
+    blocked = _panel_fee_precheck(user, fam_key, method)
     if blocked:
         return blocked
     db = next(get_db())
     ctx = get_user_context(user, db)
     db.close()
+    addon_spec = cfg["qris_decoy"]
     return _pay_with_fee(user, ctx,
-                         lambda: _process_payment(ctx.get("active_xl"), option_number, False, method),
-                         "xcp", method)
-
-
-@app.post("/user/xl/beli-paket/addon10-xcp-{option_number}/pay/{method}")
-def pay_addon(request: Request, option_number: int, method: str, user: User = Depends(get_current_user)):
-    if user.role != "user":
-        return JSONResponse({"ok": False, "message": "Akses ditolak"}, status_code=403)
-    if method not in PAY_METHOD_LABELS:
-        return JSONResponse({"ok": False, "message": "Metode pembayaran tidak tersedia."}, status_code=400)
-    blocked = _panel_fee_precheck(user, "addon10", method)
-    if blocked:
-        return blocked
-    db = next(get_db())
-    ctx = get_user_context(user, db)
-    db.close()
-    return _pay_with_fee(user, ctx,
-                         lambda: _process_payment(ctx.get("active_xl"), option_number, ADDON_SPEC_10, method),
-                         "addon10", method)
-
-
-@app.post("/user/xl/beli-paket/addon15-xcp-{option_number}/pay/{method}")
-def pay_addon15(request: Request, option_number: int, method: str, user: User = Depends(get_current_user)):
-    if user.role != "user":
-        return JSONResponse({"ok": False, "message": "Akses ditolak"}, status_code=403)
-    if method not in PAY_METHOD_LABELS:
-        return JSONResponse({"ok": False, "message": "Metode pembayaran tidak tersedia."}, status_code=400)
-    blocked = _panel_fee_precheck(user, "addon15", method)
-    if blocked:
-        return blocked
-    db = next(get_db())
-    ctx = get_user_context(user, db)
-    db.close()
-    return _pay_with_fee(user, ctx,
-                         lambda: _process_payment(ctx.get("active_xl"), option_number, ADDON_SPEC_15, method),
-                         "addon15", method)
-
-
-@app.post("/user/xl/beli-paket/xtraconf-{option_number}/pay/{method}")
-def pay_xtraconf(request: Request, option_number: int, method: str, user: User = Depends(get_current_user)):
-    if user.role != "user":
-        return JSONResponse({"ok": False, "message": "Akses ditolak"}, status_code=403)
-    if method not in PAY_METHOD_LABELS:
-        return JSONResponse({"ok": False, "message": "Metode pembayaran tidak tersedia."}, status_code=400)
-    blocked = _panel_fee_precheck(user, "xtraconf", method)
-    if blocked:
-        return blocked
-    db = next(get_db())
-    ctx = get_user_context(user, db)
-    db.close()
-    return _pay_with_fee(user, ctx,
-                         lambda: _process_payment(ctx.get("active_xl"), option_number, XTRA_CONF_SPEC, method),
-                         "xtraconf", method)
-
+                         lambda: _process_payment(ctx.get("active_xl"), fam_key, option_number, method),
+                         fam_key, method)
 
 def _qris_png_data_uri(qris_b64):
     import base64 as _b64
@@ -4541,7 +4481,7 @@ def _pay_with_fee(user, ctx, run_purchase, family_key, method):
     lagi bisa mengantre paket tanpa fee — saldo sudah terpotong di depan.
     """
     fee = _get_family_fee(_fee_key(family_key, method))
-    desc = f"Konsumsi saldo panel {FAMILY_LABELS.get(family_key, family_key)} via {PAY_METHOD_LABELS.get(method, method)}"
+    desc = f"Konsumsi saldo panel {_family_label(family_key)} via {PAY_METHOD_LABELS.get(method, method)}"
     if _deduct_token_balance(user, fee, desc) is None:
         return JSONResponse({
             "ok": False,
@@ -4563,7 +4503,7 @@ def _pay_response(user, detail, pay_error, pay_success, method, family_key, pay_
             new_balance = _deduct_token_balance(
                 user,
                 fee,
-                f"Konsumsi saldo panel {FAMILY_LABELS.get(family_key, family_key)} via {PAY_METHOD_LABELS.get(method, method)}"
+                f"Konsumsi saldo panel {_family_label(family_key)} via {PAY_METHOD_LABELS.get(method, method)}"
             )
             if new_balance is None:
                 return JSONResponse({
@@ -4581,7 +4521,7 @@ def _pay_response(user, detail, pay_error, pay_success, method, family_key, pay_
                 dbn.close()
         if _ab_read_state().get("notif_purchase"):
             option_name = (detail or {}).get("option_name") or ""
-            family_label = FAMILY_LABELS.get(family_key, family_key)
+            family_label = _family_label(family_key)
             if option_name and family_label.lower() not in option_name.lower():
                 pkg_name = f"{family_label} - {option_name}"
             else:

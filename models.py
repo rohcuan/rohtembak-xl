@@ -138,10 +138,16 @@ class PackagePrice(Base):
 
 
 class XlFamily(Base):
-    """Konfigurasi family paket XL yang ditampilkan di /prices-xl.
+    """Registry family paket XL — 1 group = 1 family code.
 
-    label & family_code editable dari dashboard; family_code adalah UUID
-    katalog di API XL (jika XL mengubah katalog, admin tinggal update di sini).
+    Panel halaman beli-paket adalah container yang merender semua baris
+    tabel ini; admin bisa menambah family baru (label + family code +
+    option codes) tanpa menyentuh kode.
+
+    url_prefix    : segmen URL detail/checkout (mis. "addon10-xcp")
+    option_codes  : CSV nomor opsi katalog yang ditampilkan; kosong = semua
+    qris_decoy    : harga QRIS + decoy (khusus family yang butuh, mis. xtraconf)
+    is_active     : sembunyikan dari halaman beli-paket tanpa menghapus
     """
 
     __tablename__ = "xl_families"
@@ -150,5 +156,9 @@ class XlFamily(Base):
     family_key = Column(String(20), unique=True, nullable=False)
     label = Column(String(100), nullable=False)
     family_code = Column(String(64), nullable=False)
+    url_prefix = Column(String(40), nullable=False, default="")
+    option_codes = Column(String(255), nullable=False, default="")
+    qris_decoy = Column(Boolean, nullable=False, default=False)
+    is_active = Column(Boolean, nullable=False, default=True)
     sort_order = Column(Integer, default=0)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

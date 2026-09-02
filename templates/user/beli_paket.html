@@ -153,12 +153,41 @@ var CACHE_META_TTL = 570;
 var XL_ID = "{{ active_xl.phone_number if active_xl else '' }}";
 var QRIS_DECOY_PRICE = {{ qris_decoy_price | default(0) }};
 var CACHE_META = new Request('/beli-paket-cache/' + XL_ID + '/meta');
-var CACHE_KEYS = {
-  xcp: new Request('/beli-paket-cache/' + XL_ID + '/xcp'),
-  addon10: new Request('/beli-paket-cache/' + XL_ID + '/addon10'),
-  addon15: new Request('/beli-paket-cache/' + XL_ID + '/addon15'),
-  xtraconf: new Request('/beli-paket-cache/' + XL_ID + '/xtraconf')
-};
+// Config container dari server: 1 family aktif = 1 group kartu
+var SECTIONS = {{ sections | tojson }};
+var URL_PREFIX = {{ url_prefixes | tojson }};
+var DECOY_FAMS = Object.keys(URL_PREFIX).filter(function(k) {
+  return SECTIONS.some(function(s) { return s.fam === k && s.key !== k; });
+});
+var BOX_KEYS = SECTIONS.map(function(s) { return s.key; });
+var FAM_PARAM_FROM_BOX = {};
+SECTIONS.forEach(function(s) { FAM_PARAM_FROM_BOX[s.key] = s.fam; });
+var ALL_FAM_PARAM = ['meta'].concat(SECTIONS.map(function(s) { return s.fam; })
+  .filter(function(v, i, a) { return a.indexOf(v) === i; })).join(',');
+var streamedBoxes = {};
+
+function cacheReq(key) {
+  return new Request('/beli-paket-cache/' + XL_ID + '/' + key);
+}
+function cardHtmlFor(key, it, i) {
+  var fam = FAM_PARAM_FROM_BOX[key] || key;
+  var prefix = URL_PREFIX[fam] || fam;
+  var muted = it.price === 0 ? ' muted' : '';
+  var isAlt = SECTIONS.some(function(s) { return s.key === key && s.fam === 'xcp'; });
+  var head = isAlt
+    ? ('Alternatif ' + (i + 1) + ' &middot; Option #' + it.number)
+    : ('#' + it.number + ' &middot; ' + escHtml(it.variant_name || ''));
+  var name = isAlt ? escHtml(it.option_name || it.name || it.label) : escHtml(it.label);
+  var size = it.size ? '<div class="pkg-size">' + escHtml(it.size) + '</div>' : '';
+  var price = Number(it.price) || 0;
+  if (DECOY_FAMS.indexOf(fam) !== -1 && key.slice(-5) === '-qris') price += QRIS_DECOY_PRICE;
+  var via = (DECOY_FAMS.indexOf(fam) !== -1) ? (key.slice(-5) === '-qris' ? 'qris' : 'pulsa') : '';
+  return '<a class="pkg-card' + muted + '" href="/user/xl/beli-paket/' + prefix + '-' + it.number + '/detail' + (via ? '?via=' + via : '') + '">' +
+    '<div class="pkg-number">' + head + '</div>' +
+    '<div class="pkg-name">' + name + '</div>' + size +
+    '<div class="pkg-price">' + fmtRp(price) + '</div>' +
+    '</a>';
+}
 
 function fmtRp(n) {
   n = Number(n);
@@ -171,57 +200,9 @@ function escHtml(s) {
     return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
   });
 }
-function xcpCardHtml(p, i) {
-  return '<a class="pkg-card" href="/user/xl/beli-paket/xcp-' + p.number + '/detail">' +
-    '<div class="pkg-number">Alternatif ' + (i + 1) + ' &middot; Option #' + p.number + '</div>' +
-    '<div class="pkg-name">' + escHtml(p.option_name) + '</div>' +
-    '<div class="pkg-price">' + fmtRp(p.price) + '</div>' +
-    '</a>';
-}
-
-function cardHtml(a, urlPrefix) {
-  var muted = a.price === 0 ? ' muted' : '';
-  var html = '<a class="pkg-card' + muted + '" href="/user/xl/beli-paket/' + urlPrefix + '-' + a.number + '/detail">' +
-    '<div class="pkg-number">#' + a.number + ' &middot; ' + escHtml(a.variant_name) + '</div>' +
-    '<div class="pkg-name">' + escHtml(a.label) + '</div>';
-  if (a.size) html += '<div class="pkg-size">' + escHtml(a.size) + '</div>';
-  html += '<div class="pkg-price">' + fmtRp(a.price) + '</div>' +
-    '</a>';
-  return html;
-}
-
-function confCardHtml(a, method) {
-  var muted = a.price === 0 ? ' muted' : '';
-  var size = a.size ? '<div class="pkg-size">' + escHtml(a.size) + '</div>' : '';
-  var price = (method === 'qris') ? fmtRp(Number(a.price) + QRIS_DECOY_PRICE) : fmtRp(a.price);
-  var via = (method === 'qris') ? 'qris' : 'pulsa';
-  return '<a class="pkg-card' + muted + '" href="/user/xl/beli-paket/xtraconf-' + a.number + '/detail?via=' + via + '">' +
-    '<div class="pkg-number">#' + a.number + ' &middot; ' + escHtml(a.variant_name) + '</div>' +
-    '<div class="pkg-name">' + escHtml(a.label) + '</div>' + size +
-    '<div class="pkg-price">' + price + '</div>' +
-    '</a>';
-}
-
-function cardHtmlFor(key, it, i) {
-  if (key === 'xcp') return xcpCardHtml(it, i);
-  if (key === 'xtraconf-balance') return confCardHtml(it, 'balance');
-  if (key === 'xtraconf-qris') return confCardHtml(it, 'qris');
-  return cardHtml(it, URL_PREFIX[key]);
-}
-
-var EMPTY_MSG = { xcp: 'Tidak ada paket tersedia.', addon10: 'Tidak ada addon tersedia.', addon15: 'Tidak ada addon tersedia.', 'xtraconf-balance': 'Tidak ada paket tersedia.', 'xtraconf-qris': 'Tidak ada paket tersedia.' };
-var URL_PREFIX = { addon10: 'addon10-xcp', addon15: 'addon15-xcp' };
-var BOX_KEYS = ['xcp', 'addon10', 'addon15', 'xtraconf-balance', 'xtraconf-qris'];
-var BOXES_FROM_KEY = { packages: ['xcp'], addons: ['addon10'], addons_15: ['addon15'], xtra_conf: ['xtraconf-balance', 'xtraconf-qris'] };
-var FAM_PARAM_FROM_BOX = { xcp: 'xcp', addon10: 'addon10', addon15: 'addon15', 'xtraconf-balance': 'xtraconf', 'xtraconf-qris': 'xtraconf' };
-var DATA_FROM_BOX = { xcp: 'packages', addon10: 'addons', addon15: 'addons_15', 'xtraconf-balance': 'xtra_conf', 'xtraconf-qris': 'xtra_conf' };
-var CACHE_KEY_FROM_STREAM = { packages: 'xcp', addons: 'addon10', addons_15: 'addon15', xtra_conf: 'xtraconf' };
-var CACHE_KEY_FROM_BOX = { 'xtraconf-balance': 'xtraconf', 'xtraconf-qris': 'xtraconf' };
-var ALL_FAM_PARAM = 'meta,xcp,addon10,addon15,xtraconf';
-var streamedBoxes = {};
 
 function boxHtml(key, items) {
-  if (!items || !items.length) return '<div class="pkg-empty">' + (EMPTY_MSG[key] || '') + '</div>';
+  if (!items || !items.length) return '<div class="pkg-empty">Tidak ada paket tersedia.</div>';
   var html = '<div class="package-grid">';
   items.forEach(function(a, i) { html += cardHtmlFor(key, a, i); });
   return html + '</div>';
@@ -274,7 +255,7 @@ function finishBoxes(d) {
     if (streamedBoxes[key]) return;
     var box = document.querySelector('.pkg-data[data-box="' + key + '"]');
     if (box && box.querySelector('.pkg-card.skel')) {
-      box.innerHTML = boxHtml(key, d[DATA_FROM_BOX[key]] || []);
+      box.innerHTML = boxHtml(key, d[key] || []);
     }
   });
   setHeader(d);
@@ -299,7 +280,7 @@ function cachePut(req, obj) {
 }
 
 function streamData(famParam) {
-  var payload = { packages: [], addons: [], addons_15: [], xtra_conf: [], xl_info: null, error: false, last_refresh: '' };
+  var payload = { xl_info: null, error: false, last_refresh: '' };
   streamedBoxes = {};
   var src = new EventSource(DATA_STREAM_URL + '?families=' + encodeURIComponent(famParam));
   src.addEventListener('meta', function(ev) {
@@ -313,11 +294,12 @@ function streamData(famParam) {
     var d = JSON.parse(ev.data);
     payload[d.key] = d.items;
     if (!d.ok) return;
-    cachePut(CACHE_KEYS[CACHE_KEY_FROM_STREAM[d.key] || d.key], { items: d.items, fetched_at: Date.now() / 1000 });
-    (BOXES_FROM_KEY[d.key] || [d.key]).forEach(function(boxKey) {
-      streamedBoxes[boxKey] = true;
-      renderBox(boxKey, d.items, payload, true);
-    });
+    cachePut(cacheReq(d.key), { items: d.items, fetched_at: Date.now() / 1000 });
+    SECTIONS.filter(function(s) { return s.fam === d.key || s.key === d.key; })
+      .forEach(function(s) {
+        streamedBoxes[s.key] = true;
+        renderBox(s.key, d.items, payload, true);
+      });
   });
   src.addEventListener('done', function(ev) {
     var d = JSON.parse(ev.data);
@@ -349,7 +331,7 @@ function loadData() {
       return r ? r.json().then(function(d) { return { k: 'meta', d: isFresh(d, CACHE_META_TTL) ? d : null }; }) : { k: 'meta', d: null };
     })];
     BOX_KEYS.forEach(function(key) {
-      jobs.push(cache.match(CACHE_KEYS[CACHE_KEY_FROM_BOX[key] || key]).then(function(r) {
+      jobs.push(cache.match(cacheReq(key)).then(function(r) {
         return r ? r.json().then(function(d) { return { k: key, d: isFresh(d) ? d : null }; }) : { k: key, d: null };
       }));
     });
@@ -409,20 +391,13 @@ document.addEventListener('DOMContentLoaded', function() {
     <span class="pkg-refresh-msg">Sebagian info paket gagal dimuat. Muat ulang halaman untuk mencoba lagi.</span>
   </div>
 
-  {% set sections = [
-    ('xcp', 'Xtra Combo Plus', 3),
-    ('addon10', 'Addon Xtra Combo Plus 10GB', 6),
-    ('addon15', 'Addon Xtra Combo Plus 15GB', 9),
-    ('xtraconf-balance', 'Xtra Conference (via Pulsa)', 3),
-    ('xtraconf-qris', 'Xtra Conference (via QRIS)', 3)
-  ] %}
-  {% for sid, stitle, scount in sections %}
+  {% for s in sections %}
     <div class="pkg-section">
-      <div class="card-header" onclick="toggleBox('{{ sid }}')"><span>{{ stitle }}</span><span class="chev" id="{{ sid }}-chev"></span></div>
-      <div class="body-wrap" id="{{ sid }}-body">
-        <div class="pkg-data" data-box="{{ sid }}">
+      <div class="card-header" onclick="toggleBox('{{ s.key }}')"><span>{{ s.title }}</span><span class="chev" id="{{ s.key }}-chev"></span></div>
+      <div class="body-wrap" id="{{ s.key }}-body">
+        <div class="pkg-data" data-box="{{ s.key }}">
           <div class="package-grid">
-            {% for _ in range(scount) %}
+            {% for _ in range(3) %}
             <div class="pkg-card skel"><div class="skel-spinner"></div></div>
             {% endfor %}
           </div>

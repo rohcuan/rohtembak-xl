@@ -128,7 +128,12 @@
             {% endfor %}
         </tbody>
         <tfoot>
-            <tr>
+            <tr class="add-toggle-row">
+                <td colspan="4" style="text-align:center;">
+                    <button type="button" class="btn btn-sm btn-outline add-toggle" data-key="{{ sec.key }}">+ Tambah</button>
+                </td>
+            </tr>
+            <tr class="add-form-row" data-add="{{ sec.key }}" hidden>
                 <td><input type="number" name="option_number" min="0" step="1" placeholder="#" class="form-control price-input" style="width:90px;" form="add-form-{{ sec.key }}" required></td>
                 <td><span class="price-hint">XXX</span></td>
                 <td><span class="price-hint">XXX</span></td>
@@ -157,7 +162,12 @@
             </tr>
         </tbody>
         <tfoot>
-            <tr>
+            <tr class="add-toggle-row">
+                <td colspan="4" style="text-align:center;">
+                    <button type="button" class="btn btn-sm btn-outline add-toggle" data-key="{{ sec.key }}">+ Tambah</button>
+                </td>
+            </tr>
+            <tr class="add-form-row" data-add="{{ sec.key }}" hidden>
                 <td><input type="number" name="option_number" min="0" step="1" placeholder="#" class="form-control price-input" style="width:90px;" form="add-form-{{ sec.key }}" required></td>
                 <td><span class="price-hint">XXX</span></td>
                 <td><span class="price-hint">XXX</span></td>
@@ -212,6 +222,15 @@
       if (row) {
         row.hidden = !row.hidden;
         btn.textContent = row.hidden ? "Edit" : "Tutup";
+      }
+    });
+  });
+  document.querySelectorAll(".add-toggle").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var row = document.querySelector('.add-form-row[data-add="' + btn.dataset.key + '"]');
+      if (row) {
+        row.hidden = !row.hidden;
+        btn.textContent = row.hidden ? "+ Tambah" : "× Tutup";
       }
     });
   });

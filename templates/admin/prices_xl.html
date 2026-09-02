@@ -87,62 +87,57 @@
             <tr>
                 <th>Option Code</th>
                 <th>Package Name</th>
-                <th>Default Price (API)</th>
-                <th>Display Price (IDR)</th>
-                <th>Rewrite Price (IDR)</th>
-                <th></th>
+                <th>Price (API)</th>
                 <th></th>
             </tr>
         </thead>
         <tbody>
             {% for it in sec.pkgs %}
-            <tr>
+            <tr class="pkg-row">
                 <td data-label="Option Code">
                     <input type="hidden" name="old_option_number" value="{{ it.number }}" form="price-form-{{ sec.key }}-{{ it.number }}">
                     <input type="number" name="option_number" value="{{ it.number }}" min="0" step="1" class="form-control price-input" style="width:90px;" form="price-form-{{ sec.key }}-{{ it.number }}" title="Option code yang ditampilkan ke user (ubah + Simpan = pindahkan paket)">
                 </td>
                 <td data-label="Package Name"><strong>{{ it.name }}</strong></td>
-                <td data-label="Default Price (API)">
+                <td data-label="Price (API)">
                     {% if it.api_price %}<span class="price-hint">{{ it.api_price }}</span>{% else %}<span class="price-hint">&mdash;</span>{% endif %}
                 </td>
-                <td data-label="Display Price">
-                    <input type="number" name="display_price" value="{{ it.display if it.display is not none else '' }}" min="0" step="1" placeholder="Ikut API" class="form-control price-input" form="price-form-{{ sec.key }}-{{ it.number }}">
-                </td>
-                <td data-label="Rewrite Price">
-                    <input type="number" name="rewrite_price" value="{{ it.rewrite if it.rewrite is not none else '' }}" min="0" step="1" placeholder="Ikut API" class="form-control price-input" form="price-form-{{ sec.key }}-{{ it.number }}">
-                </td>
                 <td>
-                    <form method="POST" action="/prices-xl/set" class="price-form" id="price-form-{{ sec.key }}-{{ it.number }}">
-                        <input type="hidden" name="family_key" value="{{ sec.key }}">
-                        <button type="submit" class="btn btn-sm btn-outline">Simpan</button>
-                    </form>
+                    <button type="button" class="btn btn-sm btn-outline edit-toggle" data-key="{{ sec.key }}-{{ it.number }}">Edit</button>
                 </td>
-                <td>
-                    <form method="POST" action="/prices-xl/pkg/delete" onsubmit="return confirm('Hapus paket ini dari group?');">
-                        <input type="hidden" name="family_key" value="{{ sec.key }}">
-                        <input type="hidden" name="option_number" value="{{ it.number }}">
-                        <button type="submit" class="btn btn-sm btn-outline" title="Hapus dari group">Hapus</button>
-                    </form>
+            </tr>
+            <tr class="edit-row" data-edit="{{ sec.key }}-{{ it.number }}" hidden>
+                <td colspan="4" style="background:#f9fafb;">
+                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                        <span class="price-hint">Display Price:</span>
+                        <input type="number" name="display_price" value="{{ it.display if it.display is not none else '' }}" min="0" step="1" placeholder="Ikut API" class="form-control price-input" form="price-form-{{ sec.key }}-{{ it.number }}">
+                        <span class="price-hint">Rewrite Price:</span>
+                        <input type="number" name="rewrite_price" value="{{ it.rewrite if it.rewrite is not none else '' }}" min="0" step="1" placeholder="Ikut API" class="form-control price-input" form="price-form-{{ sec.key }}-{{ it.number }}">
+                        <form method="POST" action="/prices-xl/set" class="price-form" id="price-form-{{ sec.key }}-{{ it.number }}">
+                            <input type="hidden" name="family_key" value="{{ sec.key }}">
+                            <button type="submit" class="btn btn-sm btn-outline">Simpan</button>
+                        </form>
+                        <form method="POST" action="/prices-xl/pkg/delete" onsubmit="return confirm('Hapus paket ini dari group?');">
+                            <input type="hidden" name="family_key" value="{{ sec.key }}">
+                            <input type="hidden" name="option_number" value="{{ it.number }}">
+                            <button type="submit" class="btn btn-sm btn-outline" title="Hapus dari group">Hapus</button>
+                        </form>
+                    </div>
                 </td>
             </tr>
             {% endfor %}
         </tbody>
         <tfoot>
             <tr>
-                <td>
-                    <input type="number" name="option_number" min="0" step="1" placeholder="#" class="form-control price-input" style="width:90px;" form="add-form-{{ sec.key }}" required>
-                </td>
+                <td><input type="number" name="option_number" min="0" step="1" placeholder="#" class="form-control price-input" style="width:90px;" form="add-form-{{ sec.key }}" required></td>
                 <td><span class="price-hint">XXX</span></td>
                 <td><span class="price-hint">XXX</span></td>
-                <td><input type="number" name="display_price" min="0" step="1" placeholder="Ikut API" class="form-control price-input" form="add-form-{{ sec.key }}"></td>
-                <td><input type="number" name="rewrite_price" min="0" step="1" placeholder="Ikut API" class="form-control price-input" form="add-form-{{ sec.key }}"></td>
                 <td>
                     <form method="POST" action="/prices-xl/pkg/add" class="price-form" id="add-form-{{ sec.key }}">
                         <input type="hidden" name="family_key" value="{{ sec.key }}">
                         <button type="submit" class="btn btn-sm btn-outline">Tambah</button>
                     </form>
                 </td>
-                <td></td>
             </tr>
         </tfoot>
     </table>
@@ -152,16 +147,13 @@
             <tr>
                 <th>Option Code</th>
                 <th>Package Name</th>
-                <th>Default Price (API)</th>
-                <th>Display Price (IDR)</th>
-                <th>Rewrite Price (IDR)</th>
-                <th></th>
+                <th>Price (API)</th>
                 <th></th>
             </tr>
         </thead>
         <tbody>
             <tr>
-                <td colspan="7" class="price-hint">Belum ada paket di group ini — <a href="/prices-xl/family/{{ sec.key }}/browse">Browse Package</a> lalu tambahkan yang diinginkan.</td>
+                <td colspan="4" class="price-hint">Belum ada paket di group ini — <a href="/prices-xl/family/{{ sec.key }}/browse">Browse Package</a> lalu tambahkan yang diinginkan.</td>
             </tr>
         </tbody>
         <tfoot>
@@ -169,15 +161,12 @@
                 <td><input type="number" name="option_number" min="0" step="1" placeholder="#" class="form-control price-input" style="width:90px;" form="add-form-{{ sec.key }}" required></td>
                 <td><span class="price-hint">XXX</span></td>
                 <td><span class="price-hint">XXX</span></td>
-                <td><input type="number" name="display_price" min="0" step="1" placeholder="Ikut API" class="form-control price-input" form="add-form-{{ sec.key }}"></td>
-                <td><input type="number" name="rewrite_price" min="0" step="1" placeholder="Ikut API" class="form-control price-input" form="add-form-{{ sec.key }}"></td>
                 <td>
                     <form method="POST" action="/prices-xl/pkg/add" class="price-form" id="add-form-{{ sec.key }}">
                         <input type="hidden" name="family_key" value="{{ sec.key }}">
                         <button type="submit" class="btn btn-sm btn-outline">Tambah</button>
                     </form>
                 </td>
-                <td></td>
             </tr>
         </tfoot>
     </table>
@@ -215,6 +204,15 @@
     btn.addEventListener("click", function () {
       var panel = document.getElementById("adv-" + btn.dataset.key);
       if (panel) panel.hidden = !panel.hidden;
+    });
+  });
+  document.querySelectorAll(".edit-toggle").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var row = document.querySelector('.edit-row[data-edit="' + btn.dataset.key + '"]');
+      if (row) {
+        row.hidden = !row.hidden;
+        btn.textContent = row.hidden ? "Edit" : "Tutup";
+      }
     });
   });
 })();

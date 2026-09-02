@@ -761,23 +761,29 @@ def admin_prices_xl_page(request: Request, user: User = Depends(get_current_user
     # Override di nomor di luar 3 alt ditampilkan sebagai baris ekstra.
     xcp_names = {it.get("number"): it for it in _load_catalog_snapshot("xcp") if isinstance(it, dict)}
     xcp_pos = _xcp_positions()
+
+    def _xcp_name(num, prefix):
+        info = xcp_names.get(num) or {}
+        name = f"{prefix} — {info['name']}" if info.get("name") else f"{prefix} (Option #{num})"
+        if info.get("price") is not None:
+            name += f" — API {info['price']:,}".replace(",", ".")
+        return name
+
     for i, num in enumerate(xcp_pos, start=1):
         ov = ov_map.get(("xcp", num))
-        info = xcp_names.get(num) or {}
-        name = f"Alternatif {i} — {info['name']}" if info.get("name") else f"Alternatif {i} (Option #{num})"
         rows[0]["pkgs"].append({
             "number": num,
-            "name": name,
+            "name": _xcp_name(num, f"Alternatif {i}"),
             "display": ov.display_price if ov else None,
             "rewrite": ov.rewrite_price if ov else None,
         })
     for num in sorted(n for (fk, n) in ov_map if fk == "xcp" and n not in xcp_pos):
         ov = ov_map[("xcp", num)]
         info = xcp_names.get(num) or {}
-        name = (info.get("name") or f"Option #{num}") + " (di luar urutan)"
+        prefix = info.get("name") or f"Option #{num}"
         rows[0]["pkgs"].append({
             "number": num,
-            "name": name,
+            "name": _xcp_name(num, prefix) + " (di luar urutan)",
             "display": ov.display_price,
             "rewrite": ov.rewrite_price,
         })

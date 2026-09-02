@@ -45,37 +45,39 @@
 
 <div class="card" style="margin-bottom:16px;">
     <div class="price-hint">
-        <strong>Display price</strong> = harga yang dilihat user (daftar &amp; halaman detail).
-        <strong>Rewrite price</strong> = nominal yang benar-benar ditagih (pulsa &amp; QRIS).
-        Kosongkan keduanya = ikut harga asli API. Kosongkan salah satu = field itu ikut harga API,
-        sedangkan yang diisi tetap dipakai. Kosongkan keduanya pada paket yang sudah pernah diset
-        akan menghapus override-nya. Daftar paket &amp; nama diambil dari katalog API XL — klik
-        <em>Muat Katalog</em> untuk memperbarui, atau ubah nomor di kolom <em>Option #</em>
-        kalau katalog XL bergeser (override harga ikut pindah).
-    </div>
-</div>
-
-<div class="card" style="margin-bottom:16px;">
-    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-        <button type="button" class="btn btn-sm btn-primary" id="fetchCatalogBtn">Muat Katalog</button>
-        <span class="price-hint" id="fetchStatus">
-            {% if admin_xl_phone %}Sesi admin XL: {{ admin_xl_phone }}{% else %}Belum ada sesi admin XL — <a href="/prices-xl/login-xl">login dulu</a> untuk memuat katalog.{% endif %}
-        </span>
+        <strong>Display price</strong> = harga yang dilihat user. <strong>Rewrite price</strong> = nominal yang
+        benar-benar ditagih (pulsa &amp; QRIS). Kosongkan keduanya = ikut harga asli API. <em>Browse Package</em>
+        menampilkan isi katalog family itu (option #, nama, harga) langsung dari API XL — sekaligus memperbarui
+        daftar di halaman ini. Butuh
+        {% if admin_xl_phone %}sesi admin XL aktif: <strong>{{ admin_xl_phone }}</strong>{% else %}<a href="/prices-xl/login-xl">Admin Login XL</a> (belum ada sesi){% endif %}.
     </div>
 </div>
 
 {% for sec in rows %}
 <div class="card">
     <h2 style="font-size:16px;margin-bottom:4px;">{{ sec.label }}</h2>
-    <form method="POST" action="/prices-xl/family" class="price-form" style="margin:0 0 8px;flex-wrap:wrap;">
-        <input type="hidden" name="family_key" value="{{ sec.key }}">
-        <input type="text" name="label" value="{{ sec.label }}" class="form-control price-input" style="width:200px;" title="Label tampilan">
-        <input type="text" name="family_code" value="{{ family_codes[sec.key] if family_codes else '' }}" class="form-control price-input" style="width:250px;" title="Family code (UUID katalog API XL)" placeholder="Family code">
-        <input type="text" name="url_prefix" value="{{ family_prefixes[sec.key] if family_prefixes else '' }}" class="form-control price-input" style="width:120px;" title="Prefix URL detail/checkout" placeholder="url-prefix">
-        <input type="text" name="option_codes" value="{{ family_options[sec.key] if family_options else '' }}" class="form-control price-input" style="width:110px;" title="Option codes (CSV) — kosong = semua opsi" placeholder="25,33,35">
-        <label class="price-hint" style="display:flex;align-items:center;gap:4px;"><input type="checkbox" name="qris_decoy" value="1" {% if family_decoys and family_decoys[sec.key] %}checked{% endif %}>QRIS decoy</label>
-        <button type="submit" class="btn btn-sm btn-outline">Simpan Family</button>
-    </form>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">
+        <form method="POST" action="/prices-xl/family" class="price-form" style="flex-wrap:wrap;">
+            <input type="hidden" name="family_key" value="{{ sec.key }}">
+            <input type="text" name="label" value="{{ sec.label }}" class="form-control price-input" style="width:190px;" title="Label tampilan">
+            <input type="text" name="family_code" value="{{ family_codes[sec.key] if family_codes else '' }}" class="form-control price-input" style="width:250px;" title="Family code (UUID katalog API XL)" placeholder="Family code">
+            <button type="submit" class="btn btn-sm btn-outline">Simpan</button>
+        </form>
+        <button type="button" class="btn btn-sm btn-outline browse-btn" data-key="{{ sec.key }}">Browse Package</button>
+        <button type="button" class="btn btn-sm btn-outline adv-toggle" data-key="{{ sec.key }}">Detail &#9662;</button>
+    </div>
+    <div class="adv-wrap" id="adv-{{ sec.key }}" hidden>
+        <form method="POST" action="/prices-xl/family" class="price-form" style="flex-wrap:wrap;margin:0 0 8px;">
+            <input type="hidden" name="family_key" value="{{ sec.key }}">
+            <input type="hidden" name="label" value="{{ sec.label }}">
+            <input type="hidden" name="family_code" value="{{ family_codes[sec.key] if family_codes else '' }}">
+            <input type="text" name="url_prefix" value="{{ family_prefixes[sec.key] if family_prefixes else '' }}" class="form-control price-input" style="width:120px;" title="Prefix URL detail/checkout" placeholder="url-prefix">
+            <input type="text" name="option_codes" value="{{ family_options[sec.key] if family_options else '' }}" class="form-control price-input" style="width:130px;" title="Option codes (CSV) — kosong = semua opsi" placeholder="25,33,35 (kosong=semua)">
+            <label class="price-hint" style="display:flex;align-items:center;gap:4px;"><input type="checkbox" name="qris_decoy" value="1" {% if family_decoys and family_decoys[sec.key] %}checked{% endif %}>QRIS decoy</label>
+            <button type="submit" class="btn btn-sm btn-outline">Simpan Detail</button>
+            <a href="/prices-xl/family/toggle?key={{ sec.key }}" class="price-hint">({{ 'sembunyikan' if family_actives and family_actives[sec.key] else 'tampilkan' }} di Beli Paket)</a>
+        </form>
+    </div>
     {% if sec.pkgs %}
     <table>
         <thead>
@@ -112,8 +114,9 @@
         </tbody>
     </table>
     {% else %}
-    <p class="price-hint" style="margin:8px 0 12px;">Belum ada paket — klik <strong>Muat Katalog</strong> di atas, atau isi Option # + harga di baris baru.</p>
+    <p class="price-hint" style="margin:8px 0 12px;">Belum ada paket — klik <strong>Browse Package</strong> untuk melihat &amp; memuat katalog dari API XL.</p>
     {% endif %}
+    <div id="browse-{{ sec.key }}" hidden style="margin-top:10px;"></div>
 </div>
 {% endfor %}
 
@@ -144,24 +147,48 @@
 
 <script>
 (function () {
-  var btn = document.getElementById("fetchCatalogBtn");
-  var status = document.getElementById("fetchStatus");
-  if (!btn) return;
-  btn.addEventListener("click", function () {
-    btn.disabled = true;
-    status.textContent = "Memuat katalog dari API XL...";
-    fetch("/prices-xl/catalog/fetch", { method: "POST" })
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
-        status.textContent = d.message || (d.ok ? "Selesai." : "Gagal.");
-        if (d.ok) setTimeout(function () { location.reload(); }, 1200);
-        else btn.disabled = false;
-      })
-      .catch(function () {
-        status.textContent = "Gagal terhubung ke server.";
+  // Browse Package: lihat isi katalog family langsung dari API XL
+  document.querySelectorAll(".browse-btn").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var key = btn.dataset.key;
+      var panel = document.getElementById("browse-" + key);
+      btn.disabled = true;
+      btn.textContent = "Memuat...";
+      fetch("/prices-xl/catalog/browse", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: "family_key=" + encodeURIComponent(key)
+      }).then(function (r) { return r.json(); }).then(function (d) {
         btn.disabled = false;
+        btn.textContent = "Browse Package";
+        if (!panel) return;
+        if (!d.ok) { panel.hidden = false; panel.innerHTML = '<div class="price-hint" style="color:#b91c1c;">' + escHtml(d.message || "Gagal.") + '</div>'; return; }
+        var html = '<div class="price-hint" style="margin-bottom:6px;">Katalog <strong>' + escHtml(d.label) + '</strong>' + escHtml(d.note || '') + ' — terbaru dari API XL:</div>';
+        html += '<table><thead><tr><th>Option #</th><th>Nama</th><th>Harga API (IDR)</th></tr></thead><tbody>';
+        d.rows.forEach(function (r) {
+          html += '<tr><td data-label="Option #">' + r.number + '</td><td data-label="Nama">' + escHtml(r.name) + '</td><td data-label="Harga API">' + r.price + '</td></tr>';
+        });
+        html += '</tbody></table>';
+        panel.innerHTML = html;
+        panel.hidden = false;
+      }).catch(function () {
+        btn.disabled = false;
+        btn.textContent = "Browse Package";
       });
+    });
   });
+  // Toggle panel pengaturan lanjutan
+  document.querySelectorAll(".adv-toggle").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var panel = document.getElementById("adv-" + btn.dataset.key);
+      if (panel) panel.hidden = !panel.hidden;
+    });
+  });
+  function escHtml(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
 })();
 </script>
 

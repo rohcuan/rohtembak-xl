@@ -827,6 +827,7 @@ def admin_prices_xl_page(request: Request, user: User = Depends(get_current_user
         "family_prefixes": {k: v["url_prefix"] for k, v in reg.items()},
         "family_decoys": {k: v["qris_decoy"] for k, v in reg.items()},
         "family_options": {k: ",".join(str(x) for x in v["option_codes"]) for k, v in reg.items()},
+        "family_actives": {k: v["is_active"] for k, v in reg.items()},
         "admin_xl_phone": admin_sess.get("phone_number") if admin_sess else None,
     })
 
@@ -961,13 +962,17 @@ def admin_prices_xl_family(
 
 
 @app.post("/prices-xl/family/toggle")
+@app.get("/prices-xl/family/toggle")
 def admin_prices_xl_family_toggle(
-    family_key: str = Form(...),
+    request: Request,
     user: User = Depends(get_current_user),
 ):
     """Tampil/sembunyikan family di halaman beli-paket tanpa menghapusnya."""
+    family_key = (request.query_params.get("key") or "").strip()
     if user.role != "admin":
         return RedirectResponse(url="/user/dashboard", status_code=303)
+    if not family_key:
+        return RedirectResponse(url="/prices-xl", status_code=303)
     db = next(get_db())
     try:
         row = db.query(XlFamily).filter(XlFamily.family_key == family_key).first()
@@ -993,6 +998,54 @@ def admin_prices_xl_catalog_fetch(user: User = Depends(get_current_user)):
     with _catalog_fetch_lock:
         ok, msg = _admin_xl_fetch_catalog()
     return JSONResponse({"ok": ok, "message": msg})
+
+
+@app.post("/prices-xl/catalog/browse")
+def admin_prices_xl_catalog_browse(
+    family_key: str = Form(...),
+    user: User = Depends(get_current_user),
+):
+    """Lihat isi katalog satu family (option #, nama, harga) langsung dari
+    API XL via sesi admin. Hasil juga disimpan ke snapshot — jadi tabel di
+    halaman ini ikut ter-update tanpa harus menunggu user browse.
+
+    Refresh token XL sekali pakai → serialisasi dengan lock.
+    """
+    if user.role != "admin":
+        return JSONResponse({"ok": False, "message": "Akses ditolak"}, status_code=403)
+    cfg = _family_registry().get(family_key)
+    if not cfg:
+        return JSONResponse({"ok": False, "message": "Family tidak ditemukan."})
+    if not _admin_xl_read():
+        return JSONResponse({"ok": False, "message": "Belum ada sesi admin XL. Login dulu."})
+    with _catalog_fetch_lock:
+        tokens = _admin_xl_tokens()
+        if not tokens:
+            _admin_xl_clear()
+            return JSONResponse({"ok": False, "message": "Sesi admin XL kedaluwarsa. Login ulang nomor admin."})
+        fam_code = cfg["family_code"]
+        is_ent, mig = _family_api_params(fam_code)
+        _api_delay()
+        try:
+            data = xl_get_family(API_KEY, tokens, fam_code, is_enterprise=is_ent, migration_type=mig)
+        except Exception as e:
+            return JSONResponse({"ok": False, "message": f"Gagal fetch katalog: {e}"})
+        if not data:
+            return JSONResponse({"ok": False, "message": "Katalog kosong / tidak ditemukan. Cek family code."})
+        if fam_code == FAMILY_CODE_XTRA_COMBO:
+            _save_xcp_catalog(data)
+        items = _build_registry_items(data, cfg["option_codes"])
+        total = 0
+        for variant in (data.get("package_variants") or []):
+            total += len(variant.get("package_options") or [])
+        _save_catalog_snapshot(family_key, items)
+    rows = [
+        {"number": it["number"], "name": " ".join(x for x in (it.get("label"), it.get("size")) if x) or it.get("name") or "-",
+         "price": f"{it['price']:,}".replace(",", ".") if it.get("price") is not None else "-"}
+        for it in items
+    ]
+    note = "" if not cfg["option_codes"] or total <= len(items) else f" (menampilkan {len(items)} dari {total} opsi)"
+    return JSONResponse({"ok": True, "label": cfg["label"], "rows": rows, "note": note})
 
 
 # ─── Admin Login XL (sesi khusus fetch katalog) ─────────────────────────────
@@ -2682,7 +2735,10 @@ async def admin_restore_upload(
         row.label = str(f.get("label") or key)[:100]
         row.family_code = str(f.get("family_code") or "")[:64]
         row.url_prefix = str(f.get("url_prefix") or key)[:40]
-        row.option_codes = str(f.get("option_codes") or "")[:255]
+        _oc = f.get("option_codes")
+        if isinstance(_oc, list):
+            _oc = ",".join(str(x) for x in _oc)
+        row.option_codes = str(_oc or "")[:255]
         row.qris_decoy = bool(f.get("qris_decoy"))
         row.is_active = bool(f.get("is_active"))
         families_restored += 1
@@ -3363,7 +3419,7 @@ def _family_registry():
         reg = {}
         for r in rows:
             codes = []
-            for part in str(r.option_codes or "").split(","):
+            for part in re.sub(r"[\[\]]", " ", str(r.option_codes or "")).split(","):
                 part = part.strip()
                 if part:
                     try:

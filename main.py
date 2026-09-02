@@ -755,12 +755,17 @@ def admin_prices_xl_page(request: Request, user: User = Depends(get_current_user
             "label": FAMILY_LABELS.get(fam, fam),
             "pkgs": [],
         })
-    # XCP: 3 alternatif tetap (TARGET_OPTIONS 25/33/35).
-    for i, num in enumerate((25, 33, 35), start=1):
+    # XCP: 3 alternatif, posisi bisa diubah admin (default 25/33/35).
+    # Nama paket dari snapshot katalog (fetch user terakhir) biar admin
+    # tahu paket apa yang ada di posisi tersebut.
+    xcp_names = {it.get("number"): it for it in _load_catalog_snapshot("xcp") if isinstance(it, dict)}
+    for i, num in enumerate(_xcp_positions(), start=1):
         ov = ov_map.get(("xcp", num))
+        info = xcp_names.get(num) or {}
+        name = f"Alternatif {i} — {info['name']}" if info.get("name") else f"Alternatif {i} (Option #{num})"
         rows[0]["pkgs"].append({
             "number": num,
-            "name": f"Alternatif {i} (Option #{num})",
+            "name": name,
             "display": ov.display_price if ov else None,
             "rewrite": ov.rewrite_price if ov else None,
         })
@@ -769,7 +774,7 @@ def admin_prices_xl_page(request: Request, user: User = Depends(get_current_user
     for fam in ("addon10", "addon15"):
         row = next(r for r in rows if r["key"] == fam)
         seen = {}
-        for it in _load_addon_snapshot(fam):
+        for it in _load_catalog_snapshot(fam):
             try:
                 seen[int(it.get("number"))] = it
             except (TypeError, ValueError):
@@ -809,6 +814,7 @@ def admin_prices_xl_page(request: Request, user: User = Depends(get_current_user
         "request": request,
         "user": user,
         "rows": rows,
+        "positions": _xcp_positions(),
     })
 
 
@@ -816,6 +822,7 @@ def admin_prices_xl_page(request: Request, user: User = Depends(get_current_user
 def admin_prices_xl_set(
     family_key: str = Form(...),
     option_number: int = Form(...),
+    old_option_number: int = Form(-1),
     display_price: str = Form(""),
     rewrite_price: str = Form(""),
     user: User = Depends(get_current_user),
@@ -833,6 +840,28 @@ def admin_prices_xl_set(
         return RedirectResponse(url="/prices-xl", status_code=303)
     db = next(get_db())
     try:
+        # Pindah posisi override (form urutan addon): old != new → pindahkan.
+        if 0 <= old_option_number != option_number:
+            src = db.query(PackagePrice).filter(
+                PackagePrice.family_key == family_key,
+                PackagePrice.option_number == old_option_number,
+            ).first()
+            if src:
+                if display is None and rewrite is None:
+                    db.delete(src)
+                else:
+                    dst = db.query(PackagePrice).filter(
+                        PackagePrice.family_key == family_key,
+                        PackagePrice.option_number == option_number,
+                    ).first()
+                    if dst and dst.id != src.id:
+                        db.delete(dst)
+                    src.option_number = option_number
+                    src.display_price = display
+                    src.rewrite_price = rewrite
+                db.commit()
+                return RedirectResponse(url="/prices-xl", status_code=303)
+            # src tidak ada → jatuh ke logika upsert normal di bawah.
         row = db.query(PackagePrice).filter(
             PackagePrice.family_key == family_key,
             PackagePrice.option_number == option_number,
@@ -849,6 +878,47 @@ def admin_prices_xl_set(
         db.commit()
     finally:
         db.close()
+    return RedirectResponse(url="/prices-xl", status_code=303)
+
+
+@app.post("/prices-xl/positions")
+def admin_prices_xl_positions(
+    alt1: str = Form(...),
+    alt2: str = Form(...),
+    alt3: str = Form(...),
+    user: User = Depends(get_current_user),
+):
+    """Ubah posisi (option number) Alternatif 1/2/3 XCP di katalog API.
+
+    Override harga (package_prices) ikut dipindah ke posisi baru — posisi
+    adalah identitas paket di API, harga menempel pada paketnya.
+    """
+    if user.role != "admin":
+        return RedirectResponse(url="/user/dashboard", status_code=303)
+    try:
+        vals = tuple(int(v.strip()) for v in (alt1, alt2, alt3))
+    except ValueError:
+        return RedirectResponse(url="/prices-xl", status_code=303)
+    if len(set(vals)) != 3 or any(v < 1 for v in vals):
+        return RedirectResponse(url="/prices-xl", status_code=303)
+    old = _xcp_positions()
+    if vals != old:
+        if not _save_xcp_positions(vals):
+            return RedirectResponse(url="/prices-xl", status_code=303)
+        db = next(get_db())
+        try:
+            for old_n, new_n in zip(old, vals):
+                if old_n == new_n:
+                    continue
+                row = db.query(PackagePrice).filter(
+                    PackagePrice.family_key == "xcp",
+                    PackagePrice.option_number == old_n,
+                ).first()
+                if row:
+                    row.option_number = new_n
+            db.commit()
+        finally:
+            db.close()
     return RedirectResponse(url="/prices-xl", status_code=303)
 
 
@@ -1322,7 +1392,8 @@ def admin_backup(format: str = "zip", admin_user: User = Depends(get_current_use
 
 def _collect_backup_settings() -> dict:
     """Kumpulkan pengaturan non-user untuk backup: QRIS gateway/API key,
-    chat ID & token bot Telegram, jadwal auto backup, dan flag notif tele."""
+    chat ID & token bot Telegram, jadwal auto backup, flag notif tele,
+    dan posisi katalog Alternatif 1/2/3 XCP."""
     url, api_key = gopay.get_config()
     st = _ab_read_state()
     return {
@@ -1337,6 +1408,7 @@ def _collect_backup_settings() -> dict:
             "weekday": st.get("weekday", 0),
             "monthday": st.get("monthday", 1),
         },
+        "xcp_positions": {"alt1": _xcp_positions()[0], "alt2": _xcp_positions()[1], "alt3": _xcp_positions()[2]},
         "notif": {
             "topup_qris": bool(st.get("notif_topup_qris")),
             "topup_admin": bool(st.get("notif_topup_admin")),
@@ -2103,6 +2175,15 @@ def _validate_restore_settings(raw) -> dict | None:
             "purchase": bool(nt.get("purchase")),
         }
 
+    xp = raw.get("xcp_positions")
+    if isinstance(xp, dict):
+        try:
+            vals = tuple(int(xp[k]) for k in ("alt1", "alt2", "alt3"))
+        except (TypeError, ValueError, KeyError):
+            vals = None
+        if vals and len(set(vals)) == 3 and all(v >= 1 for v in vals):
+            out["xcp_positions"] = {"alt1": vals[0], "alt2": vals[1], "alt3": vals[2]}
+
     return out or None
 
 
@@ -2145,6 +2226,11 @@ def _apply_restore_settings(valid_settings: dict) -> list:
         st["notif_purchase"] = bool(nt.get("purchase"))
         touched_state = True
         applied.append("Notif Telegram")
+
+    xp = valid_settings.get("xcp_positions")
+    if isinstance(xp, dict):
+        if _save_xcp_positions((xp["alt1"], xp["alt2"], xp["alt3"])):
+            applied.append("Posisi Katalog XCP")
 
     if touched_state:
         _ab_write_state(st)
@@ -2288,6 +2374,8 @@ async def admin_restore_upload(
             "bot_tele": {"chat_id": "", "token": ""},
             "autobackup": {"mode": "daily", "time": "03:00", "weekday": 0, "monthday": 1},
             "notif": {"topup_qris": False, "topup_admin": False, "purchase": False},
+            # Backup lama tidak membawa posisi katalog XCP → reset ke default
+            "xcp_positions": {"alt1": _XCP_POSITIONS_DEFAULT[0], "alt2": _XCP_POSITIONS_DEFAULT[1], "alt3": _XCP_POSITIONS_DEFAULT[2]},
         }
 
     admin_section = data.get("admin")
@@ -3046,48 +3134,96 @@ def _build_addon_list(family_data):
     return addons
 
 
-def _addon_snapshot_path():
-    return os.path.join(BASE_DIR, "data", "addon_options.json")
+def _catalog_snapshot_path():
+    return os.path.join(BASE_DIR, "data", "catalog_options.json")
 
 
-def _save_addon_snapshot(family_key, items):
+_XCP_POSITIONS_DEFAULT = (25, 33, 35)
+
+
+def _xcp_positions():
+    """Posisi (option number) Alternatif 1/2/3 XCP — bisa diubah admin di
+    /prices-xl. Default 25/33/35; tersimpan di data/xcp_positions.json."""
+    try:
+        with open(os.path.join(BASE_DIR, "data", "xcp_positions.json"), "r", encoding="utf-8") as f:
+            d = json.load(f)
+        vals = tuple(int(d[str(i)]) for i in (1, 2, 3))
+        if len(set(vals)) == 3 and all(v > 0 for v in vals):
+            return vals
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return _XCP_POSITIONS_DEFAULT
+
+
+def _save_xcp_positions(vals):
+    path = os.path.join(BASE_DIR, "data", "xcp_positions.json")
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({str(i): int(v) for i, v in zip((1, 2, 3), vals)}, f)
+        return True
+    except (OSError, ValueError, TypeError) as e:
+        print(f"[xcp-positions] gagal simpan: {e}")
+        return False
+
+
+def _read_snapshot_file():
+    try:
+        with open(_catalog_snapshot_path(), "r", encoding="utf-8") as f:
+            snap = json.load(f)
+        return snap if isinstance(snap, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _write_snapshot_file(snap):
+    path = _catalog_snapshot_path()
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(snap, f, ensure_ascii=False)
+    except OSError as e:
+        print(f"[catalog-snapshot] gagal simpan: {e}")
+
+
+def _save_catalog_snapshot(family_key, items):
     """Simpan daftar paket addon (number, label, size, harga API) dari fetch
     beli-paket terakhir — dipakai /prices-xl untuk render form.
 
     ponytail: penomoran addon posisional dari API XL (sama dengan alur
     pembelian). Snapshot regeneratif — hilang/katalog berubah = terisi ulang
-    saat user browse. Batasi ke addon10/15; xcp statis (25/33/35).
+    saat user browse. Batasi ke addon10/15; xcp lewat _save_xcp_catalog.
     """
     if family_key not in ("addon10", "addon15"):
         return
-    path = _addon_snapshot_path()
-    try:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        snap = {}
-        if os.path.exists(path):
-            with open(path, "r", encoding="utf-8") as f:
-                snap = json.load(f)
-        if not isinstance(snap, dict):
-            snap = {}
-        snap[family_key] = [
-            {"number": it.get("number"), "label": it.get("label"),
-             "size": it.get("size"), "price": it.get("price")}
-            for it in items
-        ]
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(snap, f, ensure_ascii=False)
-    except (OSError, ValueError) as e:
-        print(f"[addon-snapshot] gagal simpan: {e}")
+    snap = _read_snapshot_file()
+    snap[family_key] = [
+        {"number": it.get("number"), "label": it.get("label"),
+         "size": it.get("size"), "price": it.get("price")}
+        for it in items
+    ]
+    _write_snapshot_file(snap)
 
 
-def _load_addon_snapshot(family_key):
-    try:
-        with open(_addon_snapshot_path(), "r", encoding="utf-8") as f:
-            snap = json.load(f)
-        rows = snap.get(family_key) if isinstance(snap, dict) else None
-        return rows if isinstance(rows, list) else []
-    except (OSError, ValueError):
-        return []
+def _save_xcp_catalog(family_data):
+    """Simpan daftar LENGKAP opsi XCP (semua posisi, tak difilter) — sumber
+    nama untuk form urutan Alternatif 1/2/3 di /prices-xl."""
+    if not (family_data and family_data.get("package_variants")):
+        return
+    opts = []
+    number = 1
+    for variant in family_data["package_variants"]:
+        for option in variant.get("package_options") or []:
+            opts.append({"number": number, "name": option.get("name"), "price": option.get("price")})
+            number += 1
+    snap = _read_snapshot_file()
+    snap["xcp"] = opts
+    _write_snapshot_file(snap)
+
+
+def _load_catalog_snapshot(family_key):
+    rows = _read_snapshot_file().get(family_key)
+    return rows if isinstance(rows, list) else []
 
 
 def _pkg_price_override(family_key, option_number):
@@ -3134,7 +3270,7 @@ def _extract_xcp_packages(family_data):
     packages = []
     if not (family_data and family_data.get("package_variants")):
         return packages
-    TARGET_OPTIONS = {25, 33, 35}
+    TARGET_OPTIONS = set(_xcp_positions())
     option_number = 1
     for variant in family_data["package_variants"]:
         for option in variant["package_options"]:
@@ -3275,10 +3411,12 @@ def _stream_beli_paket_events(active_xl, want, disconnected=None):
             result = []
             try:
                 data = xl_get_family(API_KEY, tokens, fam_code, is_enterprise=is_ent, migration_type=mig)
+                if f == "xcp":
+                    _save_xcp_catalog(data)
                 result = builder(data) if data else []
                 result = _apply_pkg_list_price(f, result)
                 if ok and result:
-                    _save_addon_snapshot(f, result)
+                    _save_catalog_snapshot(f, result)
             except Exception as e:
                 print(f"[beli-paket] Error: {e}")
                 ok = False

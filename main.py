@@ -784,7 +784,7 @@ def admin_prices_xl_page(request: Request, user: User = Depends(get_current_user
             name = label or f"Option #{num}"
             api_price = None
             if info.get("price") is not None:
-                api_price = f"{info['price']:,}".replace(",", ".")
+                api_price = _fmt_harga(info["price"])
             if num not in snap:
                 name += " (belum ada di snapshot — Browse dulu)"
             row["pkgs"].append({

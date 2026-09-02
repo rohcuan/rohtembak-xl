@@ -755,11 +755,13 @@ def admin_prices_xl_page(request: Request, user: User = Depends(get_current_user
             "label": FAMILY_LABELS.get(fam, fam),
             "pkgs": [],
         })
-    # XCP: 3 alternatif, posisi bisa diubah admin (default 25/33/35).
-    # Nama paket dari snapshot katalog (fetch user terakhir) biar admin
-    # tahu paket apa yang ada di posisi tersebut.
+    # XCP: 3 alternatif, posisi bisa diubah admin lewat kolom Option #
+    # (default 25/33/35). Nama paket dari snapshot katalog (fetch user
+    # terakhir) biar admin tahu paket apa yang ada di posisi tersebut.
+    # Override di nomor di luar 3 alt ditampilkan sebagai baris ekstra.
     xcp_names = {it.get("number"): it for it in _load_catalog_snapshot("xcp") if isinstance(it, dict)}
-    for i, num in enumerate(_xcp_positions(), start=1):
+    xcp_pos = _xcp_positions()
+    for i, num in enumerate(xcp_pos, start=1):
         ov = ov_map.get(("xcp", num))
         info = xcp_names.get(num) or {}
         name = f"Alternatif {i} — {info['name']}" if info.get("name") else f"Alternatif {i} (Option #{num})"
@@ -768,6 +770,16 @@ def admin_prices_xl_page(request: Request, user: User = Depends(get_current_user
             "name": name,
             "display": ov.display_price if ov else None,
             "rewrite": ov.rewrite_price if ov else None,
+        })
+    for num in sorted(n for (fk, n) in ov_map if fk == "xcp" and n not in xcp_pos):
+        ov = ov_map[("xcp", num)]
+        info = xcp_names.get(num) or {}
+        name = (info.get("name") or f"Option #{num}") + " (di luar urutan)"
+        rows[0]["pkgs"].append({
+            "number": num,
+            "name": name,
+            "display": ov.display_price,
+            "rewrite": ov.rewrite_price,
         })
     # Family addon (addon10/addon15): render dari snapshot fetch beli-paket
     # terakhir (penomoran posisional dari API XL), digabung override yang ada.
@@ -814,7 +826,6 @@ def admin_prices_xl_page(request: Request, user: User = Depends(get_current_user
         "request": request,
         "user": user,
         "rows": rows,
-        "positions": _xcp_positions(),
     })
 
 
@@ -831,6 +842,8 @@ def admin_prices_xl_set(
         return RedirectResponse(url="/user/dashboard", status_code=303)
     if family_key not in FAMILY_LABELS or option_number < 0:
         return RedirectResponse(url="/prices-xl", status_code=303)
+    if family_key == "xcp" and option_number < 1:
+        return RedirectResponse(url="/prices-xl", status_code=303)
     try:
         display = int(display_price) if display_price.strip() else None
         rewrite = int(rewrite_price) if rewrite_price.strip() else None
@@ -838,6 +851,16 @@ def admin_prices_xl_set(
         return RedirectResponse(url="/prices-xl", status_code=303)
     if (display is not None and display < 0) or (rewrite is not None and rewrite < 0):
         return RedirectResponse(url="/prices-xl", status_code=303)
+    # XCP: memindahkan baris Alternatif (old ada di posisi tersimpan) =
+    # mengubah posisi katalog alt tersebut; override ikut karena key-nya nomor
+    # posisi. Orphan (old di luar posisi) cukup dinomori ulang — kalau nomor
+    # barunya adalah posisi alt, override mengadopsi slot alt itu.
+    if family_key == "xcp" and 0 <= old_option_number != option_number and old_option_number in _xcp_positions():
+        if option_number in _xcp_positions():
+            return RedirectResponse(url="/prices-xl", status_code=303)
+        _save_xcp_positions(tuple(
+            option_number if p == old_option_number else p for p in _xcp_positions()
+        ))
     db = next(get_db())
     try:
         # Pindah posisi override (form urutan addon): old != new → pindahkan.
@@ -856,6 +879,9 @@ def admin_prices_xl_set(
                     ).first()
                     if dst and dst.id != src.id:
                         db.delete(dst)
+                        # flush agar DELETE dieksekusi sebelum UPDATE src
+                        # menempati nomor yang sama (unique constraint)
+                        db.flush()
                     src.option_number = option_number
                     src.display_price = display
                     src.rewrite_price = rewrite
@@ -878,47 +904,6 @@ def admin_prices_xl_set(
         db.commit()
     finally:
         db.close()
-    return RedirectResponse(url="/prices-xl", status_code=303)
-
-
-@app.post("/prices-xl/positions")
-def admin_prices_xl_positions(
-    alt1: str = Form(...),
-    alt2: str = Form(...),
-    alt3: str = Form(...),
-    user: User = Depends(get_current_user),
-):
-    """Ubah posisi (option number) Alternatif 1/2/3 XCP di katalog API.
-
-    Override harga (package_prices) ikut dipindah ke posisi baru — posisi
-    adalah identitas paket di API, harga menempel pada paketnya.
-    """
-    if user.role != "admin":
-        return RedirectResponse(url="/user/dashboard", status_code=303)
-    try:
-        vals = tuple(int(v.strip()) for v in (alt1, alt2, alt3))
-    except ValueError:
-        return RedirectResponse(url="/prices-xl", status_code=303)
-    if len(set(vals)) != 3 or any(v < 1 for v in vals):
-        return RedirectResponse(url="/prices-xl", status_code=303)
-    old = _xcp_positions()
-    if vals != old:
-        if not _save_xcp_positions(vals):
-            return RedirectResponse(url="/prices-xl", status_code=303)
-        db = next(get_db())
-        try:
-            for old_n, new_n in zip(old, vals):
-                if old_n == new_n:
-                    continue
-                row = db.query(PackagePrice).filter(
-                    PackagePrice.family_key == "xcp",
-                    PackagePrice.option_number == old_n,
-                ).first()
-                if row:
-                    row.option_number = new_n
-            db.commit()
-        finally:
-            db.close()
     return RedirectResponse(url="/prices-xl", status_code=303)
 
 

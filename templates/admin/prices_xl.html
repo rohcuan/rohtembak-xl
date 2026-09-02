@@ -58,18 +58,6 @@
 {% for sec in rows %}
 <div class="card">
     <h2 style="font-size:16px;margin-bottom:4px;">{{ sec.label }}</h2>
-    {% if sec.key == 'xcp' %}
-    <form method="POST" action="/prices-xl/positions" class="price-form" style="margin:0 0 8px;">
-        <span class="price-hint">Posisi katalog:</span>
-        <span class="price-hint">Alt 1</span>
-        <input type="number" name="alt1" value="{{ positions[0] }}" min="1" class="form-control price-input" style="width:80px;">
-        <span class="price-hint">Alt 2</span>
-        <input type="number" name="alt2" value="{{ positions[1] }}" min="1" class="form-control price-input" style="width:80px;">
-        <span class="price-hint">Alt 3</span>
-        <input type="number" name="alt3" value="{{ positions[2] }}" min="1" class="form-control price-input" style="width:80px;">
-        <button type="submit" class="btn btn-sm btn-outline">Simpan Posisi</button>
-    </form>
-    {% endif %}
     {% if sec.pkgs %}
     <table>
         <thead>
@@ -86,13 +74,8 @@
             <tr>
                 <td data-label="Paket"><strong>{{ it.name }}</strong></td>
                 <td data-label="Option #">
-                    {% if sec.key == 'xcp' %}
-                    <input type="hidden" name="option_number" value="{{ it.number }}" form="price-form-{{ sec.key }}-{{ it.number }}">
-                    <span class="price-hint">#{{ it.number }}</span>
-                    {% else %}
                     <input type="hidden" name="old_option_number" value="{{ it.number }}" form="price-form-{{ sec.key }}-{{ it.number }}">
                     <input type="number" name="option_number" value="{{ it.number }}" min="0" step="1" class="form-control price-input" style="width:80px;" form="price-form-{{ sec.key }}-{{ it.number }}">
-                    {% endif %}
                 </td>
                 <td data-label="Display Price">
                     <input type="number" name="display_price" value="{{ it.display if it.display is not none else '' }}" min="0" step="1" placeholder="Ikut API" class="form-control price-input" form="price-form-{{ sec.key }}-{{ it.number }}">

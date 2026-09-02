@@ -132,9 +132,9 @@
         <div class="price-hint" style="margin:0 0 8px;">+ Tambah paket:</div>
         <form method="POST" action="/prices-xl/pkg/add" id="add-form-{{ sec.key }}" style="display:grid;grid-template-columns:120px 1fr 140px 150px 150px 70px 70px;gap:8px;align-items:center;">
             <input type="hidden" name="family_key" value="{{ sec.key }}">
-            <input type="number" name="option_number" min="0" step="1" placeholder="Option #" class="form-control price-input" required>
-            <span></span>
-            <span></span>
+            <input type="number" name="option_number" min="0" step="1" placeholder="#" class="form-control price-input" required>
+            <input type="text" class="form-control price-input" placeholder="GB (opsional)" title="Nama/GB tampil setelah di-Browse atau diisi manual">
+            <span class="price-hint" style="text-align:center;">XXX</span>
             <input type="number" name="display_price" min="0" step="1" placeholder="Display" class="form-control price-input">
             <input type="number" name="rewrite_price" min="0" step="1" placeholder="Rewrite" class="form-control price-input">
             <button type="submit" class="btn btn-sm btn-outline">Tambah</button>

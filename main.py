@@ -793,7 +793,7 @@ def admin_prices_xl_set(
 ):
     if user.role != "admin":
         return RedirectResponse(url="/user/dashboard", status_code=303)
-    if family_key not in FAMILY_LABELS:
+    if family_key not in FAMILY_LABELS or option_number < 0:
         return RedirectResponse(url="/prices-xl", status_code=303)
     try:
         display = int(display_price) if display_price.strip() else None
@@ -1258,7 +1258,6 @@ def admin_backup(format: str = "zip", admin_user: User = Depends(get_current_use
                 "subscription_type": x.subscription_type,
                 "is_active": bool(x.is_active),
             })
-    prices = _get_all_pkg_prices()
     if format == "txt":
         lines = []
         for u in users_data:
@@ -1271,6 +1270,8 @@ def admin_backup(format: str = "zip", admin_user: User = Depends(get_current_use
         resp = PlainTextResponse(content)
         resp.headers["Content-Disposition"] = 'attachment; filename="backup.txt"'
         return resp
+    fees = _get_all_family_fees()
+    prices = _get_all_pkg_prices()
     if format == "json":
         payload = {
             "version": 2,
@@ -2226,12 +2227,15 @@ async def admin_restore_upload(
             on = int(p.get("option_number"))
         except (TypeError, ValueError):
             continue
-        if not fk or on < 0 or (fk, on) in price_seen:
+        if not fk or fk not in FAMILY_LABELS or on < 0 or (fk, on) in price_seen:
             continue
         dp = p.get("display_price")
         rp = p.get("rewrite_price")
-        dp = int(dp) if dp is not None else None
-        rp = int(rp) if rp is not None else None
+        try:
+            dp = int(dp) if dp is not None else None
+            rp = int(rp) if rp is not None else None
+        except (TypeError, ValueError):
+            continue
         if dp is not None and dp < 0:
             continue
         if rp is not None and rp < 0:

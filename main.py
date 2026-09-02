@@ -764,12 +764,41 @@ def admin_prices_xl_page(request: Request, user: User = Depends(get_current_user
             "display": ov.display_price if ov else None,
             "rewrite": ov.rewrite_price if ov else None,
         })
-    # Family lain: hanya tampilkan yang sudah punya override (paket dinamis
-    # dari API, tidak bisa dilist statis di halaman admin tanpa token XL).
-    for fam in fam_order[1:]:
+    # Family addon (addon10/addon15): render dari snapshot fetch beli-paket
+    # terakhir (penomoran posisional dari API XL), digabung override yang ada.
+    for fam in ("addon10", "addon15"):
+        row = next(r for r in rows if r["key"] == fam)
+        seen = {}
+        for it in _load_addon_snapshot(fam):
+            try:
+                seen[int(it.get("number"))] = it
+            except (TypeError, ValueError):
+                continue
+        numbers = set(seen)
+        for ov in ov_map.values():
+            if ov.family_key == fam and ov.option_number not in numbers:
+                seen[ov.option_number] = {"number": ov.option_number, "label": f"Option #{ov.option_number}", "size": "", "price": None}
+                numbers.add(ov.option_number)
+        for num in sorted(seen):
+            it = seen[num]
+            ov = ov_map.get((fam, num))
+            label = it.get("label") or f"Option #{num}"
+            size = (it.get("size") or "").strip()
+            name = f"{label} {size}".strip()
+            if it.get("price") is not None:
+                name += f" — API {it['price']:,}".replace(",", ".")
+            row["pkgs"].append({
+                "number": num,
+                "name": name,
+                "display": ov.display_price if ov else None,
+                "rewrite": ov.rewrite_price if ov else None,
+            })
+    # Family lain tanpa snapshot (xtraconf): hanya tampilkan yang sudah
+    # punya override (paket dinamis dari API, tidak bisa dilist statis).
+    for fam in ("xtraconf",):
+        row = next(r for r in rows if r["key"] == fam)
         fam_rows = [ov for k, ov in ov_map.items() if k[0] == fam]
         for ov in sorted(fam_rows, key=lambda o: o.option_number):
-            row = next(r for r in rows if r["key"] == fam)
             row["pkgs"].append({
                 "number": ov.option_number,
                 "name": f"Option #{ov.option_number}",
@@ -3017,6 +3046,50 @@ def _build_addon_list(family_data):
     return addons
 
 
+def _addon_snapshot_path():
+    return os.path.join(BASE_DIR, "data", "addon_options.json")
+
+
+def _save_addon_snapshot(family_key, items):
+    """Simpan daftar paket addon (number, label, size, harga API) dari fetch
+    beli-paket terakhir — dipakai /prices-xl untuk render form.
+
+    ponytail: penomoran addon posisional dari API XL (sama dengan alur
+    pembelian). Snapshot regeneratif — hilang/katalog berubah = terisi ulang
+    saat user browse. Batasi ke addon10/15; xcp statis (25/33/35).
+    """
+    if family_key not in ("addon10", "addon15"):
+        return
+    path = _addon_snapshot_path()
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        snap = {}
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                snap = json.load(f)
+        if not isinstance(snap, dict):
+            snap = {}
+        snap[family_key] = [
+            {"number": it.get("number"), "label": it.get("label"),
+             "size": it.get("size"), "price": it.get("price")}
+            for it in items
+        ]
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(snap, f, ensure_ascii=False)
+    except (OSError, ValueError) as e:
+        print(f"[addon-snapshot] gagal simpan: {e}")
+
+
+def _load_addon_snapshot(family_key):
+    try:
+        with open(_addon_snapshot_path(), "r", encoding="utf-8") as f:
+            snap = json.load(f)
+        rows = snap.get(family_key) if isinstance(snap, dict) else None
+        return rows if isinstance(rows, list) else []
+    except (OSError, ValueError):
+        return []
+
+
 def _pkg_price_override(family_key, option_number):
     """Override harga per paket dari DB (display, rewrite) — NULL = ikut API.
 
@@ -3204,6 +3277,8 @@ def _stream_beli_paket_events(active_xl, want, disconnected=None):
                 data = xl_get_family(API_KEY, tokens, fam_code, is_enterprise=is_ent, migration_type=mig)
                 result = builder(data) if data else []
                 result = _apply_pkg_list_price(f, result)
+                if ok and result:
+                    _save_addon_snapshot(f, result)
             except Exception as e:
                 print(f"[beli-paket] Error: {e}")
                 ok = False

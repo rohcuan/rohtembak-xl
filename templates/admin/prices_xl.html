@@ -94,12 +94,11 @@
         <tbody>
             {% for it in sec.pkgs %}
             <tr>
-                <td data-label="Option Code"><strong>#{{ it.number }}</strong></td>
-                <td data-label="Package Name">
-                    <strong>{{ it.name }}</strong>
+                <td data-label="Option Code">
                     <input type="hidden" name="old_option_number" value="{{ it.number }}" form="price-form-{{ sec.key }}-{{ it.number }}">
-                    <input type="number" name="option_number" value="{{ it.number }}" min="0" step="1" class="form-control price-input" style="width:80px;margin-top:4px;" form="price-form-{{ sec.key }}-{{ it.number }}" title="Option code yang ditampilkan ke user">
+                    <input type="number" name="option_number" value="{{ it.number }}" min="0" step="1" class="form-control price-input" style="width:90px;" form="price-form-{{ sec.key }}-{{ it.number }}" title="Option code yang ditampilkan ke user (ubah + Simpan = pindahkan paket)">
                 </td>
+                <td data-label="Package Name"><strong>{{ it.name }}</strong></td>
                 <td data-label="Default Price (API)">
                     {% if it.api_price %}<span class="price-hint">{{ it.api_price }}</span>{% else %}<span class="price-hint">&mdash;</span>{% endif %}
                 </td>
